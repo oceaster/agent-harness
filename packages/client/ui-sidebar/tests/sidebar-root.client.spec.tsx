@@ -28,7 +28,6 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
   let regionOwner: SidebarSectionOwnerProps | undefined
   let settingsOwner: SidebarSettingsOwnerProps | undefined
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
-  const brandMark = <span data-testid="custom-brand-mark">M</span>
   let current = { collapsed, width }
   const root = () => (
     <SidebarRoot
@@ -39,7 +38,6 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
         key: string,
         owner: SidebarFooterActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
       ) => {
-        if (key === 'sidebar.brand.mark') return brandMark
         if (key === 'sidebar.settings') {
           settingsOwner = owner
           return <div data-testid="settings-seat" data-wide={owner.wide} />
@@ -88,11 +86,6 @@ describe('SidebarRoot shell', () => {
     expect(b.toggleSidebar).toHaveBeenCalledOnce()
   })
 
-  it('renders no brand mark in the expanded header', () => {
-    mountShell()
-    expect(screen.queryByTestId('custom-brand-mark')).toBeNull()
-  })
-
   it('hands the region its wide flag and clamps expandSidebar to the collapsed state', () => {
     const b = mountShell()
     expect(b.regionOwner().wide).toBe(true)
@@ -123,7 +116,5 @@ describe('SidebarRoot shell', () => {
     const b = mountShell({ collapsed: true })
     expect(b.regionOwner().wide).toBe(false)
     expect(screen.getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
-    // The rail's expand toggle rests as the brand mark.
-    expect(screen.getByTestId('custom-brand-mark')).toBeTruthy()
   })
 })

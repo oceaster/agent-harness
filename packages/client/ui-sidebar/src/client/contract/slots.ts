@@ -16,12 +16,6 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /**
-     * Brand mark rendered in the collapsed rail's expand toggle. Declared by
-     * this package's `sidebar` entry; deployments may replace the shell's
-     * fish fallback without replacing the surrounding controls.
-     */
-    'sidebar.brand.mark': { kind: 'single'; scope: 'root'; owner: SidebarBrandMarkOwnerProps }
-    /**
      * The workspace/session browsing region: section header, search, the
      * grouped/flat session list, and every workspace dialog. Declared by this
      * package's 'sidebar' entry (declaring is claiming); ui-workspace
@@ -40,12 +34,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'sidebar.footer.action': { kind: 'list'; scope: 'root'; owner: SidebarFooterActionOwnerProps }
   }
-}
-
-/** Geometry supplied to the sidebar brand-mark occupant. */
-export interface SidebarBrandMarkOwnerProps {
-  /** Requested square edge in pixels. */
-  size: number
 }
 
 /**
@@ -98,7 +86,6 @@ export type SidebarRootInjected = {
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
   & PropsRenderSlots<
-    | 'sidebar.brand.mark'
     | 'sidebar.workspaces'
     | 'sidebar.settings'
     | 'sidebar.footer.action'

@@ -2,9 +2,9 @@
 
 English | [中文](README.zh.md)
 
-This package fills `sidebar.brand.mark` and `conversation.hero.brand.mark` only when `DSH_CLIENT_BUILD_PROFILE` is `official`. Other builds load the plugin but register no occupants, leaving the shell fallbacks visible.
+This fork removes company branding, so this package registers no occupants in any build profile.
 
-The two occupants install as independent declaration-aware registrations through `slots.inject()` calls. The package therefore works whether its row activates before or after the sidebar and conversation declarers, withdraws each occupant when its declaration collapses, and leaves no partial brand mix during HMR. It retains no runtime state. The node half is an empty Loader seat, and the browser title remains a build-environment concern outside this package.
+The plugin body is a no-op and retains no runtime state. The node half is an empty Loader seat, and the browser title remains a build-environment concern outside this package.
 
 ## Model Experience
 
