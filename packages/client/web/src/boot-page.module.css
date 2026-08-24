@@ -15,12 +15,12 @@
 }
 
 :global(body[data-ds-dark-theme]) .boot {
-  --dsh-boot-bg: #151517;
-  --dsh-boot-label-primary: #f9fafb;
-  --dsh-boot-label-secondary: #cfd3d6;
-  --dsh-boot-label-tertiary: #adb2b8;
+  --dsh-boot-bg: #0f0f0f;
+  --dsh-boot-label-primary: #edecee;
+  --dsh-boot-label-secondary: #9695a1;
+  --dsh-boot-label-tertiary: #7e7d89;
   --dsh-boot-border: rgb(255 255 255 / 12%);
-  --dsh-boot-brand: #f9fafb;
+  --dsh-boot-brand: #edecee;
 }
 
 .card {
