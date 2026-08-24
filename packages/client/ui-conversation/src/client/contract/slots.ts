@@ -89,10 +89,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.session.header.actions': { kind: 'list'; scope: 'session'; owner: ConversationHeaderActionOwnerProps }
     /**
-     * Right-aligned Session utilities kept outside the title-adjacent action
-     * group, so an optional utility cannot reorder session context or lineage.
+     * Session utilities rendered inline with the centered view tabs (the
+     * session log download), kept outside the title-adjacent action group.
      */
     'conversation.session.header.utilities': { kind: 'list'; scope: 'session'; owner: ConversationHeaderActionOwnerProps }
+    /**
+     * The session's agent-preset label, rendered at the right edge opposite
+     * the title and action group.
+     */
+    'conversation.session.header.mode': { kind: 'single'; scope: 'session'; owner: ConversationHeaderActionOwnerProps }
     /**
      * The conversation view ring: one list entry per view tab (chat here;
      * trajectory/waterfall from ui-trajectory), rendered one-at-a-time by
@@ -626,7 +631,7 @@ export type ConversationSessionSlotProps =
 /** Full strict-session header props: shared store, tabs/actions render shares, navigation, and locale. */
 export type ConversationSessionHeaderSlotProps =
   PropsRuntime<'conversation.session.header'>
-  & PropsRenderSlots<'conversation.session.header.actions' | 'conversation.session.header.utilities'>
+  & PropsRenderSlots<'conversation.session.header.actions' | 'conversation.session.header.utilities' | 'conversation.session.header.mode'>
   & PropsStore<ChatStore>
   & ConversationSessionHeaderInjected
   & PropsLocale<'conversation'>

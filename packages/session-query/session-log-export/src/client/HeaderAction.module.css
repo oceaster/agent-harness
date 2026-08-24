@@ -1,24 +1,20 @@
 .sessionLogButton {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 111px;
-  height: 32px;
-  padding: 6px 12px;
   gap: 4px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 18px;
-  color: var(--dsw-alias-label-primary);
+  padding: 4px 0;
+  border: none;
   background: transparent;
+  color: var(--dsw-alias-label-tertiary);
   font-family: var(--dsw-font-family);
   font-size: 13px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 16px;
   cursor: pointer;
 }
 
 .sessionLogButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
 .sessionLogButton:disabled {

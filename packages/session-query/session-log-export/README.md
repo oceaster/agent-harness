@@ -24,7 +24,7 @@ The modal reports preparation, download start, or failure. Closing it does not c
   name: '@deepseek-ai/dsh-session-log-export'
 ```
 
-The Web bundle mounts the package beside `dsh-host-apiproxy`, `dsh-commands`, `dsh-client-ui-commands`, and `dsh-client-ui-conversation`. The package contributes its button and modal to the right-aligned `conversation.session.header.utilities` list, independently of the title-adjacent mode, Subagent, and Task entries in `conversation.session.header.actions`; Trajectory carries no export control.
+The Web bundle mounts the package beside `dsh-host-apiproxy`, `dsh-commands`, `dsh-client-ui-commands`, and `dsh-client-ui-conversation`. The package contributes its button and modal to the `conversation.session.header.utilities` list, rendered inline with the centered view tabs and independently of the title-adjacent Subagent and Task entries in `conversation.session.header.actions` and the agent-preset label in `conversation.session.header.mode`; Trajectory carries no export control.
 
 ## Model Experience
 

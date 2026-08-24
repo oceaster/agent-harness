@@ -1,7 +1,7 @@
-/* Conversation column skeleton: header (breadcrumb row only for subagents not fork + tabs) over the view
-   area, composer InputBar at the bottom. Column width/squeeze is layout's;
-   this fills its cell. Figma: Header 39:27730 (83px two-row), tabs 13px with
-   a 2px active bar. */
+/* Conversation column skeleton: single-row header (breadcrumb row only for
+   subagents not fork + tabs inline to the right) over the view area, composer
+   InputBar at the bottom. Column width/squeeze is layout's; this fills its
+   cell. Figma: Header 39:27730 (single-row), tabs 13px with a 2px active bar. */
 
 .root {
   display: flex;
@@ -51,15 +51,19 @@
 }
 
 .titleRow {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0;
+  justify-content: space-between;
+  gap: 20px;
   min-height: 32px;
 }
 
-.titleCluster {
+/* Left group: session title + session-scoped actions; the mode label sits at
+   the right edge and the view tabs + utilities are centered between them. */
+.titleLeft {
   display: flex;
-  flex: 1;
+  flex: none;
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -67,6 +71,7 @@
 
 .crumbs {
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -125,27 +130,44 @@
   flex: none;
   align-items: center;
   gap: 8px;
-  margin-left: 20px;
 }
 
 .headerUtilities:empty {
   display: none;
 }
 
-/* figma Tab_Group 34:11441: 35px strip, gap 36, pad-left 8, tabs bottom-aligned. */
-.tabs {
-  position: relative;
-  z-index: 1;
+/* The session's agent-preset label, at the right edge. */
+.headerMode {
   display: flex;
-  gap: 36px;
-  margin-top: 4px;
-  padding-left: 8px;
+  flex: none;
+  align-items: center;
 }
 
-/* figma .Tab 34:11442: 13/16 text (figma wt510, rendered 500), gap 8 to the 2px bar. */
+.headerMode:empty {
+  display: none;
+}
+
+/* Centered between the left group and the mode label, so it stays centered
+   regardless of the side widths (figma Tab_Group 34:11441). */
+.center {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  transform: translateX(-50%);
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* figma .Tab 34:11442: 13/16 text (figma wt510, rendered 500), 2px bar under the text. */
 .tab {
   position: relative;
-  padding: 0 0 11px;
+  padding: 4px 0;
   border: none;
   background: transparent;
   font-size: 13px;
