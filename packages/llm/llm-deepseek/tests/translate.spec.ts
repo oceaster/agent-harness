@@ -123,6 +123,23 @@ describe('translate: tool calls', () => {
     ])
   })
 
+  it('keeps the name and id when later deltas send empty id and null name (GO backend shape)', async () => {
+    const chunks = await collect(translate(feed(
+      firstChunk,
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_4d3b', type: 'function', function: { name: 'bash', arguments: '' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: '', function: { name: null, arguments: '{"command"' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: '', function: { name: null, arguments: ': "whoami"}' } }] } }] },
+      { choices: [{ delta: { content: '' }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 10, completion_tokens: 2 } },
+      DONE,
+    )))
+    const end = chunks.find(chunk => chunk.type === 'block-end')
+    expect(end).toEqual({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: 'call_4d3b', name: 'bash', arguments: '{"command": "whoami"}' },
+    })
+  })
+
   it('disambiguates parallel tool calls by wire index', async () => {
     const chunks = await collect(translate(feed(
       firstChunk,

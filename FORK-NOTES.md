@@ -12,7 +12,7 @@ upstream HEAD, which has moved far ahead (rc.8 → 0.1.1-rc.2 at fork time).
 
 ## Embedded changes (the only non-upstream diffs)
 
-Three small "surfaces" are embedded rather than plugin-side, and must be
+Four small "surfaces" are embedded rather than plugin-side, and must be
 re-applied on every upstream pull:
 
 1. **Trusted-host proxy patch** — lets the settings/credentials UI work behind
@@ -32,6 +32,14 @@ re-applied on every upstream pull:
      recolored purple (`#a277ff` accent, `#15141b` panels, `#0f0f0f` base,
      `#edecee` text). Light mode is untouched. Re-apply the dark block
      wholesale on upstream pulls — it is marked with an `Aura palette` comment.
+4. **Tool-call name preservation** (`llm-deepseek/src/translate.ts`) — the
+   upstream translator used `if (call.function?.name !== undefined)`, which
+   treats a `null` name in later deltas as present and wipes the name captured
+   from the first delta (the GO backend streams name/id once, then `null`/`""`).
+   Every tool call ended up with `name: ""`. Changed to truthy checks
+   (`if (call.function?.name)` / `if (call.id)`), plus a regression test in
+   `llm-deepseek/tests/translate.spec.ts`. This is an upstream bug fix — a
+   candidate for upstream PR; re-apply if an upstream pull overwrites it.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
@@ -40,7 +48,7 @@ are the candidates for open-sourcing.
 
 ```sh
 git fetch upstream
-git rebase upstream/master            # or merge, then re-apply the three surfaces
+git rebase upstream/master            # or merge, then re-apply the four surfaces
 # expect conflicts only in: connection, ui-settings*, ui-sidebar, ui-conversation, ui-brand-official, ui-theme
 pnpm install && pnpm run build
 systemctl restart dsh-web.service
