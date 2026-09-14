@@ -339,3 +339,54 @@ body[data-ds-dark-theme] {
   --dsw-specific-sidebar-nav-item-hover: var(--dsw-static-neutral-bluish-850);
   --dsw-specific-tip: var(--dsw-static-neutral-bluish-800);
 }
+
+/* Aura (OpenCode) dark scheme — purple-accented override layer. Appended after
+   the base dark palette so equal-specificity declarations win by source order.
+   Redefines the static ramps rather than the surface aliases, so the
+   alias→static indirection and the elevation/scrollbar invariants resolve
+   unchanged, just to Aura colors. */
+body[data-ds-dark-theme] {
+  /* Accent ramp → Aura purple (replaces the DeepSeek blue as the accent). */
+  --dsw-static-blue-400: #b088ff;
+  --dsw-static-blue-450: #a277ff;
+  --dsw-static-blue-500: #a277ff;
+  --dsw-static-deepseek-400: #a277ff;
+  --dsw-static-deepseek-450: #a277ff;
+  --dsw-static-deepseek-500: #b088ff;
+  --dsw-static-deepseek-800: #2a2342;
+
+  /* Warm purple-tinted neutral ramp → Aura grays. */
+  --dsw-static-neutral-bluish-50: #edecee;
+  --dsw-static-neutral-bluish-100: #bcb9c4;
+  --dsw-static-neutral-bluish-300: #bcb9c4;
+  --dsw-static-neutral-bluish-400: #8a8791;
+  --dsw-static-neutral-bluish-550: #4a4955;
+  --dsw-static-neutral-bluish-600: #6d6d6d;
+  --dsw-static-neutral-bluish-700: #2d2d2d;
+  --dsw-static-neutral-bluish-750: #24232e;
+  --dsw-static-neutral-bluish-800: #201f2a;
+  --dsw-static-neutral-bluish-850: #1a1922;
+  --dsw-static-neutral-bluish-875: #15141b;
+  --dsw-static-neutral-bluish-900: #15141b;
+  --dsw-static-neutral-bluish-950: #0f0f0f;
+
+  /* State ramp → Aura red / cyan / orange. */
+  --dsw-static-red-400: #ff6767;
+  --dsw-static-green-400: #61ffca;
+  --dsw-static-green-500: #61ffca;
+  --dsw-static-green-900: #14332a;
+  --dsw-static-amber-400: #ffca85;
+  --dsw-static-amber-500: #ffca85;
+  --dsw-static-amber-600: #ffca85;
+  --dsw-static-amber-900: #2e2617;
+
+  /* Primary brand/button → purple (the Aura primary), decoupled from the
+     neutral text ramp. These are control fills, not surfaces, so the elevation
+     ladder is untouched. */
+  --dsw-alias-brand-primary: #a277ff;
+  --dsw-alias-brand-primary-invert: #0f0f0f;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #a277ff;
+  --dsw-alias-brand-text: #edecee;
+  --dsw-alias-button-primary-fill: #a277ff;
+  --dsw-alias-button-primary-hover: #b088ff;
+}
