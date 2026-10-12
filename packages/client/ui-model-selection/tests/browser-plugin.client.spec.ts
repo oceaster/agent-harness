@@ -228,6 +228,26 @@ describe('ui-model-selection dual entry', () => {
     })
   })
 
+  it('refreshes only the changed preset session, including its model and effort', async () => {
+    const b = await bench()
+    b.mint('s1')
+    b.mint('s2')
+    const first = b.ctx.modelDirectories.directoryFor(sid('s1'))
+    const second = b.ctx.modelDirectories.directoryFor(sid('s2'))
+    await first.load()
+    await second.load()
+    const selection = { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'max' }
+    b.setHostCurrent(selection)
+    const before = b.calls.models
+    b.ctx.remote.$dispatch('agent-preset/selected', [sid('s1'), 'darwin'])
+    await Promise.resolve()
+    expect(first.store.getSnapshot().current).toEqual(selection)
+    expect(second.store.getSnapshot().current?.model).toBe('deepseek-v4-flash')
+    expect(b.calls.models).toBe(before + 1)
+    b.ctx.remote.$dispatch('agent-preset/selected', [sid('unknown'), 'diana'])
+    expect(b.calls.models).toBe(before + 1)
+  })
+
   it('scope disposal drops the directory; a reborn scope gets a fresh one', async () => {
     const b = await bench()
     const first = b.mint('s1')

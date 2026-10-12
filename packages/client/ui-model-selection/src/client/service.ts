@@ -58,6 +58,10 @@ export class ModelDirectoryResolver extends Service {
     }
     ctx.remote.$on('llm/adapters-updated', refresh)
     ctx.remote.$on('settings/document-updated', refresh)
+    // A blank session's preset can change its deployment model and effort.
+    ctx.remote.$on('agent-preset/selected', (sessionId) => {
+      this.live.directories.get(sessionId)?.load().catch(() => undefined)
+    })
   }
 
   /**
