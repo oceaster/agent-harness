@@ -107,6 +107,10 @@ The model-facing tool collects synchronously by default: it awaits the child res
 
 Continuable Activations await a best-effort final session flush without treating listener participation as durability confirmation. One-shot runs retain best-effort session checkpointing, so a completed one-shot child is discoverable after disposal only when its session actually reached persistence; the service does not invent a catalog entry from Task history when that checkpoint is absent.
 
+## Deployment model and role policy
+
+The scoped `subagent/authorize` bail event runs before both `start` and `startContinuable` reserve or invoke child resources. Returning a reason rejects with `DELEGATION_DENIED`; no listener preserves normal delegation. Deployment plugins use this service-level check to enforce worker roles independently of tool visibility. In-process children inherit the parent's selected reasoning effort with its provider/model route.
+
 ## Model Experience
 
 ### Settlement notice

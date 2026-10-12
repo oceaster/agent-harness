@@ -9,6 +9,7 @@ type ScopedSubjectResolver = (args: readonly unknown[]) => unknown
 
 const scopedSubjectResolvers: Readonly<Record<string, ScopedSubjectResolver | null>> = Object.freeze({
   'agent/created': args => (args[0] as Record<string, unknown>)['agent'],
+  'agent/default-model': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/disposed': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/error': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/inbox/claimed': args => (args[0] as Record<string, unknown>)['agent'],
@@ -26,6 +27,7 @@ const scopedSubjectResolvers: Readonly<Record<string, ScopedSubjectResolver | nu
   'session/disposed': null,
   'session/event': null,
   'session/flush': null,
+  'subagent/authorize': args => (args[0] as Record<string, unknown>)['parent'],
   'subagent/end': null,
   'subagent/start': null,
   'system-prompt/assemble': args => (args[1] as Record<string, unknown>)['scope'],

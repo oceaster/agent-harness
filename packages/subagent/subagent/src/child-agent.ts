@@ -77,6 +77,7 @@ export function resolveChildAgentOptions(
     ...parentProvider !== undefined ? { provider: parentProvider } : {},
     ...parentModel !== undefined ? { model: parentModel } : {},
     ...parentMaxTokens !== undefined ? { maxTokens: parentMaxTokens } : {},
+    ...parent.options.reasoningEffort !== undefined ? { reasoningEffort: parent.options.reasoningEffort } : {},
     ...requested,
     subagentDepth: childDepth,
   }

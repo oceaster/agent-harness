@@ -80,6 +80,10 @@ The handle every plugin programs against:
 - Event listeners: all `agent/*` events are declared here — no dependency on the loop package needed.
 - Subagent delegation is not an `Agent` method; providers create or drive ordinary handles through the factory API, so delegation transports stay outside the core agent interface.
 
+## Deployment model and role policy
+
+Composition defaults resolve through `resolveAgentDefaultModel(agent, fallback)` and the scoped `agent/default-model` bail event before a session records its first selection. `installModelSelection` also updates the agent options at prompt assembly so delegated agents inherit the selected provider, model and effort. `AgentOptions.reasoningEffort` supplies an explicit initial effort; session model overrides retain precedence.
+
 ## Model Experience
 
 ### User, steering, and injected messages

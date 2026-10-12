@@ -4,6 +4,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Scoped } from '@deepseek-ai/dsh-scope'
+import type { Agent } from './runtime-types.ts'
+import { agentCarrier } from './dispatch.ts'
 import type { LlmCallConfig, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 
 /** Complete provider, model, and optional reasoning effort selected for one live Agent. */
@@ -14,6 +17,29 @@ export interface ModelSelection {
   model: string
   /** Adapter-owned reasoning effort, or provider/default behavior when absent. */
   reasoningEffort?: ReasoningEffortId
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Supply a composition's default before any session selection is recorded.
+     * Scope-filtered dispatch is keyed to payload.agent.
+     * @param payload.agent - Agent whose default is being resolved.
+     * @param payload.fallback - Deployment default.
+     * @mode bail
+     */
+    'agent/default-model'(this: Scoped<Agent>, payload: { agent: Agent; fallback: ModelSelection }): ModelSelection | undefined
+  }
+}
+
+/**
+ * Resolve a composition default without overriding a session's explicit selection.
+ * @param agent - Agent whose composition supplies the default.
+ * @param fallback - Deployment default when no composition contributes one.
+ * @returns the composition selection or the fallback.
+ */
+export function resolveAgentDefaultModel(agent: Agent, fallback: ModelSelection): ModelSelection {
+  return agent.ctx.bail(agentCarrier(agent), 'agent/default-model', { agent, fallback }) ?? fallback
 }
 
 /** Mutable model selection plus the value captured for the current step. */
@@ -39,6 +65,10 @@ export interface ModelSelectionRef {
 export function installModelSelection(agentCtx: Context, selection: ModelSelectionRef): () => void {
   const disposeAssembly = agentCtx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const selected = selection.current
+    if (selected !== undefined && agentCtx.agent !== undefined) {
+      Object.assign(agentCtx.agent.options, selected)
+      if (selected.reasoningEffort === undefined) delete agentCtx.agent.options.reasoningEffort
+    }
     const assembled = await next()
     selection.assembled = selected
     if (selected === undefined) return assembled

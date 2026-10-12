@@ -161,7 +161,8 @@ function composeProfile(
       id: 'agent-presets',
       config: {
         ...(rows.get('agent-presets')?.config ?? {}) as Record<string, unknown>,
-        roots: [{ path: SHIPPED_PRESET_ROOT, trust: 'system' }],
+        roots: (rows.get('agent-presets')?.config as Record<string, unknown> | undefined)?.roots
+          ?? [{ path: SHIPPED_PRESET_ROOT, trust: 'system' }],
       },
     })
   }

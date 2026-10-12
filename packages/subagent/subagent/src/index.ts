@@ -139,6 +139,13 @@ declare module '@deepseek-ai/cordis' {
      */
     'subagent/provider-added'(provider: SubagentProvider): void
     /**
+     * Deny delegation before any provider or child reservation runs.
+     * Scope-filtered dispatch is keyed to payload.parent.
+     * @param payload.parent - Exact agent requesting a child.
+     * @mode bail
+     */
+    'subagent/authorize'(this: Scoped<SubagentRuntime>, payload: { parent: Agent }): string | undefined
+    /**
      * A provider left the registry. Accepted runs remain holder-owned.
      * @param name - the provider name that no longer resolves.
      * @mode emit
@@ -210,6 +217,7 @@ export class SubagentRuntime extends Service {
    * @throws when continuation services are unavailable or materialization fails.
    */
   async startContinuable(spec: ContinuableStartSpec): Promise<ContinuableStart> {
+    this.assertDelegationAllowed(spec.request.parent)
     return this.requireContinuations().startContinuable(spec)
   }
 
@@ -428,6 +436,7 @@ export class SubagentRuntime extends Service {
    * @returns the published holder-owned run.
    */
   async start(name: string, request: SubagentStartRequest): Promise<SubagentRun> {
+    this.assertDelegationAllowed(request.parent)
     const provider = this.expectProvider(name)
     this.assertCapabilities(provider, request)
     assertSubagentMaxDepth(request.maxDepth)
@@ -459,6 +468,12 @@ export class SubagentRuntime extends Service {
       )
     }
     return provider.prepareContinuable(request)
+  }
+
+  /** Enforce deployment policy for both one-shot and continuable children. */
+  private assertDelegationAllowed(parent: Agent): void {
+    const reason = this.ctx.bail(scopeTarget(this, parent), 'subagent/authorize', { parent })
+    if (reason !== undefined) throw new SubagentError(reason, 'DELEGATION_DENIED')
   }
 
   /** Look up a provider for dispatch or fail loud. */

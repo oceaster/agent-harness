@@ -107,6 +107,10 @@ subagent seam 允许一个 agent（智能体）通过具名提供方把工作委
 
 可继续 Activation 会等待 best-effort 的最终会话 flush，但不会把 listener 参与视为持久性确认。一次性运行保留尽力执行的会话检查点，因此已完成的一次性 child 只有在其会话确实进入持久化存储时，才可在 dispose 后继续被发现；如果该检查点缺失，服务不会根据 Task 历史虚构目录条目。
 
+## 部署模型与角色策略
+
+限定作用域的 `subagent/authorize` bail 事件在 `start` 和 `startContinuable` 预留或调用子代理资源前执行。返回原因会以 `DELEGATION_DENIED` 拒绝；没有监听器时沿用正常委派。部署插件通过此服务级检查实施工作代理角色限制，不依赖工具可见性。进程内子代理随提供方和模型继承父代理所选的推理力度。
+
 ## 模型体验
 
 ### 结算通知

@@ -4,6 +4,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import {
   agentEvents,
   installModelSelection,
+  resolveAgentDefaultModel,
   type Agent,
   type ModelSelectionRef,
 } from '../src/index.ts'
@@ -56,6 +57,40 @@ describe('installModelSelection()', () => {
     await expect(agentEvents(ctx, agent).waterfall(
       'agent/request', { turn: 2, step: 0, signal }, () => Promise.resolve(seed),
     )).resolves.toBe(seed)
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('composition defaults and delegated selections', () => {
+  it('uses the composition default and removes it when the contribution disposes', async () => {
+    const ctx = new Context()
+    const agent = { id: 'preset-agent', ctx, options: {} } as unknown as Agent
+    const fallback = { provider: 'cloud', model: 'flash' }
+    expect(resolveAgentDefaultModel(agent, fallback)).toBe(fallback)
+    const dispose = ctx.on('agent/default-model', () => ({
+      provider: 'cloud', model: 'pro', reasoningEffort: ReasoningEffortId('max'),
+    }))
+    expect(resolveAgentDefaultModel(agent, fallback)).toMatchObject({ model: 'pro', reasoningEffort: 'max' })
+    dispose()
+    expect(resolveAgentDefaultModel(agent, fallback)).toBe(fallback)
+    await ctx.fiber.dispose()
+  })
+
+  it('updates the route inherited by workers at the same assembly boundary as a model switch', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    const agent = { id: 'selected-agent', ctx, options: {} } as unknown as Agent
+    Object.defineProperty(ctx, 'agent', { value: agent })
+    const selection: ModelSelectionRef = {
+      current: { provider: 'cloud', model: 'pro', reasoningEffort: ReasoningEffortId('max') },
+      assembled: undefined,
+    }
+    installModelSelection(ctx, selection)
+    await ctx.systemPrompt.assemble()
+    expect(agent.options).toMatchObject({ provider: 'cloud', model: 'pro', reasoningEffort: 'max' })
+    selection.current = { provider: 'local', model: 'dexter' }
+    await ctx.systemPrompt.assemble()
+    expect(agent.options).toEqual({ provider: 'local', model: 'dexter' })
     await ctx.fiber.dispose()
   })
 })

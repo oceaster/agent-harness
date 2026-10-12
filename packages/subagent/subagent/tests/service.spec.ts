@@ -494,3 +494,26 @@ describe('subagent descriptors', () => {
     expect(() => foldSubagentDescriptor([event(data)])).toThrow(detail)
   })
 })
+
+describe('deployment delegation authorization', () => {
+  it('denies one-shot and continuable delegation before any provider or manager starts', async () => {
+    const { ctx, subagents } = await service()
+    const provider = new StubProvider('spawn')
+    subagents.registerProvider(provider)
+    const parent = fakeParent()
+    const dispose = ctx.on('subagent/authorize', () => 'worker cannot delegate')
+    await expect(subagents.start('spawn', baseRequest({ parent })))
+      .rejects.toMatchObject({ code: 'DELEGATION_DENIED' })
+    await expect(subagents.startContinuable({
+      provider: 'spawn', label: 'denied',
+      request: { parent, prompt: [{ type: 'text', text: 'do work' }] },
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'DELEGATION_DENIED' })
+    expect(provider.startCount).toBe(0)
+    dispose()
+    const run = await subagents.start('spawn', baseRequest({ parent }))
+    expect(provider.startCount).toBe(1)
+    await run.dispose()
+    await ctx.fiber.dispose()
+  })
+})

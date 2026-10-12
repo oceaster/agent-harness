@@ -2293,6 +2293,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'payload', description: '.agent - the newly registered agent with its live session and completed setup. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
   },
   {
+    name: 'agent/default-model',
+    mode: 'bail',
+    signature: '\'agent/default-model\'(this: Scoped<Agent>, payload: { agent: Agent; fallback: ModelSelection }): ModelSelection | undefined',
+    summary: 'Supply a composition\'s default before any session selection is recorded.',
+    description: 'Supply a composition\'s default before any session selection is recorded. Scope-filtered dispatch is keyed to payload.agent.',
+    parameters: [{ name: 'payload', description: '.fallback - Deployment default.' }],
+  },
+  {
     name: 'agent/disposed',
     mode: 'emit',
     signature: '\'agent/disposed\'(this: Scoped<Agent>, payload: { agent: Agent }): void',
@@ -2573,6 +2581,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
+    name: 'subagent/authorize',
+    mode: 'bail',
+    signature: '\'subagent/authorize\'(this: Scoped<SubagentRuntime>, payload: { parent: Agent }): string | undefined',
+    summary: 'Deny delegation before any provider or child reservation runs.',
+    description: 'Deny delegation before any provider or child reservation runs. Scope-filtered dispatch is keyed to payload.parent.',
+    parameters: [{ name: 'payload', description: '.parent - Exact agent requesting a child.' }],
+  },
+  {
     name: 'subagent/end',
     mode: 'emit',
     signature: '\'subagent/end\'(this: Scoped<SubagentRuntime>, info: SubagentRunEndInfo): void',
@@ -2742,7 +2758,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentOptions',
-    declaration: 'export interface AgentOptions {\n    provider?: string;\n    model?: string;\n    maxTokens?: number;\n}',
+    declaration: 'export interface AgentOptions {\n    provider?: string;\n    model?: string;\n    reasoningEffort?: import(\'@deepseek-ai/dsh-llm\').ReasoningEffortId;\n    maxTokens?: number;\n}',
   },
   {
     name: 'AgentPreset',

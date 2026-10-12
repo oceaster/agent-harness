@@ -12,7 +12,7 @@ upstream HEAD, which has moved far ahead (rc.8 → 0.1.1-rc.2 at fork time).
 
 ## Embedded changes (the only non-upstream diffs)
 
-Four small "surfaces" are embedded rather than plugin-side, and must be
+The four original surfaces plus generic deployment hooks are embedded rather than plugin-side, and must be
 re-applied on every upstream pull:
 
 1. **Trusted-host proxy patch** — lets the settings/credentials UI work behind
@@ -53,3 +53,18 @@ git rebase upstream/master            # or merge, then re-apply the four surface
 pnpm install && pnpm run build
 systemctl restart dsh-web.service
 ```
+
+## Easter personality deployment hooks
+
+`agent/default-model` supplies a blank session's personality default without
+overriding explicit or logged model selection. Selection assembly also updates
+the route inherited by in-process children, including reasoning effort.
+`subagent/authorize` denies both one-shot and continuable starts before allocation.
+The CLI respects explicit preset roots. Keep these generic hooks on upstream
+updates; personality prose, presets, ticket tools and storage belong to the
+e-server plugin at `/root/e-server/infra/dsh/`.
+
+The cross-repository assembled smoke is `bash /root/e-server/tests/dsh_smoke.sh`.
+It uses the actual built DSH profile with an isolated home, scripted LLM and
+temporary ticket service; it never spends API credits. Existing uncommitted
+DeepSeek adapter edits are separate from the personality upgrade.

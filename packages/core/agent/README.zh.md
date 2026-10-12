@@ -80,6 +80,10 @@ inbox 的实时通知刻意采用逐消息的最小载荷：`agent/inbox/inserte
 - 事件监听器：全部 `agent/*` 事件都在此处声明，不需要依赖循环包。
 - subagent 委派不是 `Agent` 方法；提供方通过工厂 API 创建或驱动普通 handle，因此委派传输留在核心 agent 接口之外。
 
+## 部署模型与角色策略
+
+组合默认值通过 `resolveAgentDefaultModel(agent, fallback)` 和限定作用域的 `agent/default-model` bail 事件解析，仅用于会话尚未记录模型选择时。`installModelSelection` 在提示组装时同步更新 Agent 选项，使子代理继承所选提供方、模型和推理力度。`AgentOptions.reasoningEffort` 提供显式初始推理力度；会话的模型覆盖仍具有优先权。
+
 ## 模型体验
 
 ### 用户、steering 与注入消息

@@ -64,6 +64,10 @@ Workspace 列表与 Session 列表是相互独立的重连基线。`workspace.cr
 
 `AbstractApiClient` 持有全部协议不变量：签发 rpcId、包装／解包信封、Zod 解析、SSE 帧解码、一元请求超时，以及按微任务批处理的信封观测（`subscribeEnvelopes`）；平台子类只提供 `doFetch` 传输环节。`InProcessApiClient` 以 `toFetchHandler(api)` 为基础，仍是同构接点：它运行完整的协议序列化与校验路径而不经过网络，供需要该路径的调用方和载体测试使用。产品的 `dsh --profile headless` 是直连 core 的入口，不挂载本包。
 
+## 部署模型与角色策略
+
+空会话先解析组合的 `agent/default-model` 贡献，再使用部署默认值。选择器的显式选择或已记录请求优先，因此更换人格不会覆盖已建立的会话模型选择。
+
 ## 模型体验
 
 无。该包定义客户端与宿主间的 wire 约定和载体，其中没有任何内容会进入模型请求。

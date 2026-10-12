@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { installModelSelection } from '@deepseek-ai/dsh-agent'
+import { installModelSelection, resolveAgentDefaultModel } from '@deepseek-ai/dsh-agent'
 import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -113,7 +113,11 @@ async function run(ctx: Context, task: string, io: HeadlessIo): Promise<void> {
     meta: { cwd: process.cwd() },
     agentOptions: { provider: selection.provider, model: selection.model },
     setup: (agentCtx) => {
-      const selected: ModelSelectionRef = { current: selection, assembled: undefined }
+      const scopedAgent = agentCtx.agent
+      if (scopedAgent === undefined) throw new Error('headless-runner: agent setup has no scoped agent')
+      const selected: ModelSelectionRef = {
+        current: resolveAgentDefaultModel(scopedAgent, selection), assembled: undefined,
+      }
       installModelSelection(agentCtx, selected)
     },
   })
