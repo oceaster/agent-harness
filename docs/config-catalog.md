@@ -1036,6 +1036,26 @@ export interface PiAiProviderProfile {
    * to answer instead.
    */
   defaultInput?: PiAiModality[]
+  /**
+   * Provider-scoped environment values, e.g. `AWS_REGION` for a protocol that
+   * reads its endpoint facts from the environment. Delivered to pi-ai as the
+   * request's `env` stream option, which takes precedence over `process.env`.
+   * Plain values only: a secret belongs in {@link envCredentials}, because a
+   * value here is stored in the settings document and returned by every
+   * configuration surface that describes this route.
+   */
+  env?: Record<string, string>
+  /**
+   * Provider-scoped credentials by environment-variable name, e.g.
+   * `AWS_ACCESS_KEY_ID: AWS_BEDROCK_ACCESS_KEY_ID`. Each value is a credential
+   * *reference* resolved per request through the same seam `apiKeyEnv` uses,
+   * and delivered in the same `env` stream option, overriding the {@link env}
+   * entry of the same name — which is why the two dicts may not declare one
+   * name twice. This is how a route authenticates with more than one secret:
+   * Amazon Bedrock signs with SigV4 over an access key id plus a secret access
+   * key, and pi-ai's `apiKey` option can only carry a bearer token.
+   */
+  envCredentials?: Record<string, string>
   /** Provider request headers; Harness attribution wins reserved names. */
   headers?: Record<string, string>
   /** Provider-neutral pi-ai reasoning level. */
@@ -1207,7 +1227,7 @@ export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFo
 
 Depends on: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`)
 
-Source: [`packages/llm/llm-pi-ai/src/config.ts:201`](../packages/llm/llm-pi-ai/src/config.ts)
+Source: [`packages/llm/llm-pi-ai/src/config.ts:233`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 

@@ -17,6 +17,10 @@
  * through its own seam and passes it as the request's `apiKey` option, which
  * pi-ai treats as the highest-priority auth override — so `Models` never holds
  * a credential store and the harness keeps its fail-loud reference semantics.
+ * The same holds for provider-scoped environment: the profile carries plain
+ * values and references only, and the per-request resolution rides along as the
+ * stream's `env` option, which pi-ai's provider implementations read ahead of
+ * `process.env`.
  *
  * @module dsh-llm-pi-ai/adapter
  */
@@ -74,6 +78,20 @@ export interface PiAiAdapterOptions {
    * `MISSING_CREDENTIAL` rather than falling back.
    */
   resolveApiKey: (provider: string, profile: ResolvedPiAiProviderProfile) => Promise<string | undefined>
+  /**
+   * Resolve the credential references one already-resolved profile's
+   * `envCredentials` names; called once per stream call and frozen for that
+   * call beside {@link PiAiAdapterOptions.resolveApiKey}. `undefined` means the
+   * profile names none, which leaves the request with the profile's plain `env`
+   * values alone. A reference that resolves to nothing must throw
+   * (`MISSING_CREDENTIAL`), never answer an empty value: pi-ai reads its `env`
+   * option with a `process.env` fallback, so a blank would silently authenticate
+   * the route as whatever ambient identity the host holds.
+   */
+  resolveEnvCredentials?: (
+    provider: string,
+    profile: ResolvedPiAiProviderProfile,
+  ) => Promise<Record<string, string> | undefined>
   /** Resolve the optional durable attachment service at request time. */
   resolveAttachments?: () => AttachmentStore | undefined
   /**
@@ -88,10 +106,19 @@ function profileOptions(
   profile: ResolvedPiAiProviderProfile,
   reasoning: ModelThinkingLevel | undefined,
   apiKey: string | undefined,
+  secretEnv: Record<string, string> | undefined,
 ): SimpleStreamOptions {
   const enabledReasoning: ThinkingLevel | undefined = reasoning === 'off' ? undefined : reasoning
+  // Plain values first, resolved credentials over them. Config resolution
+  // refuses one name in both dicts, so the order decides nothing a stored
+  // profile can reach; it decides what a route built by hand means, and a
+  // resolved secret must never lose to a value that is visible to every
+  // configuration surface. An empty map takes the option out entirely, so a
+  // route declaring neither field sends exactly what it sent before.
+  const env = { ...profile.env, ...secretEnv }
   return {
     ...apiKey === undefined ? {} : { apiKey },
+    ...Object.keys(env).length === 0 ? {} : { env },
     ...enabledReasoning === undefined ? {} : { reasoning: enabledReasoning },
     ...profile.thinkingBudgets === undefined ? {} : { thinkingBudgets: profile.thinkingBudgets },
     ...profile.cacheRetention === undefined ? {} : { cacheRetention: profile.cacheRetention },
@@ -284,9 +311,10 @@ export class PiAiAdapter extends LlmAdapter {
     }
     // One capture per stream call, taken before any await: the profile, the
     // model descriptor, and the collection all come from the same immutable
-    // snapshot, and the credential freezes with them. A configuration change
-    // mid-request builds a separate snapshot, so this request finishes under
-    // the one it started with and the next call picks up the new one.
+    // snapshot, and the credentials — the request key and every provider-scoped
+    // env reference — freeze with them. A configuration change mid-request
+    // builds a separate snapshot, so this request finishes under the one it
+    // started with and the next call picks up the new one.
     const snapshot = this.current()
     const profile = this.profileOf(snapshot, options.provider)
     const model = this.modelOf(snapshot, options.provider, options.model)
@@ -295,6 +323,7 @@ export class PiAiAdapter extends LlmAdapter {
       options.reasoningEffort ?? profile.reasoning,
     )
     const apiKey = await this.config.resolveApiKey(options.provider, profile)
+    const secretEnv = await this.config.resolveEnvCredentials?.(options.provider, profile)
 
     const consumer = new AbortController()
     const upstream = options.signal === undefined
@@ -319,7 +348,7 @@ export class PiAiAdapter extends LlmAdapter {
         ? toPiContext(options, undefined, onReplayDegrade)
         : await toPiContext(options, attachments, onReplayDegrade, profile.maxRequestImageBytes)
       const events = snapshot.models.streamSimple(model, context, {
-        ...profileOptions(profile, reasoning, apiKey),
+        ...profileOptions(profile, reasoning, apiKey, secretEnv),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
