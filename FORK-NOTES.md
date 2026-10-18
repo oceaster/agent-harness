@@ -40,9 +40,30 @@ re-applied on every upstream pull:
    (`if (call.function?.name)` / `if (call.id)`), plus a regression test in
    `llm-deepseek/tests/translate.spec.ts`. This is an upstream bug fix — a
    candidate for upstream PR; re-apply if an upstream pull overwrites it.
+5. **Provider-scoped env credentials** (`llm-pi-ai`) — a provider route could
+   carry only one secret (`apiKeyEnv` → pi-ai's `apiKey`), so a route that signs
+   with SigV4 over a credential *set* could not authenticate from the harness
+   credential store: Amazon Bedrock (and Vertex, and Azure) need an access key
+   id plus a secret plus a region. A route now also accepts `env` (plain
+   provider-scoped values such as `AWS_REGION`) and `envCredentials` (env-var
+   name → credential reference). References resolve per request through the
+   same `ctx.credentials` → `launchEnvironmentOf` seam `apiKeyEnv` uses, fail
+   loud as `MISSING_CREDENTIAL` rather than letting pi-ai fall back to ambient
+   AWS identity, and reach pi-ai as `StreamOptions.env`. Merged as `4be1712`.
+   This is a generic seam, not an AWS special case — candidate for upstream PR.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
+
+## Model options from the household AWS account
+
+The `amazon-bedrock` route in `$DSH_HOME/settings.yaml` (category **Amazon Web
+Services** in the model selector) is deployment data, not fork code: 50 models
+enabled for account 446241389971 in us-east-2, SigV4 from two credential refs in
+`$DSH_HOME/.credentials.yaml`, `AWS_REGION` as a plain route value. No preset or
+personality defaults to any of them; they exist as selectable options. The
+inventory, its selection rule and how to refresh it are recorded in the e-server
+repository (`infra/aws/bedrock-models.yaml`, `doc/AWS_BEDROCK_MODELS.md`).
 
 ## Pulling upstream (periodic, deliberate)
 
