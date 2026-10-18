@@ -26,6 +26,15 @@
  *         models:
  *           - id: claude-sonnet-4-5
  *             contextWindow: 200000
+ *       # Catalog route that signs with SigV4 instead of a bearer token: the
+ *       # region is a plain value, and each secret is a reference resolved per
+ *       # request through the credential seam.
+ *       amazon-bedrock:
+ *         env:
+ *           AWS_REGION: us-east-1
+ *         envCredentials:
+ *           AWS_ACCESS_KEY_ID: BEDROCK_ACCESS_KEY_ID
+ *           AWS_SECRET_ACCESS_KEY: BEDROCK_SECRET_ACCESS_KEY
  *       # Hand-declared route: pi-ai ships nothing under this key.
  *       acme-gateway:
  *         displayName: Acme Gateway
@@ -56,6 +65,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { assertUsableApiKey, LlmError } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
@@ -172,6 +182,20 @@ export function apply(ctx: Context, config: Config): void {
   }
   profiles()
 
+  /**
+   * Resolve one reference through the credential seam, or `undefined` when
+   * nothing supplies it. Shared by the request key and the provider-scoped
+   * environment because both are the same question — a reference the harness
+   * resolves per request — and one seam means one set of fallback rules.
+   */
+  const credentialValue = async (ref: CredentialRef): Promise<string | undefined> => {
+    const credentials = ctx.get('credentials')
+    return credentials !== undefined
+      ? (await credentials.resolve(ref))?.value
+      // Without the seam the environment is the whole credential plane.
+      : launchEnvironmentOf(ctx).get(ref)?.value
+  }
+
   const resolveApiKey = async (
     provider: string,
     profile: ResolvedPiAiProviderProfile,
@@ -183,11 +207,7 @@ export function apply(ctx: Context, config: Config): void {
     // (OPENAI_API_KEY and friends), billing another tenant for a request the
     // deployment meant to authenticate differently.
     if (ref === undefined) return undefined
-    const credentials = ctx.get('credentials')
-    const hit = credentials !== undefined
-      ? (await credentials.resolve(ref))?.value
-      // Without the seam the environment is the whole credential plane.
-      : launchEnvironmentOf(ctx).get(ref)?.value
+    const hit = await credentialValue(ref)
     if (hit !== undefined && hit.length > 0) return assertUsableApiKey(hit, 'llm-pi-ai', ref)
     throw new LlmError(
       `llm-pi-ai: no credential for provider route "${provider}"; its profile resolves ${ref}, which is not`
@@ -197,9 +217,47 @@ export function apply(ctx: Context, config: Config): void {
     )
   }
 
+  /**
+   * Resolve the provider-scoped credentials one route's `envCredentials` names,
+   * per request and through the same seam as {@link resolveApiKey}. A named
+   * reference that resolves to nothing fails the request rather than being
+   * dropped: pi-ai reads its `env` option with a `process.env` fallback, so an
+   * omitted or blank entry would let a Bedrock route sign as whatever ambient
+   * AWS identity the host holds — the same cross-tenant confusion `apiKeyEnv`
+   * refuses, only with a credential set instead of one key.
+   *
+   * No format check runs here, unlike {@link assertUsableApiKey}: these values
+   * are read by a provider SDK, never carried in an HTTP header, and an AWS
+   * secret access key legitimately contains `+`, `/`, and `=`. Trimming would
+   * corrupt one just as surely.
+   */
+  const resolveEnvCredentials = async (
+    provider: string,
+    profile: ResolvedPiAiProviderProfile,
+  ): Promise<Record<string, string> | undefined> => {
+    const refs = profile.envCredentials
+    if (refs === undefined) return undefined
+    const values: Record<string, string> = {}
+    for (const [name, ref] of Object.entries(refs)) {
+      const hit = await credentialValue(ref)
+      if (hit === undefined || hit.length === 0) {
+        throw new LlmError(
+          `llm-pi-ai: no credential for provider route "${provider}"; its profile resolves ${name} from ${ref},`
+          + ` which is not set — store ${ref} through the credentials service (the web Models page writes it) or`
+          + ` export it, and drop the ${name} entry from envCredentials only if this provider should read ${name}`
+          + ' from pi-ai\'s own environment discovery',
+          'MISSING_CREDENTIAL',
+        )
+      }
+      values[name] = hit
+    }
+    return values
+  }
+
   const adapter = new PiAiAdapter({
     profiles,
     resolveApiKey,
+    resolveEnvCredentials,
     resolveAttachments: () => ctx.get('attachments'),
     onReplayDegrade: ({ provider, model, reason }) => {
       ctx.logger.warn(

@@ -97,11 +97,17 @@ export interface ProviderSpec {
   /** The route's materialized models, in configuration order. */
   models: readonly Model<Api>[]
   /**
-   * Whether the profile names a credential, which it does through `apiKeyEnv`
-   * alone: configuration carries the reference, never the secret. Only that
-   * decides whether {@link routeAuth} adds the harness's own api-key method to
-   * a catalog provider that offers none; the key itself still arrives per
-   * request, never at construction.
+   * Whether the profile names an api-key credential, which it does through
+   * `apiKeyEnv` alone: configuration carries the reference, never the secret.
+   * Only that decides whether {@link routeAuth} adds the harness's own api-key
+   * method to a catalog provider that offers none; the key itself still arrives
+   * per request, never at construction.
+   *
+   * A profile that authenticates through `envCredentials` deliberately answers
+   * `false`: those values reach pi-ai as the request's `env` option, which is
+   * the provider's own ambient credential discovery reading a scoped
+   * environment. Adding an api-key method there would instead push a bearer
+   * token at a protocol — SigV4, for one — that never wanted one.
    */
   namesCredential: boolean
 }

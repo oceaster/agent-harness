@@ -140,6 +140,26 @@ export interface PiAiProviderProfile {
    * to answer instead.
    */
   defaultInput?: PiAiModality[]
+  /**
+   * Provider-scoped environment values, e.g. `AWS_REGION` for a protocol that
+   * reads its endpoint facts from the environment. Delivered to pi-ai as the
+   * request's `env` stream option, which takes precedence over `process.env`.
+   * Plain values only: a secret belongs in {@link envCredentials}, because a
+   * value here is stored in the settings document and returned by every
+   * configuration surface that describes this route.
+   */
+  env?: Record<string, string>
+  /**
+   * Provider-scoped credentials by environment-variable name, e.g.
+   * `AWS_ACCESS_KEY_ID: AWS_BEDROCK_ACCESS_KEY_ID`. Each value is a credential
+   * *reference* resolved per request through the same seam `apiKeyEnv` uses,
+   * and delivered in the same `env` stream option, overriding the {@link env}
+   * entry of the same name — which is why the two dicts may not declare one
+   * name twice. This is how a route authenticates with more than one secret:
+   * Amazon Bedrock signs with SigV4 over an access key id plus a secret access
+   * key, and pi-ai's `apiKey` option can only carry a bearer token.
+   */
+  envCredentials?: Record<string, string>
   /** Provider request headers; Harness attribution wins reserved names. */
   headers?: Record<string, string>
   /** Provider-neutral pi-ai reasoning level. */
@@ -169,13 +189,25 @@ export interface PiAiProviderProfile {
 
 /** Validated profile with its route stamped and every adapter-owned default resolved. */
 export interface ResolvedPiAiProviderProfile
-  extends Omit<PiAiProviderProfile, 'apiKeyEnv' | 'retryPolicy' | 'models' | 'displayName'> {
+  extends Omit<
+    PiAiProviderProfile,
+    'apiKeyEnv' | 'retryPolicy' | 'models' | 'displayName' | 'env' | 'envCredentials'
+  > {
   /** Harness route key and the `Models` collection key (the configuration dict key). */
   provider: string
   /** Resolved display name for selectors and configuration surfaces. */
   displayName: string
   /** Validated credential reference, when one is configured. */
   apiKeyEnv?: CredentialRef
+  /** Detached copy of the route's plain provider-scoped environment values. */
+  env?: Record<string, string>
+  /**
+   * Validated provider-scoped credential references by environment name. The
+   * references are all that is retained: values are resolved per request and
+   * never stored on a resolved profile, a settings document, or an RPC-visible
+   * catalog.
+   */
+  envCredentials?: Record<string, CredentialRef>
   /** Positive finite provider-idle interval after defaulting. */
   streamIdleTimeoutMs: number
   /** Positive request-level base64 image payload bound after defaulting. */
@@ -304,6 +336,11 @@ const profile = z.object({
   defaultMaxTokens: z.number().step(1).min(1).default(DEFAULT_MAX_TOKENS),
   defaultInput: z.array(z.union(MODALITIES)).default([...DEFAULT_INPUT]),
   headers: z.dict(z.string()),
+  env: z.dict(z.string()),
+  // The values are references, not secrets: the role is what makes a
+  // configuration surface offer a credential name instead of a text box that
+  // would store the secret itself.
+  envCredentials: z.dict(z.string().role('credential-ref')),
   reasoning: z.union(THINKING_LEVELS),
   thinkingBudgets,
   cacheRetention: z.union(['none', 'short', 'long']),
@@ -351,6 +388,85 @@ function rejectRemovedFields(provider: string, source: PiAiProviderProfile): voi
       `llm-pi-ai: provider "${provider}" sets maxRetries or maxRetryDelayMs, which were removed;`
       + ' compose agent recovery with dsh-llm-retry',
     )
+  }
+}
+
+/**
+ * The name rule for both provider-scoped env dicts. pi-ai reads a key from the
+ * request's `env` map verbatim (`getProviderEnvValue`), so a key that is not a
+ * name a process environment could carry is a typo that delivers nothing while
+ * looking configured — and an empty one cannot be told from a missing entry.
+ */
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/**
+ * Validate one route's `env` and `envCredentials` and copy what survives,
+ * detached from the configuration object.
+ *
+ * Nothing here resolves a credential: the profile keeps references, and the
+ * adapter resolves them per request through the credential seam. Three
+ * refusals, each of which would otherwise degrade silently: a key pi-ai could
+ * not read, a credential reference `ctx.credentials` could never resolve, and
+ * one name declared by both dicts — resolved twice, with the secret winning,
+ * so the plain value the author wrote would never be delivered.
+ * @param provider - provider route key, for diagnostics.
+ * @param source - the configured profile.
+ * @returns the validated `env` and `envCredentials` fields, each absent when it
+ *   declares nothing; an absent dict and an empty one are the same request.
+ * @throws Error naming the route and the offending key.
+ */
+function resolveRouteEnv(
+  provider: string,
+  source: PiAiProviderProfile,
+): Pick<ResolvedPiAiProviderProfile, 'env' | 'envCredentials'> {
+  const plain = source.env ?? {}
+  const referenced = source.envCredentials ?? {}
+  const assertName = (field: 'env' | 'envCredentials', name: string): void => {
+    if (!ENV_NAME_PATTERN.test(name)) {
+      throw new Error(
+        `llm-pi-ai: provider "${provider}" ${field} key "${name}" must be an environment-variable name;`
+        + ' pi-ai reads the key verbatim, so a value set under any other spelling is never delivered',
+      )
+    }
+  }
+  for (const [name, value] of Object.entries(plain)) {
+    assertName('env', name)
+    // pi-ai's lookup falls back to `process.env` for a falsy value, so an
+    // empty plain value would read the ambient environment for that name
+    // instead of overriding it — the opposite of what writing it says.
+    if (value.length === 0) {
+      throw new Error(
+        `llm-pi-ai: provider "${provider}" env "${name}" is empty; omitting the key keeps pi-ai's own`
+        + ' environment lookup, and an empty value silently reads it anyway',
+      )
+    }
+  }
+  for (const [name, ref] of Object.entries(referenced)) {
+    assertName('envCredentials', name)
+    if (Object.hasOwn(plain, name)) {
+      throw new Error(
+        `llm-pi-ai: provider "${provider}" declares env var "${name}" in both env and envCredentials;`
+        + ' keep exactly one source per name, because only the resolved credential is delivered',
+      )
+    }
+    // The reference is validated with the route named, like the key above:
+    // `credentialRef` alone would report the reference without saying which
+    // route in the dict cannot resolve it.
+    try {
+      credentialRef(ref)
+    } catch (error) {
+      throw new Error(
+        `llm-pi-ai: provider "${provider}" envCredentials "${name}" must be a credential reference`
+        + ` (an environment-variable name such as AWS_ACCESS_KEY_ID), not ${JSON.stringify(ref)}`,
+        { cause: error },
+      )
+    }
+  }
+  return {
+    ...Object.keys(plain).length === 0 ? {} : { env: { ...plain } },
+    ...Object.keys(referenced).length === 0
+      ? {}
+      : { envCredentials: Object.fromEntries(Object.entries(referenced).map(([name, ref]) => [name, credentialRef(ref)])) },
   }
 }
 
@@ -415,12 +531,16 @@ export function resolveProfiles(
       defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
       defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
     })
-    const { apiKeyEnv, retryPolicy, models: _models, displayName: _displayName, ...rest } = source
+    const {
+      apiKeyEnv, retryPolicy, models: _models, displayName: _displayName, env: _env, envCredentials: _envCredentials,
+      ...rest
+    } = source
     resolved.set(provider, {
       ...rest,
       provider,
       displayName,
       ...apiKeyEnv === undefined ? {} : { apiKeyEnv: credentialRef(apiKeyEnv) },
+      ...resolveRouteEnv(provider, source),
       streamIdleTimeoutMs,
       maxRequestImageBytes,
       retryPolicy: resolveRetryPolicy(retryPolicy, `llm-pi-ai: provider "${provider}" retryPolicy`),
