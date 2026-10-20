@@ -1,10 +1,16 @@
 /**
- * Framework-free boot page and failure report. It remains available when a
- * client plugin fails because React arrives only with the UI renderer.
+ * Framework-free branded boot page and failure report. It remains available
+ * when a client plugin fails because React arrives only with the UI renderer.
  * @module @deepseek-ai/dsh-client-web/src/boot-page
  */
 import type { LoaderEntryState } from './loader-status.ts'
 import css from './boot-page.module.css'
+
+/** SVG namespace for the inline glow art: the page imports no framework. */
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/** Serial keeps two boots in one document from sharing a filter id. */
+let glowSerial = 0
 
 /** Create a div with one module class and optional text. */
 function div(className: string | undefined, text?: string): HTMLDivElement {
@@ -14,16 +20,64 @@ function div(className: string | undefined, text?: string): HTMLDivElement {
   return el
 }
 
+/** Set the attributes of a namespace-created SVG node in one place. */
+function svg<K extends keyof SVGElementTagNameMap>(
+  name: K,
+  values: Record<string, string>,
+): SVGElementTagNameMap[K] {
+  const node = document.createElementNS(SVG_NS, name)
+  for (const [attr, value] of Object.entries(values)) node.setAttribute(attr, value)
+  return node
+}
+
+/**
+ * The welcome screen's soft blue backdrop ellipse (figma 313:14109), inlined so
+ * the page paints it with no fetch, no React and no theme delivery. Only the
+ * blur survives from the original group: the `feFlood`/`feBlend` pair there
+ * hid the backdrop behind the shape, and a standalone art element has nothing
+ * to blend against.
+ */
+function glow(): SVGSVGElement {
+  const filterId = `dsh-boot-glow-${String(glowSerial++)}`
+  const root = svg('svg', {
+    // `noUncheckedIndexedAccess` types a module class lookup as possibly
+    // undefined; the stylesheet always declares it.
+    class: css.glow ?? '',
+    viewBox: '0 0 1051 468',
+    fill: 'none',
+    'aria-hidden': 'true',
+  })
+  const filter = svg('filter', {
+    id: filterId,
+    x: '0',
+    y: '0',
+    width: '1051',
+    height: '468',
+    filterUnits: 'userSpaceOnUse',
+    colorInterpolationFilters: 'sRGB',
+  })
+  filter.append(svg('feGaussianBlur', { stdDeviation: '50' }))
+  const defs = svg('defs', {})
+  defs.append(filter)
+  const group = svg('g', { filter: `url(#${filterId})` })
+  group.append(svg('ellipse', {
+    cx: '525.5',
+    cy: '234',
+    rx: '425.5',
+    ry: '134',
+    fill: '#6187D8',
+    'fill-opacity': '0.08',
+  }))
+  root.append(defs, group)
+  return root
+}
+
 /** Kernel-owned page mounted below the application's root element. */
 export class BootPage {
   private readonly root: HTMLDivElement
   private readonly card: HTMLDivElement
-  private readonly wordmark: HTMLDivElement
-  private readonly spinner: HTMLDivElement
-  private readonly hint: HTMLDivElement
+  private readonly mark: HTMLDivElement
   private readonly states = new Map<string, LoaderEntryState>()
-  private readonly active = new Set<string>()
-  private total = 0
   private failure: string | undefined
 
   /**
@@ -34,23 +88,20 @@ export class BootPage {
     this.root = div(css.boot)
     this.root.dataset.dshBoot = ''
     this.card = div(css.card)
-    this.wordmark = div(css.wordmark, 'HARNESS')
-    this.spinner = div(css.spinner)
-    this.spinner.dataset.dshBootSpinner = ''
-    this.hint = div(css.hint, 'Loading plugins…')
-    this.card.append(this.wordmark, this.spinner, this.hint)
+    this.mark = div(css.mark)
+    // The browser lane waits on this attribute: it is the whole loading screen
+    // now that the wordmark, the spinner and the hint line are gone.
+    this.mark.dataset.dshBootMark = ''
+    this.mark.setAttribute('role', 'status')
+    // No locale seat exists before the i18n plugin activates, so this label is
+    // untranslated for the same reason the failure strings below it are.
+    this.mark.setAttribute('aria-label', 'Loading')
+    const logo = div(css.logo)
+    logo.dataset.dshBootLogo = ''
+    this.mark.append(glow(), logo)
+    this.card.append(this.mark)
     this.root.append(this.card)
     container.append(this.root)
-    this.updateProgress()
-  }
-
-  /**
-   * Set the number of loader entries represented by the progress arc.
-   * @param total - Complete boot roster size.
-   */
-  setTotal(total: number): void {
-    this.total = total
-    this.updateProgress()
   }
 
   /**
@@ -60,8 +111,6 @@ export class BootPage {
    */
   setState(id: string, state: LoaderEntryState): void {
     this.states.set(id, state)
-    if (state === 'active') this.active.add(id)
-    this.updateProgress()
     this.render()
   }
 
@@ -79,12 +128,13 @@ export class BootPage {
     this.root.remove()
   }
 
-  /** Redraw the state-dependent content below the wordmark. */
+  /** Redraw the state-dependent content below the mark. */
   private render(): void {
     const failed = [...this.states].filter(([, state]) => state === 'failed').map(([id]) => id)
     if (this.failure === undefined && failed.length === 0) {
-      if (this.spinner.parentElement !== this.card) {
-        this.card.replaceChildren(this.wordmark, this.spinner, this.hint)
+      // Keep the mark node itself: only a report that just cleared is replaced.
+      if (this.card.childElementCount !== 1 || this.card.firstElementChild !== this.mark) {
+        this.card.replaceChildren(this.mark)
       }
       return
     }
@@ -92,12 +142,6 @@ export class BootPage {
     report.append(div(css.failedTitle, 'Failed to load plugins'))
     for (const id of failed) report.append(div(css.failedItem, id))
     if (this.failure !== undefined) report.append(div(css.failedItem, this.failure))
-    this.card.replaceChildren(this.wordmark, report)
-  }
-
-  /** Grow the rotating arc monotonically as loader entries activate. */
-  private updateProgress(): void {
-    const ratio = this.total === 0 ? 0 : Math.min(this.active.size / this.total, 1)
-    this.spinner.style.setProperty('--dsh-boot-arc', `${String(Math.round(72 + ratio * 216))}deg`)
+    this.card.replaceChildren(this.mark, report)
   }
 }

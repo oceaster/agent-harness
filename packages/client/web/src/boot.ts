@@ -106,7 +106,6 @@ export class AppWebEntry {
     })
 
     const rows = this.manifest.plugins.map(row => row.id)
-    this.page.setTotal(rows.length)
     await prefetching
     await Promise.all(rows.map(async (name) => {
       this.page.setState(name, 'loading')

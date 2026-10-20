@@ -11,25 +11,32 @@ function mount() {
 }
 
 describe('BootPage', () => {
-  it('draws the loading skeleton before any plugin state arrives', () => {
+  it('paints the household mark before any plugin state arrives', () => {
     const { el } = mount()
     expect(el.firstElementChild?.getAttribute('data-dsh-boot')).toBe('')
-    expect(el.textContent).toContain('HARNESS')
-    expect(el.textContent).toContain('Loading plugins…')
+    const mark = el.querySelector('[data-dsh-boot-mark]')
+    expect(mark).not.toBeNull()
+    // The glow is the welcome screen's backdrop ellipse, inlined as svg art.
+    const ellipse = mark?.querySelector('ellipse')
+    expect(ellipse?.getAttribute('cx')).toBe('525.5')
+    expect(ellipse?.getAttribute('ry')).toBe('134')
+    expect(mark?.querySelector('[data-dsh-boot-logo]')).not.toBeNull()
+    // The wordmark, the spinner, the progress arc and the hint line are gone;
+    // the loading screen carries no text at all.
+    expect(el.textContent).toBe('')
+    expect(el.querySelector('[data-dsh-boot-spinner]')).toBeNull()
+    expect(el.innerHTML).not.toContain('dsh-boot-arc')
   })
 
-  it('keeps loading while entries are active or loading', () => {
+  it('stays a mark while entries activate or load', () => {
     const { el, page } = mount()
-    page.setTotal(2)
-    const spinner = el.querySelector<HTMLElement>('[data-dsh-boot-spinner]')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('72deg')
     page.setState('a', 'active')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('180deg')
     page.setState('b', 'loading')
-    expect(el.querySelector('[data-dsh-boot-spinner]')).toBe(spinner)
-    page.setState('b', 'active')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('288deg')
-    expect(el.textContent).toContain('Loading plugins…')
+    page.setState('c', 'pending')
+    expect(el.querySelector('[data-dsh-boot-mark]')).not.toBeNull()
+    expect(el.querySelector('[data-dsh-boot-spinner]')).toBeNull()
+    expect(el.innerHTML).not.toContain('dsh-boot-arc')
+    expect(el.textContent).toBe('')
     expect(el.textContent).not.toContain('Failed to load plugins')
   })
 
@@ -38,10 +45,19 @@ describe('BootPage', () => {
     page.setState('@deepseek-ai/dsh-client-ui-layout', 'failed')
     page.setState('ok', 'active')
     page.setState('@deepseek-ai/dsh-client-ui-tool', 'failed')
+    expect(el.textContent).toContain('Failed to load plugins')
     expect(el.textContent).toContain('@deepseek-ai/dsh-client-ui-layout')
     expect(el.textContent).toContain('@deepseek-ai/dsh-client-ui-tool')
     expect(el.textContent).not.toContain('ok')
-    expect(el.textContent).not.toContain('Loading plugins…')
+  })
+
+  it('reports a failed entry with no spinner left to animate', () => {
+    const { el, page } = mount()
+    page.setState('@deepseek-ai/dsh-client-ui-theme', 'failed')
+    const report = el.querySelector('[data-dsh-boot-mark]')?.nextElementSibling
+    expect(report?.textContent).toContain('Failed to load plugins')
+    expect(el.querySelector('[data-dsh-boot-spinner]')).toBeNull()
+    expect(el.querySelectorAll('ellipse')).toHaveLength(1)
   })
 
   it('shows the complete sweep report', () => {
@@ -49,8 +65,21 @@ describe('BootPage', () => {
     const report = 'web boot: 1 entry did not activate\nx: pending (waiting for service: y)'
     page.fail(report)
     page.setState('a', 'active')
+    expect(el.textContent).toContain('Failed to load plugins')
     expect(el.textContent).toContain(report)
-    expect(el.textContent).not.toContain('Loading plugins…')
+  })
+
+  it('keeps one stable mark node and drops a report that clears', () => {
+    const { el, page } = mount()
+    const mark = el.querySelector('[data-dsh-boot-mark]')
+    page.setState('a', 'loading')
+    page.setState('a', 'active')
+    page.setState('b', 'failed')
+    expect(el.textContent).toContain('Failed to load plugins')
+    // A re-activated entry retracts its row; the loading face is the mark alone.
+    page.setState('b', 'active')
+    expect(el.textContent).toBe('')
+    expect(el.querySelector('[data-dsh-boot-mark]')).toBe(mark)
   })
 
   it('detaches on disposal', () => {

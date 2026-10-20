@@ -205,11 +205,15 @@ describe('web e2e: settings modal and General preferences', () => {
     let reload: ReturnType<Page['reload']> | undefined
     try {
       reload = page.reload({ waitUntil: 'domcontentloaded' })
-      const loading = page.getByText('Loading plugins…', { exact: true })
-      await loading.waitFor({ timeout: 10_000 })
-      const state = await loading.evaluate((element) => {
-        const boot = element.parentElement?.parentElement
-        if (boot === undefined || boot === null) throw new Error('loading hint is detached from the boot page')
+      // The branded placeholder is the only thing the shell paints before the
+      // plugin roster activates, so it is the reload anchor: the kernel-owned
+      // root still carries data-dsh-boot and the mark carries its own lane
+      // attribute (the wordmark and 'Loading plugins…' line are gone).
+      const bootMark = page.locator('[data-dsh-boot] [data-dsh-boot-mark]')
+      await bootMark.waitFor({ timeout: 10_000 })
+      const state = await bootMark.evaluate((mark) => {
+        const boot = mark.closest<HTMLElement>('[data-dsh-boot]')
+        if (boot === null) throw new Error('branded placeholder is detached from the boot page')
         return {
           attr: document.body.hasAttribute('data-ds-dark-theme'),
           background: getComputedStyle(boot).backgroundColor,
@@ -218,7 +222,9 @@ describe('web e2e: settings modal and General preferences', () => {
       })
       expect(state).toEqual({
         attr: true,
-        background: 'rgb(21, 21, 23)',
+        // The fork's Aura dark fallback for the pre-plugin page is #0f0f0f
+        // (upstream painted #151517; FORK-NOTES 3 records the recolor).
+        background: 'rgb(15, 15, 15)',
         colorScheme: 'dark',
       })
     } finally {

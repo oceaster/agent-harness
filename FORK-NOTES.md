@@ -244,6 +244,143 @@ re-applied on every upstream pull:
    inbox API. The only `apps/web` spec verified here is `hmr-live.e2e.ts`, whose
    needle moved to `'welcome.select'` and which passes; the browser proof of the
    placeholder itself is `packages/client/ui-conversation/tests/fixture/`.
+10. **Branded boot page** (`packages/client/web/src/boot-page.ts` +
+   `boot-page.module.css`, plus the `setTotal` call it drops in
+   `packages/client/web/src/boot.ts`) — the framework-free page the shell
+   paints before any client plugin activates used to be the `HARNESS` wordmark,
+   a rotating spinner whose arc grew from 72° to 288° as loader entries
+   activated, and a `Loading plugins…` line. It is now the household mark: the
+   welcome screen's soft blue backdrop ellipse (figma 313:14109, inlined as SVG
+   so it needs no fetch) behind the `ec-logo-2-outline` logo, which is a CSS
+   mask over a cool-grey gradient exactly the way ui-conversation's welcome
+   screen paints it. Nothing else about the page changed.
+
+   **The failure report is the reason this page exists and it is untouched.**
+   `render()` still switches the card to `Failed to load plugins` plus the
+   per-entry failed ids and the `fail(message)` text, on the same
+   framework-free path (no React, no theme delivery, no plugin CSS), and the
+   branded mark stays beside it. `packages/client/web/tests/boot-page.client.spec.ts`
+   asserts that, and `apps/web/tests/settings-chrome.e2e.ts` anchors its reload
+   on the new mark instead of the removed `Loading plugins…` line.
+
+   Two constraints hold this shape in place:
+
+   - **The mark is deployment-agnostic.** The mask points at the ABSOLUTE path
+     `/v1/browser/inbox/brand.svg` on the e-server origin — the same reference
+     the inbox/conversation art uses, which resolves identically inside the DSH
+     iframe and on the standalone page. On a deployment without e-server that
+     request 404s, and that is survivable by design: the mask paints nothing,
+     so the mark degrades to invisible, no exception escapes, the fixed-size
+     logo box keeps the card's geometry, and the failure report still renders.
+     Do not "fix" this into an import or a themed token; the boot page cannot
+     assume either exists yet.
+   - **No progress indicator survives.** The arc was the spinner's, so
+     `updateProgress()`, the `--dsh-boot-arc` variable, the `active`/`total`
+     bookkeeping and the public `setTotal()` are gone rather than stubbed. The
+     page-load screen shows no progress at all, which is why the browser lane
+     waits on `data-dsh-boot-mark` (the kernel handoff still finds the page by
+     `data-dsh-boot` on the root). If upstream later brings a progress surface
+     back, add it here deliberately instead of reviving the arc.
+
+   **Re-apply on every upstream pull** (the stylesheet is also where surface 3's
+   Aura dark block lives, so a pull can conflict twice in one file — keep the
+   `#0f0f0f`/`#edecee` dark fallbacks and this mark together):
+
+   ```diff
+   --- a/packages/client/web/src/boot.ts
+   +++ b/packages/client/web/src/boot.ts
+   @@ -106,7 +106,6 @@
+        const rows = this.manifest.plugins.map(row => row.id)
+   -    this.page.setTotal(rows.length)
+        await prefetching
+
+   --- a/packages/client/web/src/boot-page.ts
+   +++ b/packages/client/web/src/boot-page.ts
+   @@ class BootPage fields
+   -  private readonly wordmark: HTMLDivElement
+   -  private readonly spinner: HTMLDivElement
+   -  private readonly hint: HTMLDivElement
+   +  private readonly mark: HTMLDivElement
+      private readonly states = new Map<string, LoaderEntryState>()
+   -  private readonly active = new Set<string>()
+   -  private total = 0
+      private failure: string | undefined
+
+   @@ constructor
+   -    this.wordmark = div(css.wordmark, 'HARNESS')
+   -    this.spinner = div(css.spinner)
+   -    this.spinner.dataset.dshBootSpinner = ''
+   -    this.hint = div(css.hint, 'Loading plugins…')
+   -    this.card.append(this.wordmark, this.spinner, this.hint)
+   +    this.mark = div(css.mark)
+   +    this.mark.dataset.dshBootMark = ''
+   +    this.mark.setAttribute('role', 'status')
+   +    this.mark.setAttribute('aria-label', 'Loading')
+   +    const logo = div(css.logo)
+   +    logo.dataset.dshBootLogo = ''
+   +    this.mark.append(glow(), logo)
+   +    this.card.append(this.mark)
+        this.root.append(this.card)
+        container.append(this.root)
+   -    this.updateProgress()
+   -  }
+   -
+   -  setTotal(total: number): void { this.total = total; this.updateProgress() }
+
+   @@ setState
+        this.states.set(id, state)
+   -    if (state === 'active') this.active.add(id)
+   -    this.updateProgress()
+        this.render()
+
+   @@ render (loading branch)
+        if (this.failure === undefined && failed.length === 0) {
+   -      if (this.spinner.parentElement !== this.card) {
+   -        this.card.replaceChildren(this.wordmark, this.spinner, this.hint)
+   +      if (this.card.childElementCount !== 1 || this.card.firstElementChild !== this.mark) {
+   +        this.card.replaceChildren(this.mark)
+          }
+          return
+        }
+   @@ render (report branch)
+   -    this.card.replaceChildren(this.wordmark, report)
+   -  }
+   -
+   -  private updateProgress(): void {
+   -    const ratio = this.total === 0 ? 0 : Math.min(this.active.size / this.total, 1)
+   -    this.spinner.style.setProperty('--dsh-boot-arc', `${String(Math.round(72 + ratio * 216))}deg`)
+   +    this.card.replaceChildren(this.mark, report)
+      }
+
+   --- a/packages/client/web/src/boot-page.module.css
+   +++ b/packages/client/web/src/boot-page.module.css
+   @@ palette
+   -  --dsh-boot-label-tertiary / --dsh-boot-border / --dsh-boot-brand
+   +  --dsh-boot-mark-from / --dsh-boot-mark-mid / --dsh-boot-mark-to
+      (cool grey for the light fallback, the welcome screen's own values in the
+       dark block: the boot page paints on pure white, the welcome screen on a
+       themed panel, so the untinted grey is darkened for light only)
+   @@ removed
+   -.wordmark { … }  .hint { … }  .spinner { … }  .spinner::after { … }  @keyframes spin { … }
+   @@ added
+   +.mark { position: relative; display: grid; place-items: center; width: min(420px, 84vw); height: 176px; }
+   +.glow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+   +.logo {
+   +  position: relative;
+   +  width: clamp(112px, 22vw, 144px);
+   +  aspect-ratio: 755 / 712;
+   +  opacity: 0.42;
+   +  background: linear-gradient(145deg, var(--dsh-boot-mark-from), var(--dsh-boot-mark-mid) 52%, var(--dsh-boot-mark-to));
+   +  mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat;
+   +  -webkit-mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat;
+   +}
+   ```
+
+   The full geometry and comments are in the source: the glow keeps only the
+   `feGaussianBlur` from `EmptyHero`'s `HeroGlow` (the `feFlood`/`feBlend` pair
+   there hides the backdrop behind the shape and a standalone art element has
+   nothing to blend against), and the ellipse is `cx 525.5 cy 234 rx 425.5
+   ry 134`, `#6187D8` at 0.08.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.

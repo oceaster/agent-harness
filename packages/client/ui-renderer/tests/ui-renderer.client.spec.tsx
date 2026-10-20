@@ -55,7 +55,11 @@ describe('UI renderer plugin', () => {
     const { ctx, slots } = await bench()
     slots.register({ name: 'root' }, () => <div data-testid="root-probe" />)
     const el = container()
-    el.innerHTML = '<div class="boot" data-dsh-boot=""><div><div class="spinner" data-dsh-boot-spinner="" style="--dsh-boot-arc: 180deg"></div><div>Loading plugins…</div></div></div>'
+    // Mirrors what @deepseek-ai/dsh-client-web's BootPage paints before this
+    // plugin exists: the kernel-owned root, the branded mark (inline glow art
+    // plus the masked logo) and no wordmark, spinner or progress arc. The
+    // renderer only needs the root's class and innerHTML to re-hydrate it.
+    el.innerHTML = '<div class="boot" data-dsh-boot=""><div class="card"><div class="mark" data-dsh-boot-mark="" role="status" aria-label="Loading"><svg viewBox="0 0 1051 468" fill="none" aria-hidden="true"><defs><filter id="dsh-boot-glow-0" x="0" y="0" width="1051" height="468" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="50"></feGaussianBlur></filter></defs><g filter="url(#dsh-boot-glow-0)"><ellipse cx="525.5" cy="234" rx="425.5" ry="134" fill="#6187D8" fill-opacity="0.08"></ellipse></g></svg><div class="logo" data-dsh-boot-logo=""></div></div></div></div>'
     const boot = el.firstElementChild
     const observer = new MutationObserver(() => {})
     observer.observe(el, { childList: true, subtree: true })
