@@ -106,15 +106,16 @@ function agentVerb(agent: string): AgentVerb {
 }
 
 /**
- * The working copy, count included. The state line and the dot's accessible
+ * The working copy, total included. The state line and the dot's accessible
  * label both come from here, so the row never reports two different verbs for
  * the same work.
  *
- * One number while nothing waits (`Working... (3)`); a working/total pair once
- * the server reports a queue behind them (`Working... (3/4)` — three working,
- * four in flight). The denominator is working + queued, not a slot limit, and
- * it is only shown when there is a queue: the count never reads `(0)` and never
- * carries a bare `/`, so zero working workers keep the bare verb.
+ * One number, always: the total of everything in flight — `Working... (4)`.
+ * The owner read the old working/total pair (`Working... (3/4)`) as broken, so
+ * there is exactly one count shape and no second form to choose between.
+ * Queued work is part of the total even while nothing runs, because work is
+ * outstanding; a total of zero keeps the bare verb, so the count never reads
+ * `(0)`.
  * @param active - running conversations below this row, at any depth.
  * @param queued - delegations the server reports waiting for a worker slot.
  * @param agent - the row's agent id, which picks the verb.
@@ -123,16 +124,14 @@ function agentVerb(agent: string): AgentVerb {
  */
 function workingLabel(active: number, queued: number, agent: string, t: Translate): string {
   const verb = agentVerb(agent)
-  if (active <= 0) return t(`verb.${verb}.line`)
-  return queued > 0
-    ? t(`verb.${verb}.pair`, { working: active, total: active + queued })
-    : t(`verb.${verb}.count`, { n: active })
+  const total = active + queued
+  return total > 0 ? t(`verb.${verb}.count`, { n: total }) : t(`verb.${verb}.line`)
 }
 
 /**
  * The dot's accessible label and hover title for one row. A working row repeats
- * the state line exactly once a count is shown; with no subagent the label is
- * the bare verb, so the dot never claims a count it does not have.
+ * the state line exactly once a total is shown; with no work in flight the
+ * label is the bare verb, so the dot never claims a count it does not have.
  * @param status - the status the dot shows.
  * @param active - running conversations below this row, at any depth.
  * @param queued - delegations the server reports waiting for a worker slot.
@@ -144,11 +143,15 @@ function presenceLabel(
   status: InboxPresence, active: number, queued: number, agent: string, t: Translate,
 ): string {
   if (status !== 'running') return t(`presence.${status}`)
-  return active > 0 ? workingLabel(active, queued, agent, t) : t(`verb.${agentVerb(agent)}.dot`)
+  return active > 0 || queued > 0
+    ? workingLabel(active, queued, agent, t)
+    : t(`verb.${agentVerb(agent)}.dot`)
 }
 
 /**
  * The row's one-line state: working, last activity, or the neutral fresh line.
+ * Work waiting for a worker slot counts as working even with nothing running —
+ * the queue is outstanding work, not idle time.
  * @param row - the row as the server described it.
  * @param now - epoch seconds now.
  * @param t - the locale seat.
@@ -156,8 +159,9 @@ function presenceLabel(
  * @returns the state line.
  */
 function stateLine(row: InboxAgentRow, now: number, t: Translate, active: number): string {
+  const queued = queuedOf(row)
   if (row.enabled === false) return t(row.disabled === true ? 'row.disabled' : 'presence.offline')
-  if (row.running || active > 0) return workingLabel(active, queuedOf(row), row.agent, t)
+  if (row.running || active > 0 || queued > 0) return workingLabel(active, queued, row.agent, t)
   if (row.presence === 'error') return t('presence.error')
   if (row.presence === 'unread') return t('presence.unread')
   if (!row.hasConversation) return t('row.fresh')
@@ -224,7 +228,8 @@ export function InboxPanel({
         {state.rows.map((row) => {
           const busy = state.busy.includes(row.agent)
           const active = state.activeSubagents[row.agent] ?? 0
-          const status = presenceOf(row, active)
+          const queued = queuedOf(row)
+          const status = presenceOf(row, active, queued)
           const selected = state.openAgent === row.agent && channelState.selected === null
           return (
             <button
@@ -246,7 +251,7 @@ export function InboxPanel({
               }}
             >
               <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-              <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), row.agent, t)} />
+              <PresenceDot status={status} label={presenceLabel(status, active, queued, row.agent, t)} />
             </button>
           )
         })}
@@ -341,7 +346,8 @@ export function InboxPanel({
             const busy = state.busy.includes(row.agent)
             const notice = state.notices[row.agent]
             const active = state.activeSubagents[row.agent] ?? 0
-            const status = presenceOf(row, active)
+            const queued = queuedOf(row)
+            const status = presenceOf(row, active, queued)
             return (
               <li
                 key={row.agent}
@@ -367,7 +373,7 @@ export function InboxPanel({
                   >
                     <span className={css.avatarStatus}>
                       <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-                      <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), row.agent, t)} />
+                      <PresenceDot status={status} label={presenceLabel(status, active, queued, row.agent, t)} />
                     </span>
                     <span className={css.rowText}>
                       <span className={css.name}>{row.name}</span>

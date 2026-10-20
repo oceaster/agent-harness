@@ -186,12 +186,13 @@ describe('inbox panel: rows', () => {
     })
   }
 
-  // Every count rule the row already had, now on the agent's own verb.
+  // Every count rule the row has, now on the agent's own verb. The number is the
+  // total in flight — running plus queued — never a working/total pair.
   const COUNT_CASES: ReadonlyArray<readonly [string, number, number, string]> = [
     ['delta', 2, 0, 'Working... (2)'],
-    ['delta', 3, 1, 'Working... (3/4)'],
+    ['delta', 3, 1, 'Working... (4)'],
     ['diana', 2, 0, 'Chatting... (2)'],
-    ['dexter', 1, 1, 'Thinking... (1/2)'],
+    ['dexter', 1, 1, 'Thinking... (2)'],
     ['agent-unknown', 3, 0, 'Working... (3)'],
   ]
   for (const [agent, active, queued, line] of COUNT_CASES) {
@@ -232,19 +233,63 @@ describe('inbox panel: rows', () => {
     expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (4)')
   })
 
-  it('shows working/total while the server reports a delegation still queued', () => {
+  it('shows the single total for several running subagents with a queue behind them', () => {
+    // The case that used to render a working/total pair (`Working... (3/4)`):
+    // three running plus one still queued is four in flight, so the line says
+    // four and nothing else — no slash, no second number.
     mount({ state: { rows: [row({ agent: 'agent-a', name: 'Alpha', queuedWorkers: 1 })], activeSubagents: { 'agent-a': 3 } } })
-    // Three working, four in flight: one waited for a slot.
-    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (3/4)')
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (4)')
     const dot = screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="running"]')
-    expect(dot?.getAttribute('aria-label')).toBe('Working... (3/4)')
-    expect(dot?.getAttribute('title')).toBe('Working... (3/4)')
+    expect(dot?.getAttribute('aria-label')).toBe('Working... (4)')
+    expect(dot?.getAttribute('title')).toBe('Working... (4)')
     // The row's own accessible name is untouched by the count.
     expect(screen.getByTestId('ui-inbox-open-agent-a').getAttribute('aria-label'))
       .toBe('Open your conversation with Alpha')
   })
 
-  it('keeps the single count when nothing is queued, whether the field says 0 or is absent', () => {
+  it("renders the owner's own shape: three running plus six queued is Working... (9)", () => {
+    mount({ state: { rows: [row({ agent: 'delta', name: 'Delta', queuedWorkers: 6 })], activeSubagents: { delta: 3 } } })
+    expect(screen.getByTestId('ui-inbox-state-delta').textContent).toBe('Working... (9)')
+  })
+
+  it('counts queued work with nothing running, and still reports working', () => {
+    // Work is outstanding, so the row must not fall back to the idle line even
+    // though no subagent is running yet.
+    mount({
+      state: {
+        rows: [row({ agent: 'agent-a', name: 'Alpha', running: false, queuedWorkers: 2 })],
+        activeSubagents: {},
+      },
+    })
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (2)')
+    const dot = screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="running"]')
+    expect(dot?.getAttribute('aria-label')).toBe('Working... (2)')
+    expect(dot?.getAttribute('title')).toBe('Working... (2)')
+  })
+
+  it('keeps the bare verb when nothing is in flight, and never renders a (0)', () => {
+    mount({
+      state: {
+        rows: [
+          // Running, with no subagent below it and an explicitly empty queue.
+          row({ agent: 'agent-a', name: 'Alpha', running: true, queuedWorkers: 0 }),
+          // Nothing running and nothing queued at all.
+          row({ agent: 'agent-b', name: 'Beta', running: false }),
+        ],
+        activeSubagents: {},
+      },
+    })
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working...')
+    expect(screen.getByTestId('ui-inbox-state-agent-b').textContent).toBe('5m ago')
+    for (const agent of ['agent-a', 'agent-b']) {
+      expect(screen.getByTestId(`ui-inbox-state-${agent}`).textContent).not.toContain('(0)')
+    }
+    const dot = screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="running"]')
+    expect(dot?.getAttribute('aria-label')).toBe('Working')
+    expect(dot?.getAttribute('title')).toBe('Working')
+  })
+
+  it('keeps the same count when nothing is queued, whether the field says 0 or is absent', () => {
     const rows = [
       row({ agent: 'agent-a', name: 'Alpha', queuedWorkers: 0 }),
       // No field at all: an older server, or an agent that never delegates.
@@ -255,26 +300,26 @@ describe('inbox panel: rows', () => {
     expect(screen.getByTestId('ui-inbox-state-agent-b').textContent).toBe('Working... (3)')
   })
 
-  it('drops the denominator when the queued worker starts, on the store the row already reads', () => {
+  it('follows the queue as it drains, on the store the row already reads', () => {
     const b = mount({
       state: { rows: [row({ agent: 'agent-a', name: 'Alpha', queuedWorkers: 1 })], activeSubagents: { 'agent-a': 3 } },
     })
-    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (3/4)')
-    // The live frame that starts the waiting worker raises the working count at
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (4)')
+    // The live frame that starts the waiting worker raises the running count at
     // once; the queued figure is the server's, so it only moves on the next
     // inbox read the row already performs (no new polling). One refresh of
-    // staleness is visible, then the pair settles: four working, none waiting.
+    // staleness is visible, then the queue drains: four running, none waiting.
     act(() => {
       b.inbox.set({ ...b.inbox.getSnapshot(), activeSubagents: { 'agent-a': 4 } })
     })
-    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (4/5)')
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (5)')
     act(() => {
       b.inbox.set({
         ...b.inbox.getSnapshot(),
         rows: [row({ agent: 'agent-a', name: 'Alpha' })],
       })
     })
-    // Nothing is waiting now, so the row keeps the single number.
+    // Nothing is waiting now, so the total is the four that are running.
     expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (4)')
     const dot = screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="running"]')
     expect(dot?.getAttribute('aria-label')).toBe('Working... (4)')
@@ -287,7 +332,7 @@ describe('inbox panel: rows', () => {
         activeSubagents: { 'agent-a': 1 },
       },
     })
-    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (1/2)')
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (2)')
     act(() => {
       b.inbox.set({
         ...b.inbox.getSnapshot(),
@@ -302,15 +347,15 @@ describe('inbox panel: rows', () => {
     expect(screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="online"]')).not.toBeNull()
   })
 
-  it('never renders a bare slash or a (0), whatever the queue says', () => {
+  it('never renders a slash or a (0), whatever the queue says', () => {
     const cases: { running: boolean; active: number; queued: number; line: string }[] = [
-      // A queue with nothing running is the existing idle working line, not (0/2).
-      { running: true, active: 0, queued: 2, line: 'Working...' },
-      { running: false, active: 0, queued: 3, line: '5m ago' },
+      // A queue with nothing running is still working, with the queue counted.
+      { running: true, active: 0, queued: 2, line: 'Working... (2)' },
+      { running: false, active: 0, queued: 3, line: 'Working... (3)' },
       { running: false, active: 0, queued: 0, line: '5m ago' },
       { running: false, active: 1, queued: 0, line: 'Working... (1)' },
-      { running: false, active: 1, queued: 1, line: 'Working... (1/2)' },
-      { running: true, active: 2, queued: 1, line: 'Working... (2/3)' },
+      { running: false, active: 1, queued: 1, line: 'Working... (2)' },
+      { running: true, active: 2, queued: 1, line: 'Working... (3)' },
     ]
     for (const item of cases) {
       mount({
@@ -321,22 +366,20 @@ describe('inbox panel: rows', () => {
       })
       const line = screen.getByTestId('ui-inbox-state-agent-a').textContent ?? ''
       expect(line).toBe(item.line)
+      expect(line).not.toContain('/')
       expect(line).not.toContain('(0)')
       expect(line.endsWith('(')).toBe(false)
-      // The slash appears exactly when a queue is shown beside real work.
-      if (item.queued === 0 || item.active === 0) expect(line).not.toContain('/')
-      else expect(line).toMatch(/^Working\.\.\. \(\d+\/\d+\)$/)
       cleanup()
     }
   })
 
-  it('carries the working/total pair into the rail dot', () => {
+  it('carries the total into the rail dot', () => {
     mount({
       wide: false,
       state: { rows: [row({ agent: 'agent-a', name: 'Alpha', queuedWorkers: 2 })], activeSubagents: { 'agent-a': 3 } },
     })
     const dot = screen.getByTestId('ui-inbox-rail-agent-a').querySelector('[data-presence="running"]')
-    expect(dot?.getAttribute('aria-label')).toBe('Working... (3/5)')
+    expect(dot?.getAttribute('aria-label')).toBe('Working... (5)')
     expect(screen.getByTestId('ui-inbox-rail-agent-a').getAttribute('aria-label'))
       .toBe('Open your conversation with Alpha')
   })

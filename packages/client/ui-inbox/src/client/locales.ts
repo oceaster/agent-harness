@@ -35,22 +35,20 @@ export const en = {
   'presence.error': 'Stopped: fatal error',
   'row.fresh': 'No conversation yet',
   'row.blank': 'No messages yet',
-  // One working verb per agent, in the four shapes the row draws: the dot's
-  // bare label, the state line, and the state line's two count forms. Each
-  // shape is a whole sentence rather than a verb word spliced onto a suffix,
-  // so a language whose count wording differs can translate it.
+  // One working verb per agent, in the three shapes the row draws: the dot's
+  // bare label, the state line, and the state line's one count form. The count
+  // is a single total, never a working/total pair. Each shape is a whole
+  // sentence rather than a verb word spliced onto a suffix, so a language
+  // whose count wording differs can translate it.
   'verb.working.dot': 'Working',
   'verb.working.line': 'Working...',
   'verb.working.count': 'Working... ({n})',
-  'verb.working.pair': 'Working... ({working}/{total})',
   'verb.chatting.dot': 'Chatting',
   'verb.chatting.line': 'Chatting...',
   'verb.chatting.count': 'Chatting... ({n})',
-  'verb.chatting.pair': 'Chatting... ({working}/{total})',
   'verb.thinking.dot': 'Thinking',
   'verb.thinking.line': 'Thinking...',
   'verb.thinking.count': 'Thinking... ({n})',
-  'verb.thinking.pair': 'Thinking... ({working}/{total})',
   'row.open': 'Open your conversation with {name}',
   'row.opening': 'Opening…',
   'row.clearing': 'Clearing…',
@@ -124,15 +122,12 @@ export const zh: Record<InboxKey, string> = {
   'verb.working.dot': '正在工作',
   'verb.working.line': '正在工作...',
   'verb.working.count': '正在工作... ({n})',
-  'verb.working.pair': '正在工作... ({working}/{total})',
   'verb.chatting.dot': '聊天中',
   'verb.chatting.line': '聊天中...',
   'verb.chatting.count': '聊天中... ({n})',
-  'verb.chatting.pair': '聊天中... ({working}/{total})',
   'verb.thinking.dot': '思考中',
   'verb.thinking.line': '思考中...',
   'verb.thinking.count': '思考中... ({n})',
-  'verb.thinking.pair': '思考中... ({working}/{total})',
   'row.open': '打开与 {name} 的对话',
   'row.opening': '正在打开…',
   'row.clearing': '正在清空…',
