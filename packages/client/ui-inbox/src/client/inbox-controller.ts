@@ -19,7 +19,9 @@
  * subscription, not a poll) and only then selects it. An id that never
  * arrives is reported as a row failure instead of a throw.
  */
-import type { SessionId, SessionListState, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  SessionId, SessionListState, SessionSummary, SnapshotStore,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   InboxAgentRow, InboxApi, InboxFailureCode, InboxPerson,
@@ -63,6 +65,11 @@ export interface InboxState {
   notices: Readonly<Record<string, InboxNoticeCode>>
   /** Agent whose conversation this plugin put in the pane, for the row highlight. */
   openAgent: string | null
+  /**
+   * Running conversations below each row's own session, at any depth, keyed by
+   * agent. An absent agent has none — that is the zero case, never a stored 0.
+   */
+  activeSubagents: Readonly<Record<string, number>>
 }
 
 /** Initial snapshot: nothing read yet. */
@@ -74,6 +81,7 @@ const INITIAL: InboxState = {
   busy: [],
   notices: {},
   openAgent: null,
+  activeSubagents: {},
 }
 
 /**
@@ -88,7 +96,12 @@ const INITIAL: InboxState = {
  * server-to-server is exactly that id.
  */
 export interface InboxSessionPort {
-  /** The session list snapshot source (ids, `current`, per-session running/blank). */
+  /**
+   * The session list snapshot source: `ids` and `current`, plus `byId`, whose
+   * summaries carry each session's `running`, `blank`, `parentId` and `origin`.
+   * The per-session map is what makes a row's subagent count possible, so a
+   * stand-in that carries only ids leaves every count at zero.
+   */
   readonly list: { getSnapshot: () => SessionListState; subscribe: (fn: () => void) => () => void }
   /** Pull the host's session list into the mirror (`sessions.refresh()`). */
   refresh?: () => Promise<void>
@@ -149,6 +162,54 @@ function patchRow(
 /** The row set of an agent that has no conversation. */
 const FRESH_ROW = { hasConversation: false, sessionId: null, blank: true, lastActivityAt: null } as const
 
+/**
+ * Count the conversations below one session that are running right now.
+ *
+ * The walk follows `SessionSummary.parentId` from the row's own session down, so
+ * it reaches any depth and counts only that row's descendants: a subagent of a
+ * different agent, or of a session this person does not own, is never counted.
+ * @param byId - the client session list's per-session summaries.
+ * @param sessionId - the row's own conversation id.
+ * @returns how many descendants are running.
+ */
+function countRunningDescendants(
+  byId: Readonly<Record<SessionId, SessionSummary>>,
+  sessionId: string,
+): number {
+  const children = new Map<string, SessionSummary[]>()
+  for (const summary of Object.values(byId)) {
+    const parent = summary.parentId
+    if (parent === undefined) continue
+    const siblings = children.get(parent)
+    if (siblings === undefined) children.set(parent, [summary])
+    else siblings.push(summary)
+  }
+  // A re-parented or corrupt lineage must not hang the row: each session is visited once.
+  const seen = new Set<string>([sessionId])
+  let count = 0
+  let frontier: SessionSummary[] = children.get(sessionId) ?? []
+  while (frontier.length > 0) {
+    const next: SessionSummary[] = []
+    for (const child of frontier) {
+      if (seen.has(child.id)) continue
+      seen.add(child.id)
+      if (child.running) count += 1
+      next.push(...children.get(child.id) ?? [])
+    }
+    frontier = next
+  }
+  return count
+}
+
+/** Whether two per-agent counts are the same numbers, so an idle frame re-renders nothing. */
+function sameCounts(
+  left: Readonly<Record<string, number>>,
+  right: Readonly<Record<string, number>>,
+): boolean {
+  const agents = Object.keys(left)
+  return agents.length === Object.keys(right).length && agents.every(agent => left[agent] === right[agent])
+}
+
 /** Owns the inbox snapshot and every open/clear/list transition. */
 export class InboxController {
   /** The snapshot the renderer subscribes to (`useInbox`). */
@@ -174,29 +235,38 @@ export class InboxController {
 
   /**
    * Keep the rows' live bits honest without polling: the session list already
-   * carries `running` and `blank` for every session, so a frame the harness
-   * sends on its own is folded into the matching row and costs no request.
+   * carries `running` and `blank` for every session, and every session's
+   * `parentId`, so a frame the harness sends on its own is folded into the
+   * matching row and its descendant count costs no request.
    * @returns the unsubscribe handle, for the apply closure's effect.
    */
   followSessions(): () => void {
     return this.sessions.list.subscribe(() => { this.reconcile() })
   }
 
-  /** Fold the session list's running/blank bits into the rows that name those sessions. */
+  /**
+   * Fold the session list's running/blank bits into the rows that name those
+   * sessions, and recount the running conversations below each row.
+   */
   private reconcile(): void {
     const snapshot = this.store.getSnapshot()
     if (snapshot.rows.length === 0) return
     const { ids, byId } = this.sessions.list.getSnapshot()
     let rows = snapshot.rows
+    const activeSubagents: Record<string, number> = {}
     for (const row of snapshot.rows) {
-      if (row.sessionId === null || !ids.includes(row.sessionId as SessionId)) continue
+      if (row.sessionId === null) continue
+      const active = countRunningDescendants(byId, row.sessionId)
+      if (active > 0) activeSubagents[row.agent] = active
+      if (!ids.includes(row.sessionId as SessionId)) continue
       const summary = byId[row.sessionId as SessionId]
       /* v8 ignore next -- ids and byId are projected together; a listed id has a summary. */
       if (summary === undefined) continue
       if (summary.running === row.running && summary.blank === row.blank) continue
       rows = patchRow(rows, row.agent, { running: summary.running, blank: summary.blank })
     }
-    if (rows !== snapshot.rows) this.store.set({ ...snapshot, rows })
+    if (rows === snapshot.rows && sameCounts(activeSubagents, snapshot.activeSubagents)) return
+    this.store.set({ ...snapshot, rows, activeSubagents })
   }
 
   /**
@@ -272,6 +342,9 @@ export class InboxController {
       }),
       openAgent: agent,
     })
+    // The row names a different conversation now, so its descendant count is
+    // recomputed rather than inherited from the previous session.
+    this.reconcile()
     // The pane can only show a session the client's mirror carries. The inbox
     // writes out of band (the server created the conversation on the host), so
     // the mirror may not know the id yet: pull the host list once, then select.
@@ -359,6 +432,9 @@ export class InboxController {
       // session staged, and stop waiting on a session that no longer exists.
       this.sessions.clear()
     }
+    // A cleared conversation has no descendants: drop the count with the row
+    // instead of waiting for the next session frame to notice.
+    this.reconcile()
     this.finishAction(agent, value.cleared ? undefined : 'clear-refused')
   }
 

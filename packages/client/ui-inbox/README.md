@@ -14,7 +14,9 @@ Channel history, available pairs and Clear are scoped to the signed-in person by
 
 ## Presence and unread turns
 
-The roster includes disabled agents, which display Offline and Disabled without a launch control. Green means online, red offline, white running, blue an unread completed turn, and amber a terminal turn error. Channel dots are green only when both participants are available. Model retries and recoverable tool failures do not produce amber.
+The roster includes disabled agents, which display Offline and Disabled without a launch control. Green means online, red offline, white working, blue an unread completed turn, and amber a terminal turn error. Channel dots are green only when both participants are available. Model retries and recoverable tool failures do not produce amber.
+
+A row reports working while its own turn runs or while any conversation below it still runs, at any depth: the row shows `Working...`, and with at least one running subagent the live count is inline as `Working... (2)`, in the same string the dot's accessible label carries. Subagents are otherwise invisible in this appearance, so the parent row is where their work shows. The count follows the client session store, so a subagent starting or finishing updates the row without an inbox reload, and a row with no running subagent shows no count at all rather than `(0)`.
 
 Completed-turn and fatal-error markers come from trusted host events and persist per canonical person/agent conversation. While the corresponding conversation is selected, visible and idle, the browser acknowledges the exact completed sequence it displayed. A later completion remains unread even if the acknowledgment races it. Reading a channel or a sub-agent does not mark its parent inbox read.
 

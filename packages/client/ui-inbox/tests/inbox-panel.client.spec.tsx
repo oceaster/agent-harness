@@ -55,6 +55,7 @@ function store(initial: Partial<InboxState> = {}): SnapshotStore<InboxState> {
     busy: [],
     notices: {},
     openAgent: null,
+    activeSubagents: {},
     ...initial,
   })
 }
@@ -151,9 +152,45 @@ describe('inbox panel: rows', () => {
     expect(screen.getByTestId('ui-inbox-state-agent-c').textContent).toBe('No conversation yet')
   })
 
-  it('shows the running indicator while the agent is working', () => {
+  it('shows the working copy while the agent\'s own turn runs, with no count suffix', () => {
     mount({ state: { rows: [row({ agent: 'agent-a', name: 'Alpha', running: true })] } })
-    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working…')
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working...')
+    const dot = screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="running"]')
+    expect(dot?.getAttribute('aria-label')).toBe('Working')
+    expect(dot?.getAttribute('title')).toBe('Working')
+  })
+
+  it('reports an idle parent row as working while one subagent runs, with the count inline', () => {
+    mount({ state: { rows: [row({ agent: 'agent-a', name: 'Alpha', running: false })], activeSubagents: { 'agent-a': 1 } } })
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (1)')
+    const dot = screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="running"]')
+    // The dot says the same thing as the state line, not plain 'Running'.
+    expect(dot?.getAttribute('aria-label')).toBe('Working... (1)')
+    expect(dot?.getAttribute('title')).toBe('Working... (1)')
+    // The whole-row accessible name is still the row's own, not the dot's.
+    expect(screen.getByTestId('ui-inbox-open-agent-a').getAttribute('aria-label'))
+      .toBe('Open your conversation with Alpha')
+  })
+
+  it('renders several running subagents as their exact count', () => {
+    mount({ state: { rows: [row({ agent: 'agent-a', name: 'Alpha' })], activeSubagents: { 'agent-a': 4 } } })
+    expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (4)')
+  })
+
+  it('never renders a (0) suffix, and leaves the idle line alone when nothing runs', () => {
+    mount({ state: { rows: [row({ agent: 'agent-a', name: 'Alpha' })] } })
+    const line = screen.getByTestId('ui-inbox-state-agent-a').textContent ?? ''
+    expect(line).toBe('5m ago')
+    expect(line).not.toContain('(0)')
+    expect(screen.getByTestId('ui-inbox-open-agent-a').querySelector('[data-presence="online"]')).not.toBeNull()
+  })
+
+  it('carries the working copy and count into the rail dot', () => {
+    mount({ wide: false, state: { rows: [row({ agent: 'agent-a', name: 'Alpha', running: true })], activeSubagents: { 'agent-a': 2 } } })
+    const dot = screen.getByTestId('ui-inbox-rail-agent-a').querySelector('[data-presence="running"]')
+    expect(dot?.getAttribute('aria-label')).toBe('Working... (2)')
+    expect(screen.getByTestId('ui-inbox-rail-agent-a').getAttribute('aria-label'))
+      .toBe('Open your conversation with Alpha')
   })
 
   it('derives a monogram from the name the server sent', () => {

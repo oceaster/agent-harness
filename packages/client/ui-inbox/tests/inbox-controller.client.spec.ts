@@ -401,6 +401,90 @@ describe('inbox controller: opening a row', () => {
   })
 })
 
+describe('inbox controller: running subagents keep the parent row working', () => {
+  /** Add one session below `parent`, the way the host lists a spawned agent. */
+  const spawn = (
+    sessions: ReturnType<typeof sessionList>, id: string, parent: string, running: boolean,
+  ): void => { sessions.add(id, { parentId: sid(parent), origin: 'subagent', running }) }
+
+  it('counts running descendants of the row own session at any depth', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    spawn(sessions, 'sub-1', 's-a', true)     // child
+    spawn(sessions, 'sub-1b', 's-a', true)    // its sibling, also running
+    spawn(sessions, 'sub-2', 'sub-1', true)   // grandchild
+    spawn(sessions, 'sub-3', 'sub-2', false)  // great-grandchild, finished
+    await settle()
+    expect(b.state().activeSubagents).toEqual({ 'agent-a': 3 })
+  })
+
+  it('never counts a session belonging to another row', async () => {
+    const sessions = sessionList(['s-a', 's-b'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    spawn(sessions, 'sub-b', 's-b', true)
+    await settle()
+    // Only agent-b's row carries a count; agent-a owns no part of that lineage.
+    expect(b.state().activeSubagents).toEqual({ 'agent-b': 1 })
+  })
+
+  it('follows the session store: a subagent starting and finishing updates the count', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    const requestsBefore = b.calls.length
+    spawn(sessions, 'sub-1', 's-a', true)
+    await settle()
+    expect(b.state().activeSubagents['agent-a']).toBe(1)
+    spawn(sessions, 'sub-1', 's-a', false)
+    await settle()
+    expect(b.state().activeSubagents).toEqual({})
+    // A frame is not a request: the count costs nothing on the wire.
+    expect(b.calls).toHaveLength(requestsBefore)
+  })
+
+  it('stores no count for zero descendants, and none for a row with no conversation', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    // A finished subagent is still listed; it is simply not running.
+    spawn(sessions, 'sub-1', 's-a', false)
+    await settle()
+    expect(b.state().activeSubagents).toEqual({})
+    expect(b.state().activeSubagents['agent-c']).toBeUndefined()
+  })
+
+  it('drops the count when the row conversation is cleared', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    spawn(sessions, 'sub-1', 's-a', true)
+    await settle()
+    expect(b.state().activeSubagents).toEqual({ 'agent-a': 1 })
+    // Clearing removes the row's session; the count must not outlive it.
+    await b.controller.clear('agent-a')
+    expect(b.state().activeSubagents).toEqual({})
+  })
+
+  it('walks a corrupt lineage once instead of hanging on a cycle', async () => {
+    const sessions = sessionList(['s-a'])
+    // A lineage the walk must survive: one of the row's sessions claims the row as its child.
+    sessions.add('s-a', { parentId: sid('sub-1') })
+    spawn(sessions, 'sub-1', 's-a', true)
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    await settle()
+    expect(b.state().activeSubagents).toEqual({ 'agent-a': 1 })
+  })
+})
+
 describe('inbox controller: clearing a row', () => {
   it('returns the row to the fresh state and resets the pane', async () => {
     const sessions = sessionList(['s-a'])

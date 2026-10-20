@@ -24,7 +24,7 @@ import type { InboxPanelProps } from './slots.ts'
 import { ConfirmClearDialog } from './ConfirmClearDialog.tsx'
 import { AgentAvatar } from './AgentAvatar.tsx'
 import { PresenceDot } from './PresenceDot.tsx'
-import { presenceOf } from './presence.ts'
+import { presenceOf, type InboxPresence } from './presence.ts'
 import css from './InboxPanel.module.css'
 
 /** The locale seat of this namespace, passed to the pure helpers below. */
@@ -54,15 +54,42 @@ function ageLabel(at: number, now: number, t: Translate): string {
 }
 
 /**
+ * The working copy, count included. The state line and the dot's accessible
+ * label both come from here, so the row never reports two different verbs for
+ * the same work.
+ * @param active - running conversations below this row, at any depth.
+ * @param t - the locale seat.
+ * @returns the working copy, with the count only when there is at least one.
+ */
+function workingLabel(active: number, t: Translate): string {
+  return active > 0 ? t('row.workingSubagents', { n: active }) : t('row.working')
+}
+
+/**
+ * The dot's accessible label and hover title for one row. A working row repeats
+ * the state line exactly once a count is shown; with no subagent the label is
+ * the bare verb, so the dot never claims a count it does not have.
+ * @param status - the status the dot shows.
+ * @param active - running conversations below this row, at any depth.
+ * @param t - the locale seat.
+ * @returns the label text.
+ */
+function presenceLabel(status: InboxPresence, active: number, t: Translate): string {
+  if (status !== 'running') return t(`presence.${status}`)
+  return active > 0 ? workingLabel(active, t) : t('presence.working')
+}
+
+/**
  * The row's one-line state: working, last activity, or the neutral fresh line.
  * @param row - the row as the server described it.
  * @param now - epoch seconds now.
  * @param t - the locale seat.
+ * @param active - running conversations below this row, at any depth.
  * @returns the state line.
  */
-function stateLine(row: InboxAgentRow, now: number, t: Translate): string {
+function stateLine(row: InboxAgentRow, now: number, t: Translate, active: number): string {
   if (row.enabled === false) return t(row.disabled === true ? 'row.disabled' : 'presence.offline')
-  if (row.running) return t('row.running')
+  if (row.running || active > 0) return workingLabel(active, t)
   if (row.presence === 'error') return t('presence.error')
   if (row.presence === 'unread') return t('presence.unread')
   if (!row.hasConversation) return t('row.fresh')
@@ -120,6 +147,8 @@ export function InboxPanel({
       <div className={css.rail} data-testid="ui-inbox-rail" aria-label={t('panel.rail.label')}>
         {state.rows.map((row) => {
           const busy = state.busy.includes(row.agent)
+          const active = state.activeSubagents[row.agent] ?? 0
+          const status = presenceOf(row, active)
           return (
             <button
               key={row.agent}
@@ -135,7 +164,7 @@ export function InboxPanel({
               }}
             >
               <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-              <PresenceDot status={presenceOf(row)} label={t(`presence.${presenceOf(row)}`)} />
+              <PresenceDot status={status} label={presenceLabel(status, active, t)} />
             </button>
           )
         })}
@@ -206,6 +235,8 @@ export function InboxPanel({
           {state.rows.map((row) => {
             const busy = state.busy.includes(row.agent)
             const notice = state.notices[row.agent]
+            const active = state.activeSubagents[row.agent] ?? 0
+            const status = presenceOf(row, active)
             return (
               <li
                 key={row.agent}
@@ -225,13 +256,13 @@ export function InboxPanel({
                   >
                     <span className={css.avatarStatus}>
                       <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-                      <PresenceDot status={presenceOf(row)} label={t(`presence.${presenceOf(row)}`)} />
+                      <PresenceDot status={status} label={presenceLabel(status, active, t)} />
                     </span>
                     <span className={css.rowText}>
                       <span className={css.name}>{row.name}</span>
                       <span className={css.state} data-testid={`ui-inbox-state-${row.agent}`}>
                         {busy && <StateDot state="ongoing" size={8} className={css.stateDot} />}
-                        {busy ? t('row.opening') : stateLine(row, now, t)}
+                        {busy ? t('row.opening') : stateLine(row, now, t, active)}
                       </span>
                     </span>
                   </button>

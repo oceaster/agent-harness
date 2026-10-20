@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore, SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply as nodeApply } from '../src/index.ts'
@@ -18,7 +18,7 @@ import type { InboxInjected } from '../src/client/slots.ts'
 
 const sid = (id: string): SessionId => id as SessionId
 
-/** A session list with no rows until a test adds one. */
+/** A session list with no rows until a test adds one, carrying the runtime's summary fields. */
 function sessionList() {
   const store = createSnapshotStore<SessionListState>({
     ids: [],
@@ -31,15 +31,16 @@ function sessionList() {
   })
   return {
     store,
-    add: (id: string) => {
+    add: (id: string, overrides: Partial<SessionSummary> = {}) => {
       const snapshot = store.getSnapshot()
+      const summary: SessionSummary = {
+        id: sid(id), displayTitle: id, running: false, blank: true, updatedAt: 0, ...overrides,
+      }
+      const listed = snapshot.ids.includes(sid(id))
       store.set({
         ...snapshot,
-        ids: [...snapshot.ids, sid(id)],
-        byId: {
-          ...snapshot.byId,
-          [sid(id)]: { id: sid(id), displayTitle: id, running: false, blank: true, updatedAt: 0 },
-        },
+        ids: listed ? snapshot.ids : [...snapshot.ids, sid(id)],
+        byId: { ...snapshot.byId, [sid(id)]: summary },
       })
     },
   }
@@ -119,6 +120,18 @@ describe('ui-inbox registration', () => {
     expect(face.load).toBeTypeOf('function')
     expect(face.open).toBeTypeOf('function')
     expect(face.clear).toBeTypeOf('function')
+  })
+
+  it('publishes the count of conversations running below each row', async () => {
+    const b = await bench()
+    await b.fiber.await()
+    const face = b.entry()?.inject?.() as unknown as InboxInjected
+    // The frame that starts a subagent, in the shape the runtime projects it.
+    b.sessions.add('s-a')
+    b.sessions.add('s-sub', { parentId: sid('s-a'), origin: 'subagent', running: true })
+    await vi.waitFor(() => {
+      expect(face.hooks.inbox.getSnapshot().activeSubagents).toEqual({ 'agent-a': 1 })
+    })
   })
 
   it('reads the inbox from the origin root path on boot', async () => {
