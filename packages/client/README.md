@@ -35,13 +35,11 @@ The browser side of the dsh web GUI: shell boot, browser-host communication, sha
 | [`ui-jobs/`](ui-jobs/README.md) | Lists this session's background jobs in the conversation header. |
 | [`ui-model-selection/`](ui-model-selection/README.md) | Provides model selection in conversation surfaces. |
 | [`ui-plan/`](ui-plan/README.md) | Presents active plan-mode status and its exit control. |
-| [`ui-settings-plugins/`](ui-settings-plugins/README.md) | Owns the Plugins settings section: read-only chrome and a tab extension point for the views feature plugins contribute. Registers no settings surface of its own. |
 | [`ui-user-questions/`](ui-user-questions/README.md) | Presents interactive questions requested by the agent. |
 | [`ui-agent-preset/`](ui-agent-preset/README.md) | Names the agent preset the open session runs, in its header. |
 | [`ui-settings/`](ui-settings/README.md) | Hosts the settings interface and its extension areas. |
 | [`ui-settings-general/`](ui-settings-general/README.md) | Provides the general settings section. |
 | [`ui-settings-models/`](ui-settings-models/README.md) | Provides model-provider configuration and DeepSeek onboarding. |
-| [`ui-settings-plugin-inventory/`](ui-settings-plugin-inventory/README.md) | Contributes the read-only Host Loader inventory tab to Plugins settings. |
 
 Each child reference owns its contract and detailed behavior. The [slot system standard](../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md) and [web client architecture note](../../.agents/notes/implemented/architecture/2026-07-19-gui-web-client-architecture.md) own the cross-package composition and loading decisions.
 

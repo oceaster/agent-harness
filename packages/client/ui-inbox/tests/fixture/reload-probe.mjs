@@ -408,9 +408,19 @@ if (channelRowCount === 1) {
   if (count === 1) {
     await trigger.click()
     await page.getByRole('dialog').waitFor({ timeout: 10_000 })
-    const learn = page.getByRole('button', { name: 'Learn More' })
-    check('the Learn More settings section is registered', await learn.count() === 1, `${await learn.count()} rows`)
-    if (await learn.count() === 1) await learn.click()
+    // Which sections the shell renders is the bundle's business, so the probe
+    // reads them rather than naming one, and aims at the LAST nav row so the
+    // active-section assertion cannot be satisfied by the first row by default.
+    // A shell that renders no nav rail is reported, not failed: this probe is
+    // about reload persistence, not about which sections a build ships.
+    const sectionLabels = await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] nav button')]
+      .map(node => (node.textContent ?? '').trim()))
+    record('settings section nav', { sections: sectionLabels }, null,
+      sectionLabels.length === 0
+        ? 'NO NAV ROWS — the shell renders its settings content without a nav rail in this build'
+        : `${sectionLabels.length} sections`)
+    const section = page.locator('[role="dialog"] nav button').last()
+    if (sectionLabels.length > 0) await section.click()
     await page.waitForTimeout(500)
     const before = await snapshot('settings-open')
     await page.screenshot({ path: `${outDir}/06-settings-open.png` })
@@ -431,7 +441,7 @@ if (channelRowCount === 1) {
       // close control INSIDE that dialog (the frame also has "Close details").
       if (await page.getByRole('dialog').count() === 0) await trigger.click()
       await page.getByRole('dialog').waitFor({ timeout: 10_000 })
-      if (await learn.count() === 1) await learn.click()
+      if (sectionLabels.length > 0) await section.click()
       await page.waitForTimeout(300)
       const closed = page.getByRole('dialog').getByRole('button', { name: 'Close' })
       check('the dialog exposes exactly one close control', await closed.count() === 1, `${await closed.count()} controls`)
@@ -466,23 +476,6 @@ if (channelRowCount === 1) {
         ? 'PRESERVED' : 'LOST (reset to another section)')
       await page.screenshot({ path: `${outDir}/06b-settings-reopened.png` })
 
-      // 7c. the Plugins section's tab bar: is there a tab control to persist?
-      const plugins = page.getByRole('button', { name: 'Plugins' })
-      const pluginsCount = await plugins.count()
-      if (pluginsCount === 1) {
-        await plugins.click()
-        await page.waitForTimeout(600)
-        const tabFacts = await page.evaluate(() => ({
-          tabs: [...document.querySelectorAll('[role="dialog"] [role="tab"]')].map(node => (node.textContent ?? '').trim()),
-          tablists: document.querySelectorAll('[role="dialog"] [role="tablist"]').length,
-          tabpanels: [...document.querySelectorAll('[role="dialog"] [role="tabpanel"]')].map(node => node.getAttribute('aria-labelledby')),
-        }))
-        record('settings plugins tab (settings.plugins.tab)', { ...tabFacts }, null,
-          tabFacts.tabs.length === 0
-            ? 'UNREACHABLE — no tab control exists to persist: exactly one package registers a settings.plugins.tab entry (ui-settings-plugin-inventory, id "all"), and PluginsSettingsSection renders a lone page bare with no tablist when rows.length === 1 (PluginsSettingsSection.tsx:44-64). A persisted tab id here would be a key for a control no reader can press.'
-            : `${tabFacts.tabs.length} tabs rendered`)
-        await page.screenshot({ path: `${outDir}/06c-settings-plugins.png` })
-      }
       const closeAgain = page.getByRole('button', { name: 'Close', exact: true })
       if (await closeAgain.count() === 1) await closeAgain.click()
       await page.waitForTimeout(200)

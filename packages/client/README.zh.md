@@ -35,13 +35,11 @@ dsh web GUI 的浏览器侧：shell 启动、浏览器与宿主通信、共享 U
 | [`ui-jobs/`](ui-jobs/README.md) | 在会话标题栏列出当前会话的后台任务。 |
 | [`ui-model-selection/`](ui-model-selection/README.md) | 在对话界面中提供模型选择。 |
 | [`ui-plan/`](ui-plan/README.md) | 展示生效中的 plan mode 状态及其退出控件。 |
-| [`ui-settings-plugins/`](ui-settings-plugins/README.md) | 拥有“插件”设置分区：只读外观，外加一个供功能插件贡献视图的标签页扩展点。本包不注册任何设置界面。 |
 | [`ui-user-questions/`](ui-user-questions/README.md) | 展示 agent 请求的交互式问题。 |
 | [`ui-agent-preset/`](ui-agent-preset/README.md) | 在页头标明当前会话运行的 agent 预设。 |
 | [`ui-settings/`](ui-settings/README.md) | 承载设置界面及其扩展区域。 |
 | [`ui-settings-general/`](ui-settings-general/README.md) | 提供常规设置分区。 |
 | [`ui-settings-models/`](ui-settings-models/README.md) | 提供模型提供方配置与 DeepSeek 配置引导。 |
-| [`ui-settings-plugin-inventory/`](ui-settings-plugin-inventory/README.md) | 向“插件”设置贡献只读的 Host Loader 清单标签页。 |
 
 每个子文档负责自身的约定和详细行为。[slot 系统标准](../../.agents/notes/implemented/architecture/2026-07-22-slot-type-chain-implementation.md)与 [Web 客户端架构 Agent Note](../../.agents/notes/implemented/architecture/2026-07-19-gui-web-client-architecture.md)负责跨包组合与加载决策。
 

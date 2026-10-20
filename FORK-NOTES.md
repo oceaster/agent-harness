@@ -384,9 +384,10 @@ re-applied on every upstream pull:
 
 11. **Learn More settings tab** (`packages/client/ui-settings-learn`, new package;
     plus one browser-roster row in `packages/bundle/web-app/cordis.patch.yml`)
-    — the Settings modal's Agent Presets tab was replaced by a **Learn More**
-    tab that explains, per agent the signed-in person may use, what that agent
-    is for, how it works, what it will not do and how to work with it. The copy
+    — **HISTORICAL, DELETED by entry 19: the tab and its package are gone; do
+    not re-apply anything this entry lists.** It replaced the Settings modal's
+    Agent Presets tab with a **Learn More** tab that explains, per agent the
+    signed-in person may use, what that agent is for, how it works, what it will not do and how to work with it. The copy
     is household content owned by **e-server** (`api/learn_routes.py` serving
     `context/agent-guides.json` at `GET /v1/browser/learn`), so the plugin holds
     no agent id, agent name, section id or sentence of prose: it renders whatever
@@ -484,9 +485,12 @@ re-applied on every upstream pull:
     `packages/interaction/permission-presets`; the pin, not the missing UI, is
     what refuses a downgrade.
 13. **Read-only Plugins tab** (`packages/client/ui-settings-plugins`, plus one
-   copy line in `packages/client/ui-settings-plugin-inventory`) — customisation
-   in this household is universal and server-controlled, so a family member may
-   see what the deployment runs but not edit it. The configurable page and its
+   copy line in `packages/client/ui-settings-plugin-inventory`)
+   — **HISTORICAL, DELETED by entry 19: both packages and the tab are gone; do
+   not re-apply anything this entry lists.** It made the Plugins section a
+   read-only window, because customisation in this household is universal and
+   server-controlled, so a family member may see what the deployment runs but
+   not edit it. The configurable page and its
    three cards (Agent loop, Bash, Web search) are deleted rather than
    flag-hidden: `ConfigurablePluginsTab.tsx`, the three `*Card.tsx`, the two
    card controllers plus `web-search-card-controller.ts`, `card-form.ts`,
@@ -795,6 +799,88 @@ re-applied on every upstream pull:
      to the host document, not process-local memory', and
      `ui-settings-models/tests/apply.client.spec.ts` > 'off-loopback the
      acknowledgement is written to the host document'. Each cites this entry.
+
+19. **Learn More and Plugins are deleted from Settings, not disabled**
+    (`packages/client/ui-settings-learn`, `packages/client/ui-settings-plugins`,
+    `packages/client/ui-settings-plugin-inventory`, `packages/host/plugin-inventory`)
+    — Owen's words: "Just remove the settings menu side bar, learn more tab, and
+    plugins tab entirely." The two tabs are gone with everything that existed
+    only to serve them, in one change, so that the Settings modal's only
+    remaining `settings.section` registrant is General:
+
+    - `ui-settings-learn` — the `settings.section` entry `learn` (order 5), its
+      controller, the `/v1/browser/learn` reader, the section component and its
+      dictionary. The tab is not coming back; the e-server route behind it
+      (`api/learn_routes.py`, `context/agent-guides.json`) belongs to e-server
+      and is deleted there once this bundle no longer calls it. Entry 11 is
+      therefore historical: **do not re-apply its four surfaces on an upstream
+      pull.**
+    - `ui-settings-plugins` — the `settings.section` entry `plugins` (order 15)
+      and the read-only chrome that hosted `settings.plugins.tab`. With no
+      section owner left, nothing declares that tab slot at runtime. Entry 13 is
+      historical in the same way: **do not re-apply it.**
+    - `ui-settings-plugin-inventory` — the `settings.plugins.tab` contribution
+      `all`, the only registrant of that slot.
+    - `packages/host/plugin-inventory` — the read-only Loader projection whose
+      single `pluginInventory/list` Remote fed the inventory tab. Nothing else
+      read it (checked: no other package, and nothing in e-server, names
+      `pluginInventory`, `PluginInventory*` or the package), so the host
+      capability goes with its only consumer rather than being left as an RPC
+      nobody can call. Its composition row, its `api-remotes` mount and the
+      `@deepseek-ai/dsh-host-plugin-inventory` dependency followed it out.
+
+    What an upstream pull must not resurrect: the four packages above, their
+    rows in `packages/bundle/web-app/cordis.patch.yml` (`ui-settings-learn`,
+    `ui-settings-plugins`, `ui-settings-plugin-inventory`, `plugin-inventory`),
+    their entries in `packages/bundle/web-app/package.json`,
+    `packages/api/remotes/package.json` and `src/client/index.ts`, their project
+    references in `tsconfig.client.json` / `tsconfig.host.json` /
+    `packages/api/remotes/tsconfig.client.json`, their `tsconfig.base.json`
+    path mappings, their rows in `packages/client/README.md` and
+    `packages/host/README.md` (and the `.zh` pair), and their entries in
+    `scripts/verify-package-readme-model-experience.ts` and
+    `scripts/rescope-vendor.ts`. The generated `client` slot catalogue
+    (`pnpm run gen-client-catalog`) drops both occupants and the inventory tab,
+    and `docs/config-catalog.md` / `docs/module-graph.md` lose all four packages
+    through their own generators.
+
+    **The orphan slot declaration went too, as its own step.** Deleting the
+    trailing consumers left `settings.plugins.tab` typed in
+    `packages/client/ui-settings/src/client/contract/slots.ts` with no declarer
+    and no registrant, and the regenerated catalogue then taught it as
+    `declaredBy: 'the runtime itself (built in; always present)'` with zero
+    occupants — a slot that throws on register, offered to the next reader and
+    to any model that calls `cordis_inspect what:"client"`. The `SlotMap` entry,
+    its `SettingsPluginsTabOwnerProps` interface and the matching export in
+    `ui-settings/src/client/index.ts` are therefore deleted, along with the
+    `settings.plugins.tab` clause in that package's README pair. Regenerating
+    the catalogue drops the entry: grepping the generated
+    `packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` for
+    `settings.plugins.tab` returns no match, and `settings.section` now lists
+    only `general` and `models` (the models row is the disabled one, unrelated
+    to this change). What the shell still carries is `ui-settings-general`'s
+    `navIcon` map with a `plugins` branch — that package's nav-rail removal
+    owns it.
+
+    Two stale records are left alone on purpose: the recorded probe evidence in
+    `packages/client/ui-inbox/tests/fixture/RELOAD-PROBE.md` and its
+    `reload-proof.before.json` / `.after.json` measure a past commit and are not
+    rewritten; the live `reload-probe.mjs` in that directory no longer names a
+    Settings section, it reads the nav rows the build renders and reports them.
+
+    **Layers run:** `pnpm install` (lockfile), `pnpm run build:lib:host` 0,
+    `pnpm build` 0 (twice: after the deletions and after the slot-type removal),
+    `pnpm run build:lib:client` 0, vitest over every package that remains and
+    every package touched (1 pre-existing failure in
+    `packages/host/apiproxy/tests/api-proxy-fork.spec.ts`, reproduced unchanged
+    at the base commit), `gen-client-catalog` / `gen-config-catalog` /
+    `gen-module-graph` regenerated rather than hand-edited with
+    `verify-client-catalog` / `verify-config-catalog` / `verify-module-graph`
+    green, and a Chromium pass over the keyless web fixture
+    (`tests/fixture/start-dsh-fixture.sh`) that opens the Settings dialog at
+    1280x800 and 390x844: one nav row (`General`), no `Learn More`, no
+    `Plugins`, no tablist, no console error, no failed request. No merge, no
+    deploy.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
