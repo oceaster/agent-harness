@@ -85,9 +85,8 @@ export function ConversationRoot({
     overlay: renderSlot('conversation.input.overlay', {}),
     leftItems: zone === undefined ? null : renderSlot('conversation.input.left', zone),
     rightItems: zone === undefined ? null : renderSlot('conversation.input.right', zone),
-    // Stats band under the card, inside the bar's width column so both
-    // share one constraint (composer.dock = stats-line family).
-    footer: !hero && zone !== undefined ? renderSlot('conversation.composer.dock', zone) : null,
+    // The persistent inbox composer has no diagnostic statistics footer.
+    footer: null,
   })
 
   const composerBar = (

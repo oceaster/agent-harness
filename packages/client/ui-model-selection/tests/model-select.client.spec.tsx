@@ -118,6 +118,6 @@ describe('effort-only slider', () => {
     expect(b.load).not.toHaveBeenCalled()
     b.view.unmount()
     bench({}, true, true)
-    expect((screen.getByTestId('agent-effort-trigger')).disabled).toBe(true)
+    expect(screen.getByTestId<HTMLButtonElement>('agent-effort-trigger').disabled).toBe(true)
   })
 })
