@@ -483,6 +483,41 @@ re-applied on every upstream pull:
     host `/permission` command itself still exists in
     `packages/interaction/permission-presets`; the pin, not the missing UI, is
     what refuses a downgrade.
+13. **Read-only Plugins tab** (`packages/client/ui-settings-plugins`, plus one
+   copy line in `packages/client/ui-settings-plugin-inventory`) — customisation
+   in this household is universal and server-controlled, so a family member may
+   see what the deployment runs but not edit it. The configurable page and its
+   three cards (Agent loop, Bash, Web search) are deleted rather than
+   flag-hidden: `ConfigurablePluginsTab.tsx`, the three `*Card.tsx`, the two
+   card controllers plus `web-search-card-controller.ts`, `card-form.ts`,
+   `fields.tsx`, `PluginCard.tsx`, `tab-store.ts` and `slot-contract.ts` are
+   gone, the `settings.plugin.item` slot is no longer declared, and the browser
+   half now injects only `slots` and `locale`.
+
+   Three consequences worth keeping on an upstream pull:
+
+   - **The chrome follows the contribution count.** One page renders under a
+     plain heading; the tab strip (with its arrow/Home/End keyboard contract)
+     returns only when a second `settings.plugins.tab` contribution exists. A
+     one-button tab bar read as a control the reader was expected to press.
+   - **The honest line lives in the inventory tab.** `serverManaged` says
+     configuration is set on the server by Delta and that this page is
+     read-only, and it renders in every state, the failure state included.
+   - **The host-plane defaults are untouched**, because those namespaces belong
+     to the plugins that registered them, not to the deleted cards: shell
+     `timeoutMs` 120000 / `maxOutputBytes` 64000 (`maxTimeoutMs` 600000,
+     `maxSpillBytes` 64 MiB and `graceMs` 3000 were never card fields), agent
+     loop `maxParallelToolCalls` 10, DeepSeek search `maxUses` 5 with endpoint
+     from `$DEEPSEEK_SEARCH_BASE_URL` or
+     `https://api.deepseek.com/anthropic/v1` and key from `DEEPSEEK_API_KEY`. A
+     value already stored in `$DSH_HOME/settings.yaml` still applies — the
+     owning plugin reads it — so deleting the cards reverts no stored override;
+     that file holds no section for any of the three on easter-server.
+
+   Re-apply on an upstream pull: those deletions, the section's
+   single-contribution branch, and the `serverManaged` copy. The generated slot
+   catalog (`packages/extensions/cordis-client-runner/src/client/slot-catalog.ts`,
+   `pnpm run gen-client-catalog`) drops its `settings.plugin.item` entry.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.

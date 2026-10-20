@@ -6,7 +6,7 @@ import type {
   PluginInventorySettingsTabInjected,
   PluginInventorySettingsTabProps,
 } from '../src/client/PluginInventorySettingsTab.tsx'
-import { en, type PluginInventoryLocaleKey } from '../src/client/locales.ts'
+import { en, zh, type PluginInventoryLocaleKey } from '../src/client/locales.ts'
 
 afterEach(cleanup)
 
@@ -123,5 +123,32 @@ describe('PluginInventorySettingsTab', () => {
     const pendingFailure = render(<PluginInventorySettingsTab {...props(() => deferredFailure.promise)} />)
     pendingFailure.unmount()
     await act(async () => { deferredFailure.reject(new Error('late failure')) })
+  })
+
+  it('states that configuration is server-managed, in loading, ready and failure', async () => {
+    // The statement is a fact about the deployment, not about this read, so it
+    // holds in every state a person can find the page in.
+    const deferred = Promise.withResolvers<Snapshot>()
+    const view = render(<PluginInventorySettingsTab {...props(() => deferred.promise)} />)
+    expect(screen.getByText(en.serverManaged)).toBeTruthy()
+
+    await act(async () => { deferred.resolve(SNAPSHOT) })
+    expect(screen.getByText(en.serverManaged)).toBeTruthy()
+    // Read-only means nothing on the page offers a write.
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+    view.unmount()
+
+    render(<PluginInventorySettingsTab {...props(async () => { throw new Error('unavailable') })} />)
+    expect((await screen.findByRole('alert')).textContent).toBe(en.error)
+    expect(screen.getByText(en.serverManaged)).toBeTruthy()
+  })
+
+  it('carries the read-only statement in Chinese too', async () => {
+    const zhT = ((key: PluginInventoryLocaleKey): string => zh[key]) as PluginInventorySettingsTabProps['t']
+    const zhProps = { t: zhT, list: async () => SNAPSHOT } as unknown as PluginInventorySettingsTabProps
+    render(<PluginInventorySettingsTab {...zhProps} />)
+
+    expect(screen.getByText(zh.serverManaged)).toBeTruthy()
+    expect((await screen.findByRole('searchbox', { name: zh.search }))).toBeTruthy()
   })
 })

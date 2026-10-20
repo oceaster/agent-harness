@@ -327,8 +327,9 @@
     - id: ui-agent-preset
       name: '@deepseek-ai/dsh-client-ui-agent-preset'
 
-    # Plugin configuration: the host-plane sections a user owns, as expandable
-    # cards. A namespace this deployment does not expose renders nothing.
+    # The Plugins settings section: read-only chrome around the pages feature
+    # plugins contribute (today the inventory's `all` tab). Customisation is
+    # server-controlled, so this row carries no card, form, or write path.
     - id: ui-settings-plugins
       name: '@deepseek-ai/dsh-client-ui-settings-plugins'
 

@@ -1,4 +1,4 @@
-/* Plugins section: compact tabs plus the configurable plugin card list. */
+/* Plugins section: compact tabs, or a plain page title when only one view exists. */
 
 .section {
   display: flex;
@@ -67,15 +67,6 @@
 .panel {
   min-width: 0;
   padding-top: 2px;
-}
-
-.cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 .empty {

@@ -1,4 +1,4 @@
-/** Plugins settings section: localized tabs around feature-owned pages. */
+/** Plugins settings section: localized chrome around feature-owned, read-only pages. */
 
 import { useEffect, useId, useRef, useState } from 'react'
 import type {
@@ -37,10 +37,16 @@ export function PluginsSettingsSection({ t, renderSlot, useTabs }: PluginsSettin
   const [activeId, setActiveId] = useState<string>()
   const [visitedIds, setVisitedIds] = useState<ReadonlySet<string>>(() => new Set())
   const active = rows.find(row => row.id === activeId)?.id ?? rows[0]?.id
+  // One page is not a choice. A tab bar holding a single button reads as a
+  // control the reader is expected to press, and re-rendering that button's
+  // label as a heading would only duplicate the page's own title — which for
+  // the inventory is the same words. The lone page therefore renders bare,
+  // under the section's heading and intro.
+  const single = rows.length === 1 ? rows[0] : undefined
 
   // A tab mounts only when first selected, then stays mounted while hidden so
-  // local drafts, disclosure state, search, and the inventory snapshot survive
-  // switching between the two views.
+  // local disclosure state, search text, and the inventory snapshot survive
+  // switching between views.
   useEffect(() => {
     if (active === undefined) return
     setVisitedIds((previous) => {
@@ -53,7 +59,10 @@ export function PluginsSettingsSection({ t, renderSlot, useTabs }: PluginsSettin
     <div className={css.section}>
       <h2 className={css.heading}>{t('title')}</h2>
       <p className={css.intro}>{t('intro')}</p>
-      {rows.length === 0 ? <p className={css.empty}>{t('empty')}</p> : (
+      {rows.length === 0 ? <p className={css.empty}>{t('empty')}</p> : null}
+      {single !== undefined ? (
+        <div className={css.panel}>{renderSlot('settings.plugins.tab', {}, { only: single.id })}</div>
+      ) : rows.length > 1 ? (
         <>
           <div className={css.tabs} role="tablist" aria-label={t('tabs')}>
             {rows.map((row, index) => {
@@ -110,14 +119,14 @@ export function PluginsSettingsSection({ t, renderSlot, useTabs }: PluginsSettin
               )
             })}
         </>
-      )}
+      ) : null}
     </div>
   )
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Plugins section, configurable-tab, and card copy. */
+    /** Plugins section chrome copy. */
     'settings.plugins': PluginsSettingsLocaleKey
   }
 }

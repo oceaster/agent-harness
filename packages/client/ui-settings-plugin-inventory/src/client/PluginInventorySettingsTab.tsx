@@ -98,6 +98,9 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
 
   return (
     <div className={css.section} aria-busy={state.status === 'loading'}>
+      {/* Stated up front and in every state: who owns configuration is a fact
+          about the deployment, not something the catalog's answer can change. */}
+      <p className={css.notice}>{t('serverManaged')}</p>
       {state.status === 'loading' ? <p className={css.status}>{t('loading')}</p> : null}
       {state.status === 'error' ? (
         <div className={css.failure}>

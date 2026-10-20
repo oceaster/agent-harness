@@ -2,31 +2,27 @@
 
 English | [中文](README.zh.md)
 
-The **Plugins** settings section and its **Plugin configuration** tab. The section owns the heading and compact tab chrome; feature plugins contribute pages through `settings.plugins.tab`. This package's own tab shows one expandable card per Host plugin whose configuration a user owns. A card shows the plugin's name and what it governs; expanding it in place reveals hand-written controls bound to that plugin's settings namespace, each field marking whether the user overrode it and offering a reset back to the value the deployment composed.
+The **Plugins** settings section. It owns the heading, the intro line, and the tab chrome; feature plugins contribute read-only pages through `settings.plugins.tab`. This package contributes no page of its own.
 
 ## What appears here
 
-The configurable tab reads which settings namespaces the Host serves and dispatches one slot key per namespace, so what renders is the intersection of two ledgers: the namespaces a live Host plugin registered, and the cards registered under those keys. A served namespace no card claims renders nothing — another surface owns it, or this deployment ships no browser half for it — and a card whose namespace this deployment does not serve is never dispatched, so an uncomposed plugin leaves no trace and does not hold the tab back from its empty line. The empty line waits for the Host's first answer, so an unanswered read never reads as "this deployment configures no plugin". Cards appear in the order they registered, which is stable for the cards one package installs together and not stable across plugins: apply order between packages is unconstrained.
+The section projects the `settings.plugins.tab` ledger — one entry per contributing plugin, ordered by the contribution's `order` and labelled by its registrant — and mounts what comes back. Today the ledger holds a single page: the read-only inventory registered by [`ui-settings-plugin-inventory`](../ui-settings-plugin-inventory/README.md).
 
-The cards this package ships cover the shell executor (`bash`), the agent loop's tool-call parallelism (`agent-loop`), and the DeepSeek search provider (`web-search-deepseek`).
+One page is not a choice, so a lone contribution renders under a plain title instead of inside a tab bar: a strip holding one button reads as a control the reader is expected to press, and there is nothing to switch to. A second contribution restores the real tab strip, where a tab mounts on its first selection and stays mounted while hidden, so a page's disclosure state and search text survive switching.
+
+## No configuration here
+
+Customisation of this deployment is a server decision, changed only on the server. So this section carries no card, no form, and no write path: the three editable host-plane cards it used to ship (`shell`, `agent-loop`, `web-search-deepseek`) are deleted rather than hidden behind a flag, and the keyed `settings.plugin.item` slot they hung from is no longer declared.
+
+Deleting the cards changes no plugin behaviour. Those settings namespaces are owned by the plugins that registered them, not by this page, and their defaults are untouched: the shell executor keeps `timeoutMs` 120000 and `maxOutputBytes` 64000 (with `maxTimeoutMs` 600000, `maxSpillBytes` 64 MiB and `graceMs` 3000, none of which a card ever edited), the agent loop keeps `maxParallelToolCalls` 10, and the DeepSeek search provider keeps `maxUses` 5, its endpoint from `$DEEPSEEK_SEARCH_BASE_URL` or `https://api.deepseek.com/anthropic/v1`, and its key from `DEEPSEEK_API_KEY`. A value already stored in the deployment's settings document still applies, because the owning plugin reads that document whether or not a browser card exists; changing one is now a server-side edit.
 
 ## Extension point
 
-The section declares `settings.plugins.tab`, a root list slot whose labels become ordered tabs. It keeps a tab mounted after its first selection, so local drafts and read-only snapshots survive tab switches. The package registers its own `configurable` contribution, which declares the nested `settings.plugin.item` slot — keyed on the settings namespace a card edits. A plugin that ships a browser half registers its own card under its own namespace and owns every part of it: chrome, controls, and copy. Keying on the namespace is what lets a plugin distributed outside this repository appear here — it registers the namespace on the Host and the card in the browser, and the tab pairs the two without learning what the namespace means. Tabs follow the contribution's `order`; cards follow registration order.
-
-## Writes
-
-A card stages what the user types and writes it only when they save. Each control renders staged text, so what is on screen is exactly what a save would store; **Discard** drops the drafts, and a card holding unsaved edits says so on its header even while collapsed. A reset stages the composed default rather than writing immediately, and a draft the field does not accept blocks the save instead of being dropped.
-
-Saving writes each staged field through the client settings scope, which fences every write with the namespace revision it read, so a form that has drifted from the document is refused rather than overwriting a concurrent change. The Host is the only authority on whether a value was accepted — its validators own the constraints no schema can express — so the card reads the section back afterwards and reports a save that did not land, keeping those drafts for the user to correct.
-
-A key can also be written from another surface — the Models page addresses the same reference — which changes no settings section, so the card re-reads on the forwarded `credentials/updated` event for the reference it watches.
-
-A field's presence in the raw user layer — not its value — is what marks it overridden; a reset clears that field so it re-inherits the composition layer. Secret-role fields never ride a response, so a key control starts blank, reports only whether one is configured, and writes through the credentials domain rather than the settings section; a blank draft writes nothing and keeps the stored key.
+The section declares `settings.plugins.tab`, a root list slot whose labels become ordered tabs. A plugin contributes a page with `ctx.slots.inject('settings.plugins.tab', …)` and owns that page's component, copy and data — including whether it is read-only. Contributing needs no dependency on this package beyond the slot declaration it already receives.
 
 ## Model Experience
 
-None, as the section renders a browser configuration UI; the values it writes reach a model only through the plugins that own them, each documenting that effect itself.
+None, as this package renders browser chrome and writes nothing, so it reaches no model at all.
 
 #### KV Cache effect
 
@@ -34,7 +30,6 @@ None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-- **Only host-plane plugins appear** — a plugin an agent preset mounts carries its configuration inline in that preset's `agent.cordis.yml` and cannot register a settings namespace at all (a second session mounting the same preset would fail on a duplicate registration), so this section lists nothing for it. Editing those values remains the preset editor's job.
-- **A card still needs a browser bundle** — the browser half must be a `dsh.client` package built in the client module system's lazy-CJS factory format, and the `clientBundle` preset that emits it lives in `packages/client/tsdown.client.ts` rather than a published package, so a plugin outside this repository has to reproduce that build itself. The bundle-purity gate also forbids importing this package's card chrome or form model as values, so such a card owns its own staging and revision fencing.
-- **The served namespaces re-read on two signals only** — the wire announces settings-document commits and connection resets, not registrations, so a namespace whose owner registers after the tab's read joins the list on the next document commit or reconnect.
-- **The shell card follows the composed executor** — the POSIX and PowerShell executor families share the `bash` namespace because a host composes exactly one of them, so the served schema differs by platform (PowerShell adds `pwshPath`) even though the card edits the same two fields on both, and a deployment composing neither shows no card.
+- **The section writes nothing, by design** — an in-browser edit path would need a Host contract for user-owned plugin settings plus a package that stages and fences those writes. Neither exists here any more, so plugin configuration is not a browser capability at all.
+- **A lone contribution drops the tab bar** — with one page the contribution's label becomes a plain heading. That is the intended reading of a single view, but it does mean the chrome changes shape when a second page is contributed.
+- **A visited page stays mounted** — a contributed page remains mounted once selected so its local state survives switching tabs, so every page the reader has visited stays live until the section unmounts.

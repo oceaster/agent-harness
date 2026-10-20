@@ -21,13 +21,7 @@
       "path": "../../test-support/client-runtime"
     },
     {
-      "path": "../ui-primitives"
-    },
-    {
       "path": "../ui-settings"
-    },
-    {
-      "path": "../../api/remotes/tsconfig.client.json"
     },
     {
       "path": "../ui-slots"

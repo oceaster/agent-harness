@@ -8,9 +8,17 @@
 }
 
 .catalogHeading h3,
+.notice,
 .status,
 .failure p {
   margin: 0;
+}
+
+/* The read-only statement, quieter than the data and above it in reading order. */
+.notice {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .status,

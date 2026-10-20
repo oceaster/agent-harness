@@ -3,6 +3,7 @@
 /** Simplified Chinese dictionary and key source of truth. */
 export const zh = {
   tab: '插件列表',
+  serverManaged: '插件配置由 Delta 在服务器端设置。本页仅供查看。',
   loading: '正在读取插件…',
   error: '暂时无法读取插件。',
   retry: '重试',
@@ -28,6 +29,7 @@ export type PluginInventoryLocaleKey = keyof typeof zh
 /** English dictionary checked against the Chinese key set. */
 export const en = {
   tab: 'Plugin list',
+  serverManaged: 'Plugin configuration is set on the server by Delta. This page is read-only.',
   loading: 'Reading plugins…',
   error: 'Plugins are temporarily unavailable.',
   retry: 'Retry',
