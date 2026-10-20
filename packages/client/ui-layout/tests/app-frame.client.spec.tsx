@@ -60,6 +60,7 @@ function mountFrame() {
     slotCalls.push({ key, props: owner })
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
+    if (key === 'conversation.page') return <div data-testid="channel-content" />
     if (key === 'details') return <div data-testid="details-content" />
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
@@ -137,6 +138,18 @@ afterEach(() => {
 })
 
 describe('AppFrame', () => {
+  it('shows a selected page in the center tile and restores the conversation on return', () => {
+    const b = mountFrame()
+    expect(b.queryByTestId('center-content')).not.toBeNull()
+    act(() => { b.instance.actions.openPage('agent-channel') })
+    expect(b.queryByTestId('center-content')).toBeNull()
+    expect(b.queryByTestId('channel-content')).not.toBeNull()
+    expect(b.queryByTestId('sidebar-content')).not.toBeNull()
+    act(() => { b.instance.actions.openPage(null) })
+    expect(b.queryByTestId('channel-content')).toBeNull()
+    expect(b.queryByTestId('center-content')).not.toBeNull()
+  })
+
   it('renders three tracks from store state', () => {
     const { frame } = mountFrame()
     expect(tracks(frame)).toEqual([280, 0])

@@ -30,12 +30,8 @@ export interface InboxInjected {
   clear: (agent: string) => void
   /** Open the channel selected from the server's list. */
   openChannel: (channel: string) => void
-  /** Close the channel transcript. */
-  closeChannel: () => void
-  /** Reload the selected channel. */
-  refreshChannel: () => void
   /** Clear the selected channel after an explicit confirmation. */
-  clearChannel: () => void
+  clearChannel: (id: string) => void
 }
 
 /** Full component props: the slot's runtime share, the injected face, and the locale seat. */

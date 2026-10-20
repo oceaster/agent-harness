@@ -27,6 +27,10 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Select a registered center page; null returns to the selected conversation.
+   * @param id - registered page id, or null for the conversation.
+   */
+  openPage(id: string | null): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +61,13 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Select a center page without creating or changing an agent session.
+   * @param id - registered page id, or null for the conversation.
+   */
+  openPage(id: string | null): void {
+    this.#require().openPage(id)
   }
 
   #require(): PanelActions {

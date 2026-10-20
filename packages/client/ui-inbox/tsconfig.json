@@ -27,6 +27,9 @@
       "path": "../ui-sidebar"
     },
     {
+      "path": "../ui-layout"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

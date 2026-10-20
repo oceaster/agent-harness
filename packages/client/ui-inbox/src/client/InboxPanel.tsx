@@ -22,7 +22,7 @@ import type { InboxAgentRow } from './inbox-api.ts'
 import type { InboxNoticeCode } from './inbox-controller.ts'
 import type { InboxPanelProps } from './slots.ts'
 import { ConfirmClearDialog } from './ConfirmClearDialog.tsx'
-import { ChannelDialog } from './ChannelDialog.tsx'
+import { AgentAvatar } from './AgentAvatar.tsx'
 import css from './InboxPanel.module.css'
 
 /** The locale seat of this namespace, passed to the pure helpers below. */
@@ -98,12 +98,14 @@ function noticeText(notice: InboxNoticeCode, t: Translate): string {
  */
 export function InboxPanel({
   wide, expandSidebar, collapseSidebar, useInbox, useChannels, load, open, clear,
-  openChannel, closeChannel, refreshChannel, clearChannel, t,
+  openChannel, clearChannel, t,
 }: InboxPanelProps) {
   const channelState = useChannels(snapshot => snapshot)
   const state = useInbox(snapshot => snapshot)
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [confirmFor, setConfirmFor] = useState<string | null>(null)
+  const [confirmChannel, setConfirmChannel] = useState<string | null>(null)
+  const confirmedChannel = channelState.rows.find(channel => channel.id === confirmChannel)
   // One clock read per render: every row's age is measured against the same now.
   const now = Date.now() / 1000
   const confirmed = confirmFor === null ? undefined : state.rows.find(row => row.agent === confirmFor)
@@ -126,7 +128,7 @@ export function InboxPanel({
                 open(row.agent)
               }}
             >
-              {monogram(row.name)}
+              <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
               {row.running && <StateDot state="ongoing" size={8} className={css.railDot} />}
             </button>
           )
@@ -201,7 +203,7 @@ export function InboxPanel({
             return (
               <li
                 key={row.agent}
-                className={clsx(css.row, state.openAgent === row.agent && css.rowActive)}
+                className={clsx(css.row, state.openAgent === row.agent && channelState.selected === null && css.rowActive)}
                 data-testid={`ui-inbox-row-${row.agent}`}
               >
                 <div className={css.rowLine}>
@@ -210,11 +212,11 @@ export function InboxPanel({
                     className={css.rowButton}
                     data-testid={`ui-inbox-open-${row.agent}`}
                     aria-label={t('row.open', { name: row.name })}
-                    aria-current={state.openAgent === row.agent ? 'true' : undefined}
+                    aria-current={state.openAgent === row.agent && channelState.selected === null ? 'true' : undefined}
                     aria-busy={busy}
                     onClick={() => { open(row.agent) }}
                   >
-                    <span className={css.avatar} aria-hidden="true">{monogram(row.name)}</span>
+                    <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
                     <span className={css.rowText}>
                       <span className={css.name}>{row.name}</span>
                       <span className={css.state} data-testid={`ui-inbox-state-${row.agent}`}>
@@ -261,14 +263,42 @@ export function InboxPanel({
 
       <section className={css.channels} aria-label={t('channel.section')}>
         <h3 className={css.channelTitle}>{t('channel.section')}</h3>
-        {channelState.rows.map(channel => <button type="button" key={channel.id} className={css.rowButton}
-          data-testid={'agent-channel-open-' + channel.id} onClick={() => { openChannel(channel.id) }}>
-          <span className={css.avatar} aria-hidden="true">↔</span><span>{channel.name}</span>
-        </button>)}
+        <ul className={css.list}>
+          {channelState.rows.map(channel => <li key={channel.id}
+            className={clsx(css.row, channelState.selected?.id === channel.id && css.rowActive)}
+            data-testid={'agent-channel-row-' + channel.id}>
+            <div className={css.rowLine}>
+              <button type="button" className={css.rowButton} data-testid={'agent-channel-open-' + channel.id}
+                aria-current={channelState.selected?.id === channel.id ? 'true' : undefined}
+                onClick={() => { openChannel(channel.id) }}>
+                <AgentAvatar agents={channel.agents} label="↔" />
+                <span className={css.rowText}>
+                  <span className={css.name}>{channel.name}</span>
+                  <span className={css.state}>{t('channel.readOnly')}</span>
+                </span>
+              </button>
+              <Menu open={menuFor === 'channel:' + channel.id} onClose={() => { setMenuFor(null) }}
+                items={[{ id: 'clear', label: t('row.clear'), icon: <IconTrashOutline16 size={14} />, danger: true }]}
+                onSelect={() => { setMenuFor(null); setConfirmChannel(channel.id) }} portal
+                anchor={<button type="button" className={css.menuButton}
+                  aria-label={t('row.menu', { name: channel.name })} aria-haspopup="menu"
+                  aria-expanded={menuFor === 'channel:' + channel.id} data-testid={'agent-channel-menu-' + channel.id}
+                  onClick={() => { setMenuFor(current => current === 'channel:' + channel.id ? null : 'channel:' + channel.id) }}>
+                  <IconEllipsisOutline16 size={14} />
+                </button>} />
+            </div>
+          </li>)}
+        </ul>
         {channelState.rows.length === 0 && channelState.error === null && <p className={css.phase}>{t('channel.none')}</p>}
         {channelState.error !== null && channelState.selected === null && <p role="alert">{channelState.error}</p>}
       </section>
-      <ChannelDialog state={channelState} close={closeChannel} refresh={refreshChannel} clear={clearChannel} t={t} />
+      <ConfirmClearDialog open={confirmedChannel !== undefined} agentName={confirmedChannel?.name ?? ''} channel t={t}
+        onCancel={() => { setConfirmChannel(null) }}
+        onConfirm={() => {
+          const target = confirmChannel
+          setConfirmChannel(null)
+          if (target !== null) clearChannel(target)
+        }} />
       <ConfirmClearDialog
         open={confirmed !== undefined}
         agentName={confirmed?.name ?? ''}

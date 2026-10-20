@@ -71,6 +71,8 @@ export interface ConfirmClearDialogProps {
   open: boolean
   /** Display name of the row's agent, as the API returned it. */
   agentName: string
+  /** Whether this confirmation clears a shared channel rather than an agent conversation. */
+  channel?: boolean
   /** The locale seat. */
   t: InboxPanelProps['t']
   /** Cancel: Escape, mask click, or the Cancel button. */
@@ -84,22 +86,22 @@ export interface ConfirmClearDialogProps {
  * @param props - open state, the agent's name, copy, and the two outcomes.
  * @returns the dialog tree (nothing while closed).
  */
-export function ConfirmClearDialog({ open, agentName, t, onCancel, onConfirm }: ConfirmClearDialogProps) {
+export function ConfirmClearDialog({ open, agentName, channel = false, t, onCancel, onConfirm }: ConfirmClearDialogProps) {
   useFocusTrap(open)
   return (
     <Modal
       open={open}
       onClose={onCancel}
-      title={t('dialog.title', { name: agentName })}
+      title={t(channel ? 'channel.clearTitle' : 'dialog.title', { name: agentName })}
       closeLabel={t('dialog.close')}
-      description={t('dialog.body')}
+      description={t(channel ? 'channel.clearBody' : 'dialog.body')}
       footer={(
         <div className={css.dialogActions}>
           <Button variant="outline" data-testid="ui-inbox-confirm-cancel" onClick={onCancel}>
             {t('dialog.cancel')}
           </Button>
           <Button variant="primary" data-testid="ui-inbox-confirm-clear" onClick={onConfirm}>
-            {t('dialog.confirm')}
+            {t(channel ? 'channel.confirmClear' : 'dialog.confirm')}
           </Button>
         </div>
       )}

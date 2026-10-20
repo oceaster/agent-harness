@@ -71,8 +71,7 @@ function mount(overrides: {
   const collapseSidebar = vi.fn()
   const channels = createSnapshotStore<ChannelState>({ rows:[{ id:'delta-darwin',name:'Delta-Darwin',agents:['delta','darwin'] }],selected:null,messages:[],error:null,loading:false })
   const openChannel = vi.fn()
-  const closeChannel = vi.fn()
-  const refreshChannel = vi.fn()
+  const clearChannel = vi.fn()
   // The runtime share also carries the global session/workspace hooks; the
   // panel never reads them, so they are never-called stubs.
   const neverHook = (() => { throw new Error('the inbox panel must not read global hooks') }) as never
@@ -82,9 +81,7 @@ function mount(overrides: {
     collapseSidebar,
     useChannels: bindSnapshotSelector(channels),
     openChannel,
-    closeChannel,
-    refreshChannel,
-    clearChannel: vi.fn(),
+    clearChannel,
     useSessions: neverHook,
     useWorkspaces: neverHook,
     useInbox: bindSnapshotSelector(inbox),
@@ -94,10 +91,26 @@ function mount(overrides: {
     t,
   }
   const view = render(<InboxPanel {...props} />)
-  return { ...view, inbox, channels, open, clear, load, expandSidebar, collapseSidebar, openChannel, closeChannel, refreshChannel }
+  return {
+    ...view, inbox, channels, open, clear, load, expandSidebar, collapseSidebar, openChannel, clearChannel,
+  }
 }
 
 describe('inbox panel: rows', () => {
+  it('opens channels from full sidebar rows and clears through their dropdown confirmation', async () => {
+    const b = mount()
+    expect(screen.getByTestId('agent-channel-row-delta-darwin').tagName).toBe('LI')
+    fireEvent.click(screen.getByTestId('agent-channel-open-delta-darwin'))
+    expect(b.openChannel).toHaveBeenCalledWith('delta-darwin')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByTestId('agent-channel-menu-delta-darwin'))
+    fireEvent.click((await screen.findAllByRole('menuitem'))[0]!)
+    expect(screen.getByRole('dialog').textContent).toContain('Clear your channel Delta-Darwin?')
+    expect(b.clearChannel).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('ui-inbox-confirm-clear'))
+    expect(b.clearChannel).toHaveBeenCalledWith('delta-darwin')
+  })
+
   it('renders one row per payload agent, in the payload order', () => {
     mount()
     const rows = screen.getAllByTestId(/^ui-inbox-row-/)

@@ -62,6 +62,7 @@ async function bench(listBody: unknown = {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   ctx.provide('locale', new LocaleRuntime(ctx))
+  ctx.provide('layout', { openPage: vi.fn() })
   ctx.provide('sessions', {
     list: sessions.store,
     // The concrete runtime's wire-pump verb: the fixture answers it the way the
@@ -72,7 +73,7 @@ async function bench(listBody: unknown = {
   })
   ctx.slots.register({
     name: 'root',
-    children: { 'sidebar.workspaces': { kind: 'single', scope: 'root' } },
+    children: { 'sidebar.workspaces': { kind: 'single', scope: 'root' }, 'conversation.page': { kind: 'list', scope: 'root' } },
   } as never, (() => null) as never)
   const fetches: string[] = []
   // One canned answer per endpoint: the payloads genuinely differ, and a
@@ -155,6 +156,7 @@ describe('ui-inbox registration', () => {
     const ctx = new Context()
     await ctx.plugin(SlotRegistry).await()
     ctx.provide('locale', new LocaleRuntime(ctx))
+    ctx.provide('layout', { openPage: vi.fn() })
     ctx.provide('sessions', {
       list: sessionList().store,
       open: () => {},
@@ -162,7 +164,7 @@ describe('ui-inbox registration', () => {
     })
     ctx.slots.register({
       name: 'root',
-      children: { 'sidebar.workspaces': { kind: 'single', scope: 'root' } },
+      children: { 'sidebar.workspaces': { kind: 'single', scope: 'root' }, 'conversation.page': { kind: 'list', scope: 'root' } },
     } as never, (() => null) as never)
     // cordis re-raises the activation throw on its loud channel as well; the
     // assertion below is the contract, the handler keeps the run clean.

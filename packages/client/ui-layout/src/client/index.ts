@@ -60,6 +60,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * framework hooks of the `session-maybe` scope.
      */
     'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
+    /** Non-session pages selected through layout.openPage, occupying the chat tile. */
+    'conversation.page': { kind: 'list'; scope: 'root' }
     /**
      * The right details column, shown when the layout opens it. OCCUPIED by
      * ui-conversation's DetailsPanel, which declares the tool-details seat
@@ -122,6 +124,7 @@ export function apply(ctx: ClientContext): void {
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
+        'conversation.page': { kind: 'list', scope: 'root' },
         'details': { kind: 'single', scope: 'session' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },

@@ -1,7 +1,6 @@
 /**
- * Inbox plugin, browser half. ONE registration: InboxPanel fills the sidebar
- * shell's `sidebar.workspaces` hole — the browsing region below the top
- * controls and above the sidebar foot.
+ * Inbox plugin, browser half. InboxPanel fills the sidebar browsing region;
+ * ChannelPage occupies the center chat tile when a channel row is selected.
  *
  * The region is now the whole navigation surface: one persistent row per agent
  * the signed-in person may use, with Clear as the row menu's only action. The
@@ -20,6 +19,8 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls ui-sidebar's SlotMap merge (the 'sidebar.workspaces' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import { ChannelPage } from './ChannelPage.tsx'
 import { createInboxApi, type InboxApi } from './inbox-api.ts'
 import { InboxController } from './inbox-controller.ts'
 import { ChannelController } from './channel-controller.ts'
@@ -51,7 +52,7 @@ const NS = 'inbox'
  * `sessions` is the navigation seam: the conversation a row opens is selected
  * through the sessions service (see inbox-controller.ts).
  */
-export const inject = ['slots', 'sessions', 'locale']
+export const inject = ['slots', 'sessions', 'locale', 'layout']
 
 /**
  * Register the inbox panel once the sidebar declares the hole.
@@ -113,13 +114,18 @@ export function apply(ctx: ClientContext): void {
   const injected = () => ({
     hooks: { inbox: controller.store, channels: channels.store },
     load: () => { void controller.load(); void channels.load(); void channels.refresh() },
-    openChannel: (id: string) => { void channels.open(id) },
-    closeChannel: () => { channels.close() },
-    refreshChannel: () => { void channels.refresh() },
-    clearChannel: () => { void channels.clear() },
-    open: (agent: string) => { void controller.open(agent) },
+    openChannel: (id: string) => { void channels.open(id); ctx.layout.openPage('agent-channel') },
+    clearChannel: (id: string) => { void channels.clear(id) },
+    open: (agent: string) => { channels.close(); ctx.layout.openPage(null); void controller.open(agent) },
     clear: (agent: string) => { void controller.clear(agent) },
   })
+
+  ctx.slots.inject('conversation.page', () => ctx.slots.register(
+    { name: 'conversation.page', id: 'agent-channel', locale: NS, inject: () => ({
+      hooks: { channels: channels.store }, refreshChannel: () => { void channels.refresh() },
+    }) },
+    ChannelPage,
+  ))
 
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
     { name: 'sidebar.workspaces', locale: NS, inject: injected },

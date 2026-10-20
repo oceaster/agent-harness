@@ -24,6 +24,7 @@ export interface ChannelState {
 
 /** Owns network reads and channel selection; the view only renders its snapshot. */
 export class ChannelController {
+  /** Shared channel selection and transcript rendered by the sidebar and chat tile. */
   readonly store = createSnapshotStore<ChannelState>({ rows: [], selected: null, messages: [], error: null, loading: false })
   private reading = false
   private revision = 0
@@ -37,16 +38,21 @@ export class ChannelController {
       this.store.set({ ...this.store.getSnapshot(), rows: body.channels, error: null })
     } catch (error) { this.store.set({ ...this.store.getSnapshot(), error: String(error instanceof Error ? error.message : error) }) }
   }
-  /** Open one server-provided channel without choosing or creating an agent conversation. */
+  /** Open one server-provided channel without choosing or creating an agent conversation.
+   * @param id - channel id returned by the authenticated list.
+   */
   async open(id: string): Promise<void> {
     const state = this.store.getSnapshot(), selected = state.rows.find(row => row.id === id)
     if (selected === undefined) return
     this.store.set({ ...state, selected, messages: [], error: null, loading: true })
     await this.refresh()
   }
-  /** Clear only the selected person's shared history after confirmation in the view. */
-  async clear(): Promise<void> {
-    const channel = this.store.getSnapshot().selected
+  /** Clear only the person's selected channel history after confirmation in the view.
+   * @param id - channel to clear; omitted uses the current selection.
+   */
+  async clear(id?: string): Promise<void> {
+    const state = this.store.getSnapshot()
+    const channel = id === undefined ? state.selected : state.rows.find(row => row.id === id) ?? null
     if (channel === null) return
     try {
       const response = await fetch('/v1/browser/inbox/channels/' + encodeURIComponent(channel.id) + '/clear', {
@@ -57,10 +63,12 @@ export class ChannelController {
       }
       this.revision++
       const current = this.store.getSnapshot()
-      if (current.selected?.id === channel.id) this.store.set({ ...current, messages: [], error: null })
+      this.store.set({ ...current, error: null,
+        ...(current.selected?.id === channel.id ? { messages: [], loading: false } : {}),
+      })
     } catch (error) {
       const current = this.store.getSnapshot()
-      if (current.selected?.id === channel.id) this.store.set({ ...current, error: error instanceof Error ? error.message : String(error) })
+      this.store.set({ ...current, error: error instanceof Error ? error.message : String(error) })
     }
   }
   /** Return to the agent conversation while preserving channel history on the server. */
