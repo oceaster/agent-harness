@@ -37,33 +37,64 @@ function check(name, condition, detail) {
 /** Fixed "now": the fixture's clock is the browser's, so pin timestamps relative to it. */
 const nowSeconds = () => Date.now() / 1000
 
+/**
+ * Every row carries the fields the client's parser requires of the real
+ * service (`enabled`, `disabled`, `presence`, `completion`); a payload without
+ * them is refused as malformed, so a fixture that omits them proves nothing.
+ */
+const row = (fields) => ({
+  hasConversation: true, blank: false, lastActivityAt: nowSeconds() - 320, running: false,
+  enabled: true, disabled: false, presence: 'online', completion: 0, ...fields,
+})
+
 const THREE_AGENTS = () => ({
   person: { id: 'person-three', name: 'Household Person' },
   agents: [
-    {
-      agent: 'agent-alpha', name: 'Alpha', hasConversation: true,
-      sessionId: 'session-inbox-person-three-agent-alpha', blank: false,
-      lastActivityAt: nowSeconds() - 320, running: false,
-    },
-    {
-      agent: 'agent-beta', name: 'Beta', hasConversation: true,
+    row({
+      agent: 'agent-alpha', name: 'Alpha',
+      sessionId: 'session-inbox-person-three-agent-alpha',
+    }),
+    row({
+      agent: 'agent-beta', name: 'Beta',
       sessionId: 'session-inbox-person-three-agent-beta', blank: true,
-      lastActivityAt: null, running: true,
-    },
-    {
+      lastActivityAt: null, running: true, presence: 'running',
+    }),
+    row({
       agent: 'agent-gamma', name: 'Gamma', hasConversation: false,
-      sessionId: null, blank: true, lastActivityAt: null, running: false,
-    },
+      sessionId: null, blank: true, lastActivityAt: null,
+    }),
+  ],
+})
+
+/**
+ * A coordinator with a delegation queue: its own turn runs, two delegations
+ * wait for a worker slot and no descendant is running (the keyless fixture has
+ * no model, so it cannot start one). The row must therefore keep the bare verb
+ * rather than print `(0/2)`, and carry the same string into the dot.
+ */
+const QUEUED_COORDINATOR = () => ({
+  person: { id: 'person-queue', name: 'Queue Person' },
+  agents: [
+    row({
+      agent: 'agent-delta', name: 'Delta',
+      sessionId: 'session-inbox-person-queue-agent-delta',
+      running: true, presence: 'running', queuedWorkers: 2,
+    }),
+    row({
+      agent: 'agent-darwin', name: 'Darwin',
+      sessionId: 'session-inbox-person-queue-agent-darwin',
+      queuedWorkers: 0,
+    }),
   ],
 })
 
 const ONE_AGENT = () => ({
   person: { id: 'person-one', name: 'One Agent Person' },
-  agents: [{
-    agent: 'agent-alpha', name: 'Alpha', hasConversation: true,
-    sessionId: 'session-inbox-person-one-agent-alpha', blank: false,
-    lastActivityAt: nowSeconds() - 7200, running: false,
-  }],
+  agents: [row({
+    agent: 'agent-alpha', name: 'Alpha',
+    sessionId: 'session-inbox-person-one-agent-alpha',
+    lastActivityAt: nowSeconds() - 7200,
+  })],
 })
 
 /** Loopback host RPC (the browser's own wire, used by the probe, not by the panel). */
@@ -180,7 +211,7 @@ async function assertRemovedSurfaces(page) {
       === JSON.stringify(['ui-inbox-row-agent-alpha', 'ui-inbox-row-agent-beta', 'ui-inbox-row-agent-gamma']))
   check('three-agent: state lines (last activity / no messages yet / none)',
     (await page.getByTestId('ui-inbox-state-agent-alpha').textContent())?.includes('m ago')
-    && (await page.getByTestId('ui-inbox-state-agent-beta').textContent()) === 'Working…'
+    && (await page.getByTestId('ui-inbox-state-agent-beta').textContent()) === 'Working...'
     && (await page.getByTestId('ui-inbox-state-agent-gamma').textContent()) === 'No conversation yet',
     [
       await page.getByTestId('ui-inbox-state-agent-alpha').textContent(),
@@ -273,6 +304,75 @@ async function assertRemovedSurfaces(page) {
   {
     const { page: pageErrors } = splitConsole(s.consoleErrors)
     check('one-agent: no page console errors', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 5)))
+  }
+  await s.context.close()
+}
+
+// ── scenario 2b: a coordinator with delegations waiting for a worker slot ───
+{
+  let state = QUEUED_COORDINATOR()
+  const s = await openScenario({
+    list: () => ({ status: 200, body: state }),
+    open: async (agent) => ({
+      status: 200,
+      body: { agent, sessionId: `session-inbox-person-queue-${agent}`, created: false, blank: false, lastActivityAt: nowSeconds() - 60 },
+    }),
+    clear: async (agent) => ({
+      status: 200,
+      body: { agent, hasConversation: false, sessionId: null, blank: true, lastActivityAt: null, cleared: true },
+    }),
+  })
+  const { page, consoleErrors } = s
+  const line = await page.getByTestId('ui-inbox-state-agent-delta').textContent()
+  // Two delegations wait and nothing runs below the row: the bare verb, never (0/2).
+  check('queue: a waiting delegation with no running worker keeps the bare verb',
+    line === 'Working...', line ?? '')
+  check('queue: no (0) and no bare slash on the row', !line?.includes('(0)') && !line?.includes('/'), line ?? '')
+  const dotLabel = await page.getByTestId('ui-inbox-open-agent-delta')
+    .locator('[data-presence="running"]').getAttribute('aria-label')
+  check('queue: the dot label is the working verb, not a count it does not have',
+    dotLabel === 'Working', dotLabel ?? '')
+  check('queue: the row keeps its own accessible name',
+    (await page.getByTestId('ui-inbox-open-agent-delta').getAttribute('aria-label'))
+      === 'Open your conversation with Delta')
+  // queuedWorkers: 0 is the same row as no field at all: no suffix, no slash.
+  const zero = await page.getByTestId('ui-inbox-state-agent-darwin').textContent()
+  check('queue: an explicit zero queue renders today\'s line with no suffix',
+    zero === '5m ago', zero ?? '')
+  // The row is a fixed-width column: the queue copy must not overflow or clip it.
+  const box = await page.getByTestId('ui-inbox-open-agent-delta').evaluate((node) => {
+    const state = node.querySelector('[class*="state"]')
+    return {
+      rowOverflow: node.scrollWidth > node.clientWidth,
+      stateOverflow: state === null ? null : state.scrollWidth > state.clientWidth,
+      lineHeight: state === null ? null : state.getBoundingClientRect().height,
+    }
+  })
+  check('queue: the row and its state line neither overflow nor clip',
+    box.rowOverflow === false && box.stateOverflow === false && (box.lineHeight ?? 99) < 30, JSON.stringify(box))
+  await page.screenshot({ path: `${outDir}/06b-queued-coordinator.png` })
+  await page.getByTestId('ui-inbox-panel').screenshot({ path: `${outDir}/06b-queued-coordinator-panel.png` })
+
+  // The queue drains: the next ordinary inbox read re-renders the row from the
+  // refreshed payload, with no reload and no second polling loop of its own.
+  const readsBefore = s.listCalls()
+  state = {
+    person: state.person,
+    agents: state.agents.map(item => ({ ...item, running: false, presence: 'online', queuedWorkers: 0 })),
+  }
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="ui-inbox-state-agent-delta"]')?.textContent !== 'Working...',
+    undefined, { timeout: 15_000 },
+  )
+  const after = await page.getByTestId('ui-inbox-state-agent-delta').textContent()
+  check('queue: the row settles on the existing inbox refresh, without a reload',
+    after === '5m ago', after ?? '')
+  check('queue: the settle cost one of the reads the panel already makes',
+    s.listCalls() === readsBefore + 1, `${readsBefore} -> ${s.listCalls()}`)
+  {
+    const { page: pageErrors, network } = splitConsole(consoleErrors)
+    check('queue: no page console errors', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 5)))
+    check('queue: no refused network responses', network.length === 0, JSON.stringify(network.slice(0, 5)))
   }
   await s.context.close()
 }
