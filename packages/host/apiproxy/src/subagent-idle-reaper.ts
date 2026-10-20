@@ -199,7 +199,13 @@ export async function reapIdleSubagentSessions(
     return report
   }
   const now = options.now()
+  // Sessions a previous iteration already destroyed as descendants: the shared
+  // routine collects subagent descendants itself, so re-addressing one of them
+  // here would read a log that is already gone and report it as unreadable —
+  // noise about a conversation that is correctly destroyed.
+  const destroyed = new Set<SessionId>()
   for (const header of await persistence.list()) {
+    if (destroyed.has(header.id)) continue
     if (!isSubagentSession(header)) continue
     report.scanned++
     const live = ctx.sessions.get(header.id)
@@ -241,6 +247,8 @@ export async function reapIdleSubagentSessions(
     const outcome = await options.destroy(header.id)
     if (outcome.ok) {
       report.reaped.push(header.id)
+      destroyed.add(header.id)
+      for (const id of outcome.descendants) destroyed.add(id)
       const idleMs = now - last
       options.logger.info(
         `subagent idle reaper: destroyed "${header.id}" after ${String(idleMs)} ms idle`

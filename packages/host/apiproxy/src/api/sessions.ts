@@ -402,6 +402,11 @@ export interface SessionsApi {
    * are content-addressed and may be shared, so a deployment that wants them
    * collected must collect them itself.
    *
+   * This method's handler body is one host function that the fork's subagent
+   * idle reaper calls too, so a timer-driven reap and a person clearing a
+   * conversation share exactly one teardown; the reaper has no delete path of
+   * its own.
+   *
    * Authorisation belongs to the caller. Like every other session method this is
    * loopback/trusted-host behaviour, and the harness has no identity concept, so
    * whoever may clear this conversation — the profile proxy in front of this

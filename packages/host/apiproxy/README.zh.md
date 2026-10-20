@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-所有客户端共用的 API 网关由三部分组成：TypeScript API 约定（`src/api/`，不依赖 Node，可从浏览器导入）、fetch 载体对（`src/fetch/`：宿主侧的 `toFetchHandler`，以及客户端侧的 `AbstractApiClient` 与平台子类）和宿主侧实现（`src/api-proxy.ts`：`createApiProxy` 加上默认导出的 `ApiProxyService` 网关插件，其配置为 `{nativeOpen?, sessionExportCompressionLevel?, coldBlankProbeMaxBytes?}`，提供 `ctx.apiProxy`）。该包不注册任何路由；HTTP 等载体自行包装 `ctx.apiProxy`。随发行版交付的 Web 组合位于 [`packages/bundle/web-app/cordis.patch.yml`](../../bundle/web-app/cordis.patch.yml)，其默认 Agent（智能体）模型选择属于 base 组合包中的 [`@deepseek-ai/dsh-agent-default-model`](../../core/agent-default-model/README.md)。
+所有客户端共用的 API 网关由三部分组成：TypeScript API 约定（`src/api/`，不依赖 Node，可从浏览器导入）、fetch 载体对（`src/fetch/`：宿主侧的 `toFetchHandler`，以及客户端侧的 `AbstractApiClient` 与平台子类）和宿主侧实现（`src/api-proxy.ts`：`createApiProxy` 加上默认导出的 `ApiProxyService` 网关插件，其配置为 `{nativeOpen?, sessionExportCompressionLevel?, coldBlankProbeMaxBytes?, destroyCancelSettleMs?, subagentIdleReap?}`，提供 `ctx.apiProxy`）。该包不注册任何路由；HTTP 等载体自行包装 `ctx.apiProxy`。随发行版交付的 Web 组合位于 [`packages/bundle/web-app/cordis.patch.yml`](../../bundle/web-app/cordis.patch.yml)，其默认 Agent（智能体）模型选择属于 base 组合包中的 [`@deepseek-ai/dsh-agent-default-model`](../../core/agent-default-model/README.md)。
 
 ## 共享 Agent 默认值（`agent-default-model` Settings 分节）
 
@@ -59,6 +59,24 @@ Workspace 列表与 Session 列表是相互独立的重连基线。`workspace.cr
 `command.*` 与 `skill.*` 领域向客户端暴露宿主命令注册表和 skill（技能）目录。每个方法都通过 `sessionId` 寻址一个会话的 Agent（被服务的会话必有 Agent；`command.*` 经由与 `session.*` 相同的路径恢复冷会话，而 `skill.list` 从会话头解析项目根目录，不触碰 Agent 注册表）。`skill.list` 服务于 composer 的菜单：它返回每一个用户可调用的 skill 及其 `modelInvocable` 标志，让菜单能够标出仅限用户（`disable-model-invocation`）的条目——斜杠手势是这类条目唯一的调用路径。列表是 skill 领域唯一的 RPC——调用本身就是一次普通的 `session.prompt`，`dsh-tool-skill` 会在 pre-step 边界识别其中以空白为界的 `/name` token，并以注入的 `<skill_content>` 上下文作答，因此所有入口（Web、TUI 与 ACP（Agent Client Protocol））共享同一条确定性路径，手动键入的文本也走该路径，且没有专设的调用协议。`command.execute` 在宿主侧运行一条斜杠命令行，语义为纯准入：响应报告该行是否解析到处理器，并在解析到时回带铸造的生命周期 `commandId`（将本次确认与流节点关联）；结局经由持久落账并在 mux 流广播的 `command/run`/`command/done` 生命周期事件对承载。命令处理器运行超过 30 秒的传输健康时限仍属正常，因此 `command.execute` 仅携带调用方／连接取消信号；该信号可取消正在运行的处理器。`commands/change` 搭乘转发事件帧作为注册表级目录失效信号：客户端重新拉取 `command.list` 而不是做差分。转发的 `agent-preset/selected` 是它按会话粒度的对应物，由落账的选择提交点发出：重组空会话的 agent 只是重新挂接其 scope，不产生任何注册，因此该会话组成所决定的两份目录（`command.list`、`skill.list`）都会失效，却没有任何注册表变化来宣告它。
 
 `settings.*`、`credentials.*` 与 `llm.*` 领域是配置页协议。settings 领域服务于每一个已注册 namespace：在本仓库之外分发的插件只要注册自己的分节即可变得可从浏览器配置，无需改动这里；本代理也不再自设边界——没有任何注册应答的名字会折叠为 seam 自己的 `settings-rejected`。由哪个界面渲染某个 namespace 是浏览器的决定（插件配置页按 namespace 为其卡片编键），从不由本代理决定。`settings.describe` 为每个 namespace 提供其序列化 schemastery schema、脱敏后的分层值（resolved/`base`/`user`——字段出现在 `user` 中即标记其被用户覆盖）、`secrets` 槽位列表、该分节的 `revision`，以及布尔型 `hasDocument` 能力标志。浏览器不会收到 Host 路径：无路径参数的 `settings.openDocument` 会请求提供方准备文档，再把由 Host 解析出的结果交给原生打开器，因此任何浏览器载荷都无法选择任意文件系统目标。`settings.update`/`settings.replace` 写入用户层；`settings.mutate` 则在已存分节上施加路径 op（`set`/`unset`），这是持有脱敏视图的客户端的删除路径——据此重建分节再整体替换，会删掉协议从未回传过的那些机密。任何写入都可携带 `expectedRevision`；陈旧的期望值会以 `settings-conflict` 连同两个 revision 作答，而不是覆盖先落地的那个写方，其余每种 seam 拒绝则折叠为 `settings-rejected`。secret 角色的值绝不在任何一层搭乘任何响应；secret 只沿一个方向跨越协议——在 `update`/`mutate` 载荷或 `credentials.set` 之内。`credentials.describe` 返回不含值的视图（`configured`/`source`/`writable`），`credentials.set`/`credentials.unset` 则把被遮蔽引用的拒绝映射为 `credential-rejected`。`llm.providers` 把可配置提供方目录与存活路由合并（休眠条目携带 `active: false`；未声明的存活路由追加在后，不带 settings 地址），`llm.models` 则是与会话无关的目录。`llm.discoverModels` 询问页面尚在起草的提供方端点：`settingsNs` 选出懂得读取该列表的适配器家族，端点、协议与密钥则来自表单而非存储。它什么都不写——回复是候选，只有随后的 `settings.mutate` 才决定路由服务什么——因此其 `apiKey` 是 secret 可以搭乘的第三个载荷（另两个是 `settings.update`/`mutate` 与 `credentials.set`），且绝不被存储或回显。host 从不存储或回传它；与另两者一样，它确实会搭乘客户端的出站信封，`subscribeEnvelopes()` 的观察者能看到——为该 tap 做脱敏是整个配置面的改动，而非本方法一家的事。每一种拒绝（无人服务的 namespace、没有可读列表的协议、不可达端点、被拒凭据）都折叠为 `model-discovery-failed`，其消息是适配器自己的文本，details 点名被询问的端点，绝不点名所提供的凭据。失效通知让每个面无需轮询即保持收敛。`settings/document-updated` 与 `credentials/updated` 搭乘原样转发事件帧（见下），因此解析值未变的原始设置变更同样能到达客户端，凭据失效通知也仍然只带引用名、绝不带值。`llm/adapters-updated` 与 `settings/document-updated` 一并原样转发；具体模型消费方直接订阅这两个 owner 事件，因为拓扑提交和设置文档都能独立改变其目录。浏览器载体把整个配置面（含读取与原生操作：`settings.describe`/`openDocument`/`update`/`replace`/`mutate` 与 `credentials.describe`/`set`/`unset`）限制为仅接受来自回环地址的同源请求——即 `host.pickDirectory` 所在的特权集合。未装 settings 或凭据提供方的组合会以指名缺失插件、包含解决建议的 `internal` 错误应答这些领域。
+
+## 子代理空闲回收（仅本分支的生命周期策略）
+
+上游绝不会自行删除会话。本分支只新增一条生命周期策略——某个家庭希望无人使用的子代理会话自动消失，而不是靠人手清理——本节是它的全部文档。
+
+`ApiProxyService` 加载时启动一个宿主侧回收器（`src/subagent-idle-reaper.ts`）：启动时一轮，之后每个扫描间隔一轮，无需 RPC、无需浏览器参与、无需用户操作。每轮列出持久化会话存储，销毁每一个最后一条存储事件已超过 `idleMs` 的子代理（subagent）会话。空闲时长取自日志，绝不取自进程启动时间，因此重启不会重置任何会话的时钟，重启前就已静默的会话会在启动那一轮被回收，而不是再等一个完整间隔。
+
+**它只回收子代理会话。** 判定依据是持久化头中的 `origin: 'subagent'`——该字段由派生（spawn）委派路径（`subagent/child-agent.ts: childSessionMeta`）写入一次，此处从存储读回。其余任何会话都无法满足它：`session.create` 从不设置该字段，每个 `<profile>`-每代理的持久收件箱行是通过同一路径以客户端自选 id 创建的，而 fork 是自成一体的顶层会话，其 `parentSession` 只是粗略来源而非归属关系。因此一个人的会话——包括已静默一年的收件箱行——在任何年龄都不是候选，回收器也不需要了解 id 的形状，这正是本包保持与 profile 无关的原因。
+
+**它绝不碰仍有活工作的会话。** Agent 处于 `running`，或 Agent 持有排队工作（`inbox.hasPending`：排队的下一轮或待处理的引导输入）的会话，无论最后事件多旧都跳过。父代理仍在使用中的子会话不算空闲，而且该判定先于空闲时钟检查。
+
+**销毁就是 `session.destroy` 本身。** 协议方法的处理体是一个宿主函数（`src/api-proxy.ts` 中的 `destroySession`），RPC 与回收器都调用它，因此取消后等待收敛、后代收集、workspace／投影清理、作为提交点的日志删除及其先后顺序，在人手动清除会话与定时器自动回收之间不可能发生偏移。回收器自身不删除任何日志、也不释放任何 Agent。来自该例程的拒绝（轮次无法收敛、本进程中另一归属方持有生命周期、后端无法删除）是正常结果：本轮记录会话 id 与拒绝原因，原样保留该会话，下一轮再试。每个会话每轮只尝试一次，绝不形成重试循环，也绝不为达成结果而强行删除日志。随父会话一起回收的子代理后代会在此后不再被重复寻址。
+
+**轮次行为毫无变化。** 没有模型调用、没有标题生成、没有收件箱条目、不影响预算或目标轮次；回收器属于 Host 的关注点。客户端完全不需要改动，也刻意没有 UI：被回收的会话只是不再出现在它已不存在的那些存储中。
+
+**阈值在哪里。** 网关插件配置分节 `subagentIdleReap: { idleMs, scanIntervalMs }`——默认 `21600000`（六小时）与 `3600000`（一小时），由 Web 组合包的 `host-apiproxy` 行交付，并在加载时校验：`idleMs` 低于一小时、`scanIntervalMs` 低于一分钟（含零与负值）会在启动时被拒绝并指名出错字段，而不是被静默套用。只有调用方传入该分节时 `createApiProxy` 才会启动定时器，因此裸嵌入不会回收任何它未被授权回收的东西。
+
+每轮会为判定一个冷子代理各读取一次其日志以取得最后事件时间（已附加会话改用其内存日志，既更新又无开销），因此扫描成本是每个候选项每间隔一次工件解析；一旦 [持久化最后活动索引](../../../.agents/notes/proposed/architecture/2026-07-29-durable-last-activity-index.md) 落地，这将成为一次索引读取。
 
 ## 载体层（`/client` + 根路径）
 

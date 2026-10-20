@@ -1356,6 +1356,51 @@ are the candidates for open-sourcing.
      keeps the note with its marker, and accepts a second note on the resumed
      cold session.
 
+24. **Subagent sessions idle for six hours are destroyed** (`host/apiproxy`;
+    ticket `b1458dbd`) — the household asked for dead subagent conversations to
+    clear themselves rather than be cleared by hand. This is a fork-only
+    lifecycle policy: upstream never deletes a session on its own, so an
+    upstream pull drops it and the row has to be re-added (nothing else depends
+    on it, and no upstream seam owns it).
+
+    - **What it does.** `ApiProxyService` arms `src/subagent-idle-reaper.ts`: one
+      pass at boot plus one per scan interval, destroying each **subagent**
+      session whose last stored event is at least `idleMs` old — default six
+      hours, hourly cadence.
+    - **Where the threshold lives.** The gateway plugin config section
+      `subagentIdleReap: { idleMs, scanIntervalMs }` (same normalized-defaults
+      test and `docs/config-catalog.md` as the other rows). Validated at load:
+      `idleMs` under one hour and `scanIntervalMs` under one minute are refused
+      at boot. Idleness is read from the durable log's last event, never from
+      process start, so a restart resets nobody's clock.
+    - **What it deliberately does NOT touch.** Anything that is not a subagent
+      session — `origin: 'subagent'` in the durable header is the only
+      predicate, so a person's top-level conversation and a persistent
+      `<profile>`-per-agent inbox row survive any age — and any session that is
+      running or holds queued work, whatever its log age says. It also reaps
+      nothing at all unless the gateway plugin passes the policy: a bare
+      `createApiProxy` arms no timer.
+    - **One destroy path.** The `session.destroy` handler body became the host
+      function `destroySession` in `src/api-proxy.ts`; the RPC and the reaper
+      both call it, so cancel-settle, descendant collection,
+      workspace/projection cleanup and the commit-point ordering cannot drift.
+      A refusal is logged with the session id and reason and retried next pass;
+      the reaper never deletes a log to force an outcome.
+    - **No turn behaviour, no UI.** No model call, title, inbox entry, budget or
+      goal-round effect, and the browser needs no change at all — reaping is a
+      Host concern.
+    - **Proven, not asserted.** `packages/host/apiproxy/tests/subagent-idle-reaper.spec.ts`
+      runs the real spine (JSONL persistence, real Agent lifecycles, a temporary
+      home): the old subagent is gone from the log directory, the store and
+      `session.list`, while a fresh subagent, a running one (asserted through the
+      pass report's `running` reason, so the guard is proven ahead of the idle
+      clock), one holding parked queued work, an old top-level conversation and
+      an old `session-inbox-owen-delta` row all survive untouched; a refusal is
+      logged, deletes nothing and retries; the exact threshold is idle and one
+      millisecond newer is not; the config refuses nonsense at boot. Mutation
+      checks: dropping the origin predicate, either live-work guard, or the
+      inclusive threshold boundary each fails the suite.
+
 ## Model options from the household AWS account
 
 The `amazon-bedrock` route in `$DSH_HOME/settings.yaml` (category **Amazon Web

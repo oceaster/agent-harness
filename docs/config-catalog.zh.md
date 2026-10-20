@@ -824,10 +824,39 @@ export interface Config {
    * @default 10000
    */
   destroyCancelSettleMs?: number
+  /**
+   * Fork-only housekeeping policy: automatically destroy subagent sessions that
+   * have been idle past `idleMs`, one scan per `scanIntervalMs`. Idleness is
+   * measured from the durable log's last event, never from process start, so a
+   * restart resets nobody's clock. A session that is running, or whose Agent
+   * holds queued work, is never reaped, and neither is anything that is not a
+   * subagent (`origin: 'subagent'` in its durable header) — a person's own
+   * conversation, including a persistent per-agent inbox row, is untouchable at
+   * any age. Reaping reuses `session.destroy` in full; the reaper deletes no log
+   * itself and a destroy refusal is logged and retried on the next pass.
+   * `idleMs` must be at least one hour and `scanIntervalMs` at least one
+   * minute: a nonsense value is refused when the plugin loads rather than
+   * silently applied.
+   * @default { idleMs: 21600000, scanIntervalMs: 3600000 }
+   */
+  subagentIdleReap?: SubagentIdleReapConfig
+}
+
+/**
+ * The `subagentIdleReap` plugin-config section. Both bounds are enforced by the
+ * schema, so a deployment naming zero, a negative value or a sub-hour threshold
+ * is refused at boot with the offending path instead of silently running a
+ * policy nobody asked for.
+ */
+export interface SubagentIdleReapConfig {
+  /** Idle threshold measured from the durable log's last event. @default 21600000 */
+  idleMs: number
+  /** Cadence of one scan pass. @default 3600000 */
+  scanIntervalMs: number
 }
 ```
 
-来源：[`packages/host/apiproxy/src/index.ts:41`](../packages/host/apiproxy/src/index.ts)
+来源：[`packages/host/apiproxy/src/index.ts:59`](../packages/host/apiproxy/src/index.ts)
 
 <a id="deepseek-aidsh-host-directory-picker-browse"></a>
 
