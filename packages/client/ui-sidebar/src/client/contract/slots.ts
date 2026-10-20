@@ -41,10 +41,27 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export interface SidebarSectionOwnerProps {
   /** Shell fold-state output: wide renders the full browser, rail the icon column. */
   wide: boolean
+  /**
+   * The frame is portrait-shaped (taller than wide): the column floats over the
+   * chat, so the occupant withholds what only makes sense over a pushed-away
+   * chat — the rail keeps the heads and the names, nothing else. Optional: an
+   * occupant that does not care about the shape reads nothing (absent means
+   * landscape), so a registrant's props need not grow a fact it ignores.
+   */
+  portrait?: boolean
   /** Rail icons request expansion; the browser rides the wide flip for focus. */
   expandSidebar: () => void
   /** The inbox header owns the expanded fold control. */
   collapseSidebar: () => void
+  /**
+   * Call from a selection event (a row, a rail glyph, a channel) to collapse the
+   * column in portrait. Portrait only, and a no-op when the column is already
+   * collapsed, so a person's manual expand is never undone by a render — only by
+   * the next selection. Landscape frames never collapse here. Optional for the
+   * same reason as `portrait`: a selection surface that does not fold the
+   * column simply does not call it.
+   */
+  collapseOnSelection?: () => void
 }
 
 /**

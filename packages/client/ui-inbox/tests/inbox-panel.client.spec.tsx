@@ -63,6 +63,7 @@ function store(initial: Partial<InboxState> = {}): SnapshotStore<InboxState> {
 function mount(overrides: {
   state?: Partial<InboxState>
   wide?: boolean
+  portrait?: boolean
 } = {}) {
   const inbox = store(overrides.state)
   const open = vi.fn()
@@ -70,6 +71,7 @@ function mount(overrides: {
   const load = vi.fn()
   const expandSidebar = vi.fn()
   const collapseSidebar = vi.fn()
+  const collapseOnSelection = vi.fn()
   const channels = createSnapshotStore<ChannelState>({ rows:[{ id:'delta-darwin',name:'Delta-Darwin',agents:['delta','darwin'] }],selected:null,messages:[],error:null,loading:false })
   const openChannel = vi.fn()
   const clearChannel = vi.fn()
@@ -78,8 +80,10 @@ function mount(overrides: {
   const neverHook = (() => { throw new Error('the inbox panel must not read global hooks') }) as never
   const props: InboxPanelProps = {
     wide: overrides.wide ?? true,
+    portrait: overrides.portrait ?? false,
     expandSidebar,
     collapseSidebar,
+    collapseOnSelection,
     useChannels: bindSnapshotSelector(channels),
     openChannel,
     clearChannel,
@@ -93,7 +97,8 @@ function mount(overrides: {
   }
   const view = render(<InboxPanel {...props} />)
   return {
-    ...view, inbox, channels, open, clear, load, expandSidebar, collapseSidebar, openChannel, clearChannel,
+    ...view, inbox, channels, open, clear, load, expandSidebar, collapseSidebar, collapseOnSelection,
+    openChannel, clearChannel,
   }
 }
 
@@ -529,5 +534,134 @@ describe('inbox panel: failures, states and the rail', () => {
     fireEvent.click(screen.getByTestId('ui-inbox-rail-agent-c'))
     expect(b.expandSidebar).toHaveBeenCalledTimes(1)
     expect(b.open).toHaveBeenCalledWith('agent-c')
+  })
+
+  it('rail glyphs keep each row name, its selected state and the channel row', () => {
+    const b = mount({ wide: false, state: { openAgent: 'agent-a' } })
+    expect(screen.getByTestId('ui-inbox-rail-agent-a').getAttribute('aria-label'))
+      .toBe('Open your conversation with Alpha')
+    expect(screen.getByTestId('ui-inbox-rail-agent-a').getAttribute('aria-current')).toBe('true')
+    expect(screen.getByTestId('ui-inbox-rail-agent-b').getAttribute('aria-current')).toBeNull()
+    // The channel group rides the rail with the channel's own row name.
+    const channel = screen.getByTestId('agent-channel-rail-delta-darwin')
+    expect(channel.getAttribute('aria-label')).toBe('Delta-Darwin')
+    expect(channel.getAttribute('aria-current')).toBeNull()
+    fireEvent.click(channel)
+    expect(b.openChannel).toHaveBeenCalledWith('delta-darwin')
+    // A selected channel owns the current marker, and the agent row lets go of it.
+    act(() => {
+      b.channels.set({
+        ...b.channels.getSnapshot(),
+        selected: { id: 'delta-darwin', name: 'Delta-Darwin', agents: ['delta', 'darwin'] },
+      })
+    })
+    expect(screen.getByTestId('agent-channel-rail-delta-darwin').getAttribute('aria-current')).toBe('true')
+    expect(screen.getByTestId('ui-inbox-rail-agent-a').getAttribute('aria-current')).toBeNull()
+  })
+
+  it('the rail carries no status copy, timestamp, header or menu', () => {
+    mount({ wide: false })
+    // Not rendered at all — the rail is a heads-only surface, so there is
+    // nothing here that a keyboard could reach while it cannot be seen.
+    expect(screen.queryAllByTestId(/^ui-inbox-state-/)).toHaveLength(0)
+    expect(screen.queryAllByTestId(/^ui-inbox-menu-/)).toHaveLength(0)
+    expect(screen.queryAllByTestId(/^ui-inbox-row-/)).toHaveLength(0)
+    expect(screen.queryByTestId('ui-inbox-refresh')).toBeNull()
+    expect(screen.queryByTestId('ui-inbox-panel')).toBeNull()
+    expect(screen.queryByText('Working...')).toBeNull()
+    expect(screen.queryByText('5m ago')).toBeNull()
+    expect(screen.queryByText('Inbox')).toBeNull()
+    // The only interactive nodes are the glyphs themselves.
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.every(button => /rail/.test(button.getAttribute('data-testid') ?? ''))).toBe(true)
+  })
+
+  it('a channel rail glyph reflects its participants and selects the channel', () => {
+    // A channel whose participants ARE available rows: the dot reads online,
+    // and the glyph carries the channel's own name and selected state.
+    const b = mount({
+      wide: false,
+      state: {
+        rows: [
+          row({ agent: 'delta', name: 'Delta' }),
+          row({ agent: 'darwin', name: 'Darwin' }),
+        ],
+      },
+    })
+    b.channels.set({
+      rows: [{ id: 'delta-darwin', name: 'Delta-Darwin', agents: ['delta', 'darwin'] }],
+      selected: null, messages: [], error: null, loading: false,
+    })
+    const glyph = screen.getByTestId('agent-channel-rail-delta-darwin')
+    const dot = glyph.querySelector('[data-presence]')
+    expect(dot?.getAttribute('data-presence')).toBe('online')
+    expect(dot?.getAttribute('aria-label')).toBe('Online')
+    fireEvent.click(glyph)
+    expect(b.openChannel).toHaveBeenCalledWith('delta-darwin')
+  })
+
+  it('a rail glyph in portrait opens in place instead of unfolding the inbox', () => {
+    const b = mount({ wide: false, portrait: true })
+    fireEvent.click(screen.getByTestId('ui-inbox-rail-agent-c'))
+    expect(b.expandSidebar).not.toHaveBeenCalled()
+    expect(b.collapseOnSelection).toHaveBeenCalledTimes(1)
+    expect(b.open).toHaveBeenCalledWith('agent-c')
+    // Same for a channel glyph: portrait never unfolds the menu over the chat.
+    fireEvent.click(screen.getByTestId('agent-channel-rail-delta-darwin'))
+    expect(b.expandSidebar).not.toHaveBeenCalled()
+    expect(b.openChannel).toHaveBeenCalledWith('delta-darwin')
+  })
+})
+
+describe('inbox panel: auto-collapse on selection', () => {
+  it('an agent row click collapses the column, in that click', () => {
+    const b = mount()
+    fireEvent.click(screen.getByTestId('ui-inbox-open-agent-a'))
+    expect(b.collapseOnSelection).toHaveBeenCalledTimes(1)
+    expect(b.open).toHaveBeenCalledWith('agent-a')
+  })
+
+  it('a channel row click collapses the column, in that click', () => {
+    const b = mount()
+    fireEvent.click(screen.getByTestId('agent-channel-open-delta-darwin'))
+    expect(b.collapseOnSelection).toHaveBeenCalledTimes(1)
+    expect(b.openChannel).toHaveBeenCalledWith('delta-darwin')
+  })
+
+  it('an older owner share that supplies neither prop behaves as landscape', () => {
+    // Registrants that predate the portrait contract simply do not pass the two
+    // optional props: the panel must still render, still select, and never
+    // collapse the column — absent means landscape.
+    const inbox = store()
+    const open = vi.fn()
+    const props = {
+      wide: true,
+      expandSidebar: vi.fn(),
+      collapseSidebar: vi.fn(),
+      useChannels: bindSnapshotSelector(createSnapshotStore<ChannelState>({
+        rows: [], selected: null, messages: [], error: null, loading: false,
+      })),
+      openChannel: vi.fn(),
+      clearChannel: vi.fn(),
+      useSessions: (() => { throw new Error('unused') }) as never,
+      useWorkspaces: (() => { throw new Error('unused') }) as never,
+      useInbox: bindSnapshotSelector(inbox),
+      load: vi.fn(),
+      open,
+      clear: vi.fn(),
+      t,
+    } as InboxPanelProps
+    render(<InboxPanel {...props} />)
+    fireEvent.click(screen.getByTestId('ui-inbox-open-agent-a'))
+    expect(open).toHaveBeenCalledWith('agent-a')
+  })
+
+  it('nothing collapses without a selection: no render, no read, no menu', () => {
+    const b = mount()
+    // Re-render through a store write that is not a selection.
+    act(() => { b.inbox.set({ ...b.inbox.getSnapshot(), busy: ['agent-a'] }) })
+    fireEvent.click(screen.getByTestId('ui-inbox-refresh'))
+    fireEvent.click(screen.getByTestId('ui-inbox-menu-agent-a'))
+    expect(b.collapseOnSelection).not.toHaveBeenCalled()
   })
 })

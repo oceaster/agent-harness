@@ -22,6 +22,8 @@ Completed-turn and fatal-error markers come from trusted host events and persist
 
 ## Extension points
 
+Portrait changes the shape and nothing else. The region receives `portrait` from the sidebar shell: the rail then draws only the heads — one glyph per agent row and one per channel row, each keeping its row's accessible name (`Open your conversation with X`, or the channel's own name) and its `aria-current` selected state — and a rail glyph opens that conversation in place instead of unfolding the inbox over the chat. Every selection (an agent row, a rail glyph, a channel row) calls `collapseOnSelection` first, so the chosen conversation gets the screen back in one click; the callback is portrait-only and a no-op while the column is already collapsed, so a manual expand is never undone by a render. Status copy (`Working... (3/4)` and friends), timestamps, section headings, menus, the refresh control and the settings label are not rendered in rail mode at all, rather than merely hidden.
+
 The plugin occupies `sidebar.workspaces` and registers the `agent-channel` center page. Its slot injection publishes controller snapshots and callbacks; components render only those props. The session-list, workspace-browser and new-session plugins are excluded from this deployment's composition.
 
 ## Model Experience

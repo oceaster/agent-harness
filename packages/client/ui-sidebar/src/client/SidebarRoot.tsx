@@ -44,6 +44,7 @@ const SCROLLBAR_LINGER_MS = 2000
 export function SidebarRoot({
   collapsed,
   width,
+  portrait,
   toggleSidebar,
   t,
   renderSlot,
@@ -112,12 +113,21 @@ export function SidebarRoot({
     }
   }, [pointerInside])
 
+  // A selection hands the screen back to the chat, in portrait only. Fired by
+  // the region's selection events, never by a render: an expanded panel stays
+  // expanded until the next selection, and a collapsed one is left alone (the
+  // narrow toggle would otherwise flip it back open).
+  const collapseOnSelection = (): void => {
+    if (portrait && !collapsed) toggleSidebar()
+  }
+
   return (
     <div
       ref={column}
       className={clsx(
         css.root, !wide && css.collapsed, !wide && everWide.current && css.railIn,
         collapsed && wide && css.fading, !pointerInside && css.quietBars,
+        portrait && css.portrait,
       )}
       style={wide ? { width: collapsed ? lastWideWidth.current : width } : undefined}
       onPointerEnter={() => {
@@ -126,13 +136,16 @@ export function SidebarRoot({
       }}
       onPointerLeave={() => { armLinger() }}
     >
-      {/* The rail owns its expand control; the wide inbox owns its header control. */}
+      {/* The rail owns its expand control; the wide inbox owns its header control.
+          Portrait floats that control over the chat's left margin, where it is
+          the way back into the inbox — so its name says so. */}
       {!wide && <div className={css.topRow}>
-        <Tooltip label={t('toggle.open')} delayMs={500}>
+        <Tooltip label={portrait ? t('portrait.expand') : t('toggle.open')} delayMs={500}>
           <button
             type="button"
             className={clsx(css.iconButton, css.toggle)}
-            aria-label={t('toggle.open')}
+            aria-label={portrait ? t('portrait.expand') : t('toggle.open')}
+            data-testid="ui-sidebar-expand"
             onClick={() => { toggleSidebar() }}
           >
             {/* Rail icons render at 18 (figma rail spec); expanded keeps the glyph-native sizes. */}
@@ -146,8 +159,10 @@ export function SidebarRoot({
       <div className={css.regionArea}>
         {renderSlot('sidebar.workspaces', {
           wide,
+          portrait,
           expandSidebar: () => { if (collapsed) toggleSidebar() },
           collapseSidebar: () => { toggleSidebar() },
+          collapseOnSelection,
         })}
       </div>
 

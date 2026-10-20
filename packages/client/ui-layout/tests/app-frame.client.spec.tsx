@@ -15,7 +15,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
-import { SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+import { SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
@@ -46,6 +46,10 @@ class ResizeObserverStub {
 }
 
 let frameWidth = 1920
+// The frame box is WIDER than it is tall by default: these specs describe the
+// landscape concession chain, and portrait is a separate contract with its own
+// describe block below. A spec that wants portrait sets both numbers.
+let frameHeight = 1080
 
 /** Test-local selector hook over a framework-neutral store instance. */
 function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapshot: () => T }) {
@@ -53,7 +57,9 @@ function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapsho
 }
 
 function mountFrame() {
-  window.innerWidth = frameWidth // first-render viewport source before the observer fires
+  // First-render viewport source before the observer fires.
+  window.innerWidth = frameWidth
+  window.innerHeight = frameHeight
   const instance = createLayoutStore().create()
   const slotCalls: { key: string; props: unknown }[] = []
   const renderSlot = ((key: string, owner: object) => {
@@ -113,6 +119,7 @@ function drag(handle: Element, fromX: number, toX: number): void {
 
 beforeEach(() => {
   frameWidth = 1920
+  frameHeight = 1080
   selectedSession.current = 's-test' as SessionId
   selectedSessionBlank.current = false
   baselinesReady.current = true
@@ -121,8 +128,12 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => { cb(0) }, 16) as unknown as number)
   vi.stubGlobal('cancelAnimationFrame', (h: number) => { clearTimeout(h) })
   window.innerWidth = frameWidth
+  window.innerHeight = frameHeight
   Element.prototype.getBoundingClientRect = function () {
-    return { width: frameWidth, height: 1080, top: 0, left: 0, right: frameWidth, bottom: 1080, x: 0, y: 0, toJSON: () => ({}) }
+    return {
+      width: frameWidth, height: frameHeight, top: 0, left: 0,
+      right: frameWidth, bottom: frameHeight, x: 0, y: 0, toJSON: () => ({}),
+    }
   }
   // jsdom lacks pointer capture: emulate per-element so hasPointerCapture gates pass.
   const captured = new WeakSet<Element>()
@@ -229,7 +240,7 @@ describe('AppFrame', () => {
 
   it('sidebar slot receives live concession output as owner props', () => {
     const { slotCalls } = mountFrame()
-    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({ collapsed: false, width: 280 })
+    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({ collapsed: false, width: 280, portrait: false })
   })
 
   it('sidebar drag widens through rAF-batched pointer moves', () => {
@@ -249,6 +260,7 @@ describe('AppFrame', () => {
 
   it('drag base is the rendered (concession-clamped) width, not the preference', () => {
     frameWidth = 1250 // step-2 squeeze: details renders 330 while preference is 360
+    frameHeight = 800
     const { frame, instance } = mountFrame()
     act(() => { instance.actions.openDetails() })
     expect(tracks(frame)).toEqual([280, 330])
@@ -271,7 +283,7 @@ describe('AppFrame', () => {
     expect(getByTestId('sidebar-content')).toBeTruthy()
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
     const lastSidebarCall = slotCalls.filter(c => c.key === 'sidebar').at(-1)!
-    expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
+    expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, portrait: false })
   })
 
   it('viewport shrink triggers the concession chain via ResizeObserver', () => {
@@ -300,15 +312,18 @@ describe('AppFrame', () => {
 describe('AppFrame — narrow-viewport auto-collapse', () => {
   it('mounts collapsed below the breakpoint with no sidebar handle', () => {
     frameWidth = 980
+    frameHeight = 800
     const { frame, slotCalls } = mountFrame()
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
-    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props)
+      .toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, portrait: false })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })
 
   it('narrow toggle re-expands over the squeezed center and back', () => {
     frameWidth = 980
+    frameHeight = 800
     const { frame, instance } = mountFrame()
     act(() => { instance.actions.toggleSidebar() })
     expect(tracks(frame)).toEqual([280, 0])
@@ -323,6 +338,7 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     const { frame, instance } = mountFrame()
     act(() => { instance.actions.toggleSidebar() }) // close while wide: preference 0
     frameWidth = 980
+    frameHeight = 800
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
     act(() => { instance.actions.toggleSidebar() })
     expect(tracks(frame)).toEqual([280, 0])
@@ -333,6 +349,7 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     const { frame, instance } = mountFrame()
     act(() => { instance.actions.setSidebar(400) })
     frameWidth = 980
+    frameHeight = 800
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     frameWidth = 1920
@@ -395,6 +412,7 @@ describe('AppFrame — unmount with an in-flight resize frame', () => {
   it('cancels the pending rAF on unmount (no post-unmount setState)', () => {
     const { unmount } = mountFrame()
     frameWidth = 800
+    frameHeight = 600
     act(() => { fireResize?.() }) // rAF scheduled, NOT flushed
     unmount()
     // Flushing after unmount must be a no-op (the frame was cancelled).
@@ -407,5 +425,109 @@ describe('AppFrame — unmount with an in-flight resize frame', () => {
     frameWidth = 1250
     act(() => { fireResize?.(); fireResize?.(); vi.advanceTimersByTime(20) })
     expect(tracks(frame)).toEqual([280, 330])
+  })
+})
+
+describe('AppFrame — portrait overlay', () => {
+  /** Put the frame in portrait: 800x1200 is the desktop-portrait reference case. */
+  function mountPortrait(width = 800, height = 1200) {
+    frameWidth = width
+    frameHeight = height
+    return mountFrame()
+  }
+
+  const scrim = (frame: HTMLElement): HTMLElement | null => frame.querySelector('[data-testid="ui-layout-scrim"]')
+
+  it('gives the chat the whole frame width and no sidebar track', () => {
+    const { frame } = mountPortrait()
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(frame.style.gridTemplateColumns).toBe('0px minmax(0, 1fr) 0px')
+    expect(frame.hasAttribute('data-portrait')).toBe(true)
+    // Collapsed by default, like the narrow frame it already was.
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+    expect(frame.hasAttribute('data-portrait-overlay')).toBe(false)
+    expect(scrim(frame)).toBeNull()
+  })
+
+  it('floats the collapsed rail at its own width with no resize handle', () => {
+    const { frame, slotCalls } = mountPortrait()
+    const column = frame.querySelector('[class*="sidebarCol"]') as HTMLElement
+    expect(column.style.width).toBe(`${SIDEBAR_COLLAPSED}px`)
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props)
+      .toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, portrait: true })
+  })
+
+  it('the chat column width is identical collapsed and expanded, and expansion paints a scrim', () => {
+    const { frame, instance, slotCalls } = mountPortrait()
+    const columnOf = (): HTMLElement => frame.querySelector('[class*="centerCol"]') as HTMLElement
+    const collapsedWidth = frame.style.gridTemplateColumns
+    const collapsedColumn = columnOf().className
+
+    act(() => { instance.actions.toggleSidebar() })
+    expect(frame.hasAttribute('data-portrait-overlay')).toBe(true)
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(false)
+    // The chat keeps the width it would have had: no track moved.
+    expect(frame.style.gridTemplateColumns).toBe(collapsedWidth)
+    expect(columnOf().className).toBe(collapsedColumn)
+    // The floating column takes the widened portrait width, not a track.
+    const sidebar = slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props as { width: number; portrait: boolean }
+    expect(sidebar).toEqual({ collapsed: false, width: 496, portrait: true })
+    expect((frame.querySelector('[class*="sidebarCol"]') as HTMLElement).style.width).toBe('496px')
+    // Expanded paints the dimming scrim behind the panel.
+    expect(scrim(frame)).not.toBeNull()
+    expect(scrim(frame)!.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('a mobile portrait frame marks the panel as a full-frame menu', () => {
+    const { frame, instance } = mountPortrait(390, 844)
+    expect(frame.hasAttribute('data-portrait-mobile')).toBe(true)
+    act(() => { instance.actions.toggleSidebar() })
+    expect((frame.querySelector('[class*="sidebarCol"]') as HTMLElement).style.width).toBe('390px')
+    expect(scrim(frame)).not.toBeNull()
+  })
+
+  it('crossing into portrait from landscape drops a narrow-landscape manual expand', () => {
+    // 980x800 is landscape-narrow; expanding it is a manual override.
+    frameWidth = 980
+    frameHeight = 800
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.toggleSidebar() })
+    expect(instance.getSnapshot().narrowExpanded).toBe(true)
+    // Rotate: the frame becomes portrait and the override is dropped, so the
+    // overlay starts collapsed instead of covering the chat unasked.
+    frameWidth = 800
+    frameHeight = 1200
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    expect(frame.hasAttribute('data-portrait')).toBe(true)
+    expect(instance.getSnapshot().portrait).toBe(true)
+    expect(instance.getSnapshot().narrowExpanded).toBe(false)
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+  })
+
+  it('collapses on a selection event in portrait, and only then', () => {
+    const { frame, instance } = mountPortrait()
+    act(() => { instance.actions.toggleSidebar() }) // manual expand
+    expect(frame.hasAttribute('data-portrait-overlay')).toBe(true)
+    // A render — any render — is not a selection: there is no effect that
+    // collapses here, so the override survives the re-render below.
+    act(() => { instance.actions.setDetails(360) })
+    act(() => { instance.actions.closeDetails() })
+    expect(frame.hasAttribute('data-portrait-overlay')).toBe(true)
+    act(() => { instance.actions.collapseOnSelection() })
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+    expect(frame.hasAttribute('data-portrait-overlay')).toBe(false)
+    expect(scrim(frame)).toBeNull()
+  })
+
+  it('a landscape frame ignores the selection collapse', () => {
+    frameWidth = 1920
+    frameHeight = 1080
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.collapseOnSelection() })
+    // Landscape keeps its open column: the preference is untouched and the
+    // override is not a landscape concept.
+    expect(instance.getSnapshot().sidebar).toBe(SIDEBAR_DEFAULT)
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(false)
   })
 })

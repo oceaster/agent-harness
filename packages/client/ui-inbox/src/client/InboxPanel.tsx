@@ -4,6 +4,11 @@
  * Clear. Wide renders the section header plus rows; the rail renders one glyph
  * per agent so the collapsed column still has a body.
  *
+ * Portrait changes the shape, not the rows: the region receives `portrait`
+ * from the shell, keeps its rail free of everything but the glyphs, and
+ * collapses the column on every selection through `collapseOnSelection`, which
+ * the shell fires from the selection event (never from a render).
+ *
  * Presentation only: every value arrives through the composed props shares
  * (runtime share, injected face, locale seat). No ctx, no fetch, no agent list
  * of its own — the rows ARE the payload, so the panel cannot invent an agent or
@@ -192,8 +197,8 @@ function noticeText(notice: InboxNoticeCode, t: Translate): string {
  * @returns the inbox element tree.
  */
 export function InboxPanel({
-  wide, expandSidebar, collapseSidebar, useInbox, useChannels, load, open, clear,
-  openChannel, clearChannel, t,
+  wide, portrait = false, expandSidebar, collapseSidebar, collapseOnSelection = () => {},
+  useInbox, useChannels, load, open, clear, openChannel, clearChannel, t,
 }: InboxPanelProps) {
   const channelState = useChannels(snapshot => snapshot)
   const state = useInbox(snapshot => snapshot)
@@ -204,30 +209,67 @@ export function InboxPanel({
   // One clock read per render: every row's age is measured against the same now.
   const now = Date.now() / 1000
   const confirmed = confirmFor === null ? undefined : state.rows.find(row => row.agent === confirmFor)
+  /** Channel dot: green only when every participant is an available agent row. */
+  const channelsOnline = (agents: readonly string[]): boolean =>
+    agents.every(agent => state.rows.some(row => row.agent === agent && row.enabled !== false))
 
   if (!wide) {
+    // Rail: one glyph per row, in the same two groups the wide panel lists. Each
+    // glyph keeps its row's own accessible name and its selected state, so the
+    // shape change costs no identity — and it carries no status line, no
+    // timestamp and no menu, because a rail that overlays the chat (portrait)
+    // must not paint anything but the heads and their dots.
     return (
       <div className={css.rail} data-testid="ui-inbox-rail" aria-label={t('panel.rail.label')}>
         {state.rows.map((row) => {
           const busy = state.busy.includes(row.agent)
           const active = state.activeSubagents[row.agent] ?? 0
           const status = presenceOf(row, active)
+          const selected = state.openAgent === row.agent && channelState.selected === null
           return (
             <button
               key={row.agent}
               type="button"
-              className={clsx(css.railGlyph, state.openAgent === row.agent && css.railGlyphActive)}
+              className={clsx(css.railGlyph, selected && css.railGlyphActive)}
               data-testid={`ui-inbox-rail-${row.agent}`}
               aria-label={t('row.open', { name: row.name })}
+              aria-current={selected ? 'true' : undefined}
               aria-busy={busy}
               disabled={row.enabled === false}
               onClick={() => {
-                expandSidebar()
+                // Portrait: the rail already floats over the chat, so a glyph
+                // opens the conversation in place instead of unfolding the
+                // inbox menu over it.
+                if (!portrait) expandSidebar()
+                collapseOnSelection()
                 open(row.agent)
               }}
             >
               <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
               <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), row.agent, t)} />
+            </button>
+          )
+        })}
+        {channelState.rows.map((channel) => {
+          const online = channelsOnline(channel.agents)
+          const selected = channelState.selected?.id === channel.id
+          return (
+            <button
+              key={`channel:${channel.id}`}
+              type="button"
+              className={clsx(css.railGlyph, selected && css.railGlyphActive)}
+              data-testid={`agent-channel-rail-${channel.id}`}
+              aria-label={channel.name}
+              aria-current={selected ? 'true' : undefined}
+              onClick={() => {
+                if (!portrait) expandSidebar()
+                collapseOnSelection()
+                openChannel(channel.id)
+              }}
+            >
+              <AgentAvatar agents={channel.agents} label="↔" />
+              <PresenceDot status={online ? 'online' : 'offline'}
+                label={t(online ? 'presence.online' : 'presence.offline')} />
             </button>
           )
         })}
@@ -315,7 +357,13 @@ export function InboxPanel({
                     aria-current={state.openAgent === row.agent && channelState.selected === null ? 'true' : undefined}
                     aria-busy={busy}
                     disabled={row.enabled === false}
-                    onClick={() => { open(row.agent) }}
+                    onClick={() => {
+                      // The selection event, not a render effect: in portrait
+                      // the chosen conversation gets the screen back, and a
+                      // manual expand is undone by this click only.
+                      collapseOnSelection()
+                      open(row.agent)
+                    }}
                   >
                     <span className={css.avatarStatus}>
                       <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
@@ -370,14 +418,14 @@ export function InboxPanel({
         <h3 className={css.channelTitle}>{t('channel.section')}</h3>
         <ul className={css.list}>
           {channelState.rows.map((channel) => {
-            const online = channel.agents.every(agent => state.rows.some(row => row.agent === agent && row.enabled !== false))
+            const online = channelsOnline(channel.agents)
             return <li key={channel.id}
               className={clsx(css.row, channelState.selected?.id === channel.id && css.rowActive)}
               data-testid={'agent-channel-row-' + channel.id}>
               <div className={css.rowLine}>
                 <button type="button" className={css.rowButton} data-testid={'agent-channel-open-' + channel.id}
                   aria-current={channelState.selected?.id === channel.id ? 'true' : undefined}
-                  onClick={() => { openChannel(channel.id) }}>
+                  onClick={() => { collapseOnSelection(); openChannel(channel.id) }}>
                   <span className={css.avatarStatus}>
                     <AgentAvatar agents={channel.agents} label="↔" />
                     <PresenceDot status={online ? 'online' : 'offline'}

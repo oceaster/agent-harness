@@ -519,6 +519,63 @@ re-applied on every upstream pull:
    catalog (`packages/extensions/cordis-client-runner/src/client/slot-catalog.ts`,
    `pnpm run gen-client-catalog`) drops its `settings.plugin.item` entry.
 
+14. **Portrait layout** (`packages/client/ui-layout` + `ui-sidebar` +
+   `ui-inbox`) — a portrait-shaped frame (width < height) behaves like a phone
+   app instead of a squeezed desktop. Owen asked for it in his own words: the
+   inbox auto-collapses whenever an item is selected, expanding does not squeeze
+   the chat but covers it with a dimming scrim, at mobile widths the panel is a
+   full-frame slide-in from the left, and while collapsed it is a transparent
+   overlay carrying only the floating heads and a floating expand control.
+
+   The shape is a SECOND geometry contract in `ui-layout/src/client/columns.ts`,
+   solved beside the concession chain and never mixed with it: `computeColumns`
+   is still the landscape answer, `computeFrameLayout` picks between the two,
+   and the comparison is strict (`width < height`), so a square frame keeps the
+   old chain. `ui-layout/README.md` carries the contract.
+
+   Numbers, chosen from the measurements rather than guessed:
+
+   - **Portrait panel width** is 62% of the frame, capped at 620px
+     (`SIDEBAR_PORTRAIT_RATIO` / `SIDEBAR_PORTRAIT_MAX`). Half the frame was
+     rejected because 50% of the reference 800px-wide portrait frame is 400px —
+     below the 420px landscape clamp, so it could not be "much wider". At
+     800x1200 the floating panel is 496px.
+   - **Mobile breakpoint** 600px (`PORTRAIT_MOBILE_MAX`): at or below it the
+     expanded column spans the frame and slides in from the left.
+   - **The chat column keeps its width in both portrait states** (the sidebar
+     owns no grid track in portrait), and reserves the 56px rail as a padding
+     inset, so neither the heads nor the expand button sit on the chat's text.
+   - **Scrim** `#000` at opacity 0.55, inert (`aria-hidden`, no handlers); the
+     cover-and-dim is the scrim plus the floating panel, never a squeeze.
+
+   The auto-collapse is a selection event, not a render effect: the sidebar
+   shell hands the region `portrait` and `collapseOnSelection`, and the inbox's
+   three selection paths (agent row, rail glyph, channel row) call it before
+   opening. It writes the narrow override, never the width preference, is a
+   no-op when already collapsed, and does nothing in landscape — so a manual
+   expand survives until the next selection and every landscape frame is
+   untouched. A rail glyph in portrait opens its conversation in place instead
+   of unfolding the inbox over the chat.
+
+   The collapsed portrait rail is transparent (`ui-sidebar` drops its fill) and
+   renders no header, refresh, menus, state lines, timestamps or settings label
+   — those are absent from the tree in rail mode, not made transparent, so no
+   keyboard user can tab into a control they cannot see. Rail glyphs keep each
+   row's accessible name and `aria-current` state, and the channel rows now
+   appear in the rail too; the fold control is named **Expand inbox**
+   (`portrait.expand`) there, since it expands the inbox rather than a generic
+   sidebar.
+
+   Re-apply on an upstream pull: `columns.ts` (portrait constants, `isPortrait`,
+   `planPortrait`, `computeFrameLayout`), the portrait block in
+   `AppFrame.module.css` plus the `data-portrait*` attributes in `AppFrame.tsx`,
+   the `portrait`/`collapseOnSelection` owner props (`SidebarOwnerProps`,
+   `SidebarSectionOwnerProps` — both also recorded in the generated
+   `slot-catalog.ts`), the portrait rail rule in `SidebarRoot.module.css`, and
+   the rail/selection changes in `ui-inbox`. The browser evidence is
+   `packages/client/ui-inbox/tests/fixture/portrait-probe.mjs` against the
+   keyless `dsh web` fixture at 390x844, 800x1200, 1200x800 and 1280x900.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

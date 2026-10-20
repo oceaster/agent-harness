@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CENTER_MIN, clampWidth, computeColumns,
-  DETAILS_DEFAULT, DETAILS_MIN, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MIN,
+  CENTER_MIN, clampWidth, computeColumns, computeFrameLayout, isPortrait, planPortrait,
+  DETAILS_DEFAULT, DETAILS_MIN, PORTRAIT_MOBILE_MAX,
+  SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
+  SIDEBAR_PORTRAIT_MAX, SIDEBAR_PORTRAIT_RATIO,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 
 // Numeric preference form (0 = closed); helpers keep the scenario names readable.
@@ -91,5 +93,108 @@ describe('computeColumns — degenerate viewports', () => {
     // Reaches step 3's auto-close with the compact rail sidebar.
     expect(computeColumns(500, closed(300), open(DETAILS_DEFAULT)))
       .toEqual({ sidebar: SIDEBAR_COLLAPSED, center: 500 - SIDEBAR_COLLAPSED, details: 0 })
+  })
+})
+
+describe('isPortrait', () => {
+  it('is true only when the frame is taller than it is wide', () => {
+    expect(isPortrait(390, 844)).toBe(true)
+    expect(isPortrait(800, 1200)).toBe(true)
+    expect(isPortrait(1200, 800)).toBe(false)
+    expect(isPortrait(1280, 900)).toBe(false)
+  })
+
+  it('a square frame is landscape: the strict comparison keeps the old contract', () => {
+    expect(isPortrait(900, 900)).toBe(false)
+    expect(isPortrait(900, 901)).toBe(true)
+  })
+
+  it('an unknown height (0, as an unlaid-out frame reports) is landscape', () => {
+    expect(isPortrait(800, 0)).toBe(false)
+  })
+})
+
+describe('planPortrait', () => {
+  it('is inert in landscape: no width, no full-frame menu', () => {
+    expect(planPortrait(1280, 900)).toEqual({ portrait: false, width: 0, fullscreen: false })
+  })
+
+  it('gives a desktop-portrait frame a widened floating column, above the landscape clamp', () => {
+    const plan = planPortrait(800, 1200)
+    expect(plan.portrait).toBe(true)
+    expect(plan.fullscreen).toBe(false)
+    expect(plan.width).toBe(Math.round(800 * SIDEBAR_PORTRAIT_RATIO))
+    expect(plan.width).toBe(496)
+    // The point of the portrait contract: wider than the landscape drag clamp.
+    expect(plan.width).toBeGreaterThan(SIDEBAR_MAX)
+  })
+
+  it('caps the floating width at its ceiling and widens from the mobile seam', () => {
+    expect(planPortrait(2400, 3000)).toMatchObject({ width: SIDEBAR_PORTRAIT_MAX, fullscreen: false })
+    expect(planPortrait(700, 2000).width).toBe(Math.round(700 * SIDEBAR_PORTRAIT_RATIO))
+    expect(planPortrait(PORTRAIT_MOBILE_MAX + 1, 1200)).toEqual({
+      portrait: true,
+      width: Math.round((PORTRAIT_MOBILE_MAX + 1) * SIDEBAR_PORTRAIT_RATIO),
+      fullscreen: false,
+    })
+  })
+
+  it('turns the expanded column into a full-frame menu at mobile portrait widths', () => {
+    expect(planPortrait(PORTRAIT_MOBILE_MAX, 844)).toEqual({ portrait: true, width: 600, fullscreen: true })
+    expect(planPortrait(390, 844)).toEqual({ portrait: true, width: 390, fullscreen: true })
+  })
+})
+
+describe('computeFrameLayout — landscape is untouched', () => {
+  const cases: [number, number, number, number][] = [
+    [1920, 1080, SIDEBAR_DEFAULT, DETAILS_DEFAULT],
+    [1250, 800, SIDEBAR_DEFAULT, DETAILS_DEFAULT],
+    [980, 800, SIDEBAR_DEFAULT, DETAILS_DEFAULT],
+    [980, 800, 0, 0],
+    [800, 600, 0, DETAILS_DEFAULT],
+    [2560, 1440, 400, 500],
+  ]
+
+  it('returns exactly computeColumns for every landscape frame', () => {
+    for (const [width, height, sidebar, details] of cases) {
+      expect(computeFrameLayout(width, height, sidebar, details)).toEqual({
+        columns: computeColumns(width, sidebar, details),
+        portrait: { portrait: false, width: 0, fullscreen: false },
+      })
+    }
+  })
+})
+
+describe('computeFrameLayout — portrait overlays the chat', () => {
+  it('gives the sidebar no track, so the chat keeps the whole frame width', () => {
+    const layout = computeFrameLayout(800, 1200, SIDEBAR_DEFAULT, 0)
+    expect(layout.columns).toEqual({ sidebar: 0, center: 800, details: 0 })
+    expect(layout.portrait.portrait).toBe(true)
+    expect(layout.portrait.width).toBe(496)
+  })
+
+  it('the sidebar preference cannot squeeze a portrait chat', () => {
+    for (const sidebar of [0, SIDEBAR_MIN, SIDEBAR_DEFAULT, SIDEBAR_MAX]) {
+      expect(computeFrameLayout(800, 1200, sidebar, 0).columns).toEqual({ sidebar: 0, center: 800, details: 0 })
+    }
+  })
+
+  it('mobile portrait: the chat still owns the full frame, the panel takes all of it', () => {
+    const layout = computeFrameLayout(390, 844, SIDEBAR_DEFAULT, 0)
+    expect(layout.columns).toEqual({ sidebar: 0, center: 390, details: 0 })
+    expect(layout.portrait).toEqual({ portrait: true, width: 390, fullscreen: true })
+  })
+
+  it('details still concedes and auto-closes on a portrait frame', () => {
+    // 1000 - 360 = 640 = CENTER_MIN: details keeps its width on the seam.
+    expect(computeFrameLayout(1000, 1200, SIDEBAR_DEFAULT, DETAILS_DEFAULT).columns)
+      .toEqual({ sidebar: 0, center: CENTER_MIN, details: DETAILS_DEFAULT })
+    // 980 - 360 = 620 < CENTER_MIN: details shrinks to the largest floor that
+    // still leaves the center at its minimum, then center pins at CENTER_MIN.
+    expect(computeFrameLayout(980, 1200, SIDEBAR_DEFAULT, DETAILS_DEFAULT).columns)
+      .toEqual({ sidebar: 0, center: CENTER_MIN, details: 340 })
+    // 700 - 300 = 400 < CENTER_MIN: details closes, center takes the frame.
+    expect(computeFrameLayout(700, 1200, SIDEBAR_DEFAULT, DETAILS_DEFAULT).columns)
+      .toEqual({ sidebar: 0, center: 700, details: 0 })
   })
 })

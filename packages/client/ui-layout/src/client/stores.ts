@@ -16,11 +16,21 @@ import {
 /**
  * Layout store state: panel width preferences in px (0 = closed), plus the
  * narrow-viewport pair — `narrow` mirrors AppFrame's breakpoint reading
- * (viewport < SIDEBAR_AUTO_COLLAPSE) so toggleSidebar can pick semantics, and
- * `narrowExpanded` is the manual override that re-expands the auto-collapsed
- * sidebar over the squeezed center without rewriting the width preference.
+ * (portrait, or viewport < SIDEBAR_AUTO_COLLAPSE) so toggleSidebar can pick
+ * semantics, and `narrowExpanded` is the manual override that re-expands the
+ * auto-collapsed sidebar over the squeezed center without rewriting the width
+ * preference. `portrait` mirrors AppFrame's shape reading (width < height) and
+ * gates the collapse-on-selection rule: only a portrait frame collapses the
+ * column when a conversation or channel is chosen.
  */
-type LayoutState = { sidebar: number; details: number; narrow: boolean; narrowExpanded: boolean; page: string | null }
+type LayoutState = {
+  sidebar: number
+  details: number
+  narrow: boolean
+  narrowExpanded: boolean
+  portrait: boolean
+  page: string | null
+}
 
 /**
  * Annotation twin of the actions literal below (the export needs a declared
@@ -31,6 +41,8 @@ type LayoutActions = {
   setDetails: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
   setNarrow: (draft: LayoutState, narrow: boolean) => void
+  setPortrait: (draft: LayoutState, portrait: boolean) => void
+  collapseOnSelection: (draft: LayoutState) => void
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
   openPage: (draft: LayoutState, id: string | null) => void
@@ -48,7 +60,9 @@ type LayoutActions = {
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
   const handle = defineStore({
-    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, page: null }),
+    init: (): LayoutState => ({
+      sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, portrait: false, page: null,
+    }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
@@ -63,6 +77,23 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       setNarrow: (d, narrow: boolean) => {
         if (d.narrow === narrow) return
         d.narrow = narrow
+        d.narrowExpanded = false
+      },
+      // Shape changes drop the override for the same reason: a rotated or
+      // resized frame starts from its own contract default, not a stale one.
+      setPortrait: (d, portrait: boolean) => {
+        if (d.portrait === portrait) return
+        d.portrait = portrait
+        d.narrowExpanded = false
+      },
+      // Collapse-on-selection: a chosen conversation or channel hands the screen
+      // back to the chat. Portrait only, by contract — a landscape frame keeps
+      // its column on a selection exactly as it always did, manually expanded
+      // narrow landscape included. Writes the override, never the preference, and
+      // fires from the selection event: a manual expand survives until the next
+      // selection.
+      collapseOnSelection: (d) => {
+        if (!d.portrait) return
         d.narrowExpanded = false
       },
       openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },

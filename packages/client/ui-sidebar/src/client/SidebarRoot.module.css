@@ -29,6 +29,16 @@
   padding: 18px 10px 6px;
 }
 
+/* Portrait rail: the column floats over the chat instead of taking a track, so
+   while collapsed it paints no fill of its own and what is left on screen is
+   exactly the controls — the heads with their dots and the expand button above
+   them. Nothing is hidden behind transparency: the rail mode renders no header,
+   no refresh, no row menus, no state lines and no timestamps, and the settings
+   seat renders its icon without its label. */
+.root.collapsed.portrait {
+  background: transparent;
+}
+
 /* Scrollbars in the column are a pointer affordance: the shell adds this
    class whenever the pointer is not inside (SidebarRoot.tsx owns the linger),
    and rebinding ui-theme's indirection pair to `transparent` takes the thumb

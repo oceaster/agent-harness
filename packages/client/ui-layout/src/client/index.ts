@@ -98,6 +98,12 @@ export interface SidebarOwnerProps {
   collapsed: boolean
   /** Rendered column width in px (SIDEBAR_COLLAPSED when collapsed). */
   width: number
+  /**
+   * True when the frame is portrait-shaped (width < height). The column then
+   * floats over the chat instead of owning a grid track, so it drops its opaque
+   * fill and keeps only the controls the collapsed state carries.
+   */
+  portrait: boolean
 }
 
 /** Conversation owner share: business state and actions belong to the registrant. */

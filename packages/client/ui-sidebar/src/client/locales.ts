@@ -4,6 +4,7 @@
 export const zh = {
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
+  'portrait.expand': '展开收件箱',
 } satisfies Record<string, string>
 
 /** The sidebar namespace key union. */
@@ -13,4 +14,5 @@ export type SidebarKey = keyof typeof zh
 export const en = {
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
+  'portrait.expand': 'Expand inbox',
 } satisfies Record<SidebarKey, string>

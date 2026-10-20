@@ -29,6 +29,78 @@
   border-right: 1px solid var(--dsw-alias-border-l1);
 }
 
+/* ── Portrait: the sidebar floats over the chat ──────────────────────────
+   The frame gives the sidebar column no grid track in portrait (AppFrame's
+   solve), so this column is a positioned overlay sized inline by the component
+   and painted above the center column. Collapsed it is a transparent rail —
+   the floating heads and the expand control only — and expanded it is the wide
+   panel plus the scrim, with the chat keeping the width it had. Landscape
+   never matches these rules. */
+.frame[data-portrait] .sidebarCol {
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  border-right: none;
+  /* Mobile portrait slides the panel in and retracts its right edge on the way
+     out; the width transition is the slide once the panel is wider than the
+     rail. Reduced-motion drops both and keeps the state change. */
+  transition:
+    width var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    box-shadow var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.frame[data-portrait-overlay] .sidebarCol {
+  background: var(--dsw-specific-sidebar-fill);
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  box-shadow: 12px 0 32px rgb(0 0 0 / 35%);
+}
+
+/* The chat keeps its full column width in portrait, and reserves the rail's
+   width as an inset so neither the floating heads nor the expand button sit on
+   top of its text. The inset is a padding, not a track: the column's own width
+   is identical in the collapsed and expanded states. */
+.frame[data-portrait] .centerCol {
+  padding-left: var(--ui-frame-rail-width, 56px);
+  box-sizing: border-box;
+}
+
+/* Full-frame menu (mobile portrait): the panel enters from the left edge. */
+.frame[data-portrait-mobile][data-portrait-overlay] .sidebarCol {
+  animation: portrait-slide-in var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+@keyframes portrait-slide-in {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.4;
+  }
+}
+
+/* Dimming scrim behind the expanded floating panel. It covers the chat the
+   panel does not, so the covered surface reads as pushed back rather than
+   squeezed. Inert: no pointer handlers, hidden from assistive tech. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: #000;
+  opacity: 0.55;
+  animation: portrait-scrim-in var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+@keyframes portrait-scrim-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame[data-portrait] .sidebarCol,
+  .frame[data-portrait-mobile][data-portrait-overlay] .sidebarCol,
+  .scrim {
+    transition: none;
+    animation: none;
+  }
+}
+
 .centerCol {
   min-width: 0;
   display: flex;

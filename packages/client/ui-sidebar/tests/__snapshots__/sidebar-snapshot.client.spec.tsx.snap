@@ -15,6 +15,7 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
       <button
         aria-label="Open sidebar"
         class="iconButton toggle"
+        data-testid="ui-sidebar-expand"
         type="button"
       >
         <svg

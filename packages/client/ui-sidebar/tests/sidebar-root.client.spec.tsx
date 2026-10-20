@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type {
   SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarSectionOwnerProps,
   SidebarSettingsOwnerProps,
@@ -22,15 +22,19 @@ afterEach(() => {
 // props share; stub them as never-called functions.
 const neverHook = (() => { throw new Error('shell must not read global hooks') }) as never
 
-function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; width?: number } = {}) {
+function mountShell({ collapsed = false, width = 300, portrait = false }: {
+  collapsed?: boolean
+  width?: number
+  portrait?: boolean
+} = {}) {
   const toggleSidebar = vi.fn()
   let regionOwner: SidebarSectionOwnerProps | undefined
   let settingsOwner: SidebarSettingsOwnerProps | undefined
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
-  let current = { collapsed, width }
+  let current = { collapsed, width, portrait }
   const root = () => (
     <SidebarRoot
-      collapsed={current.collapsed} width={current.width}
+      collapsed={current.collapsed} width={current.width} portrait={current.portrait}
       useSessions={neverHook} useWorkspaces={neverHook}
       toggleSidebar={toggleSidebar} t={t}
       renderSlot={((
@@ -114,5 +118,43 @@ describe('SidebarRoot shell', () => {
     const b = mountShell({ collapsed: true })
     expect(b.regionOwner().wide).toBe(false)
     expect(screen.getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+  })
+
+  it('portrait floats the expand control over the chat under its own name', () => {
+    const b = mountShell({ collapsed: true, portrait: true })
+    const expand = screen.getByTestId('ui-sidebar-expand')
+    expect(expand.getAttribute('aria-label')).toBe('Expand inbox')
+    // Landscape keeps the column-fold copy: nothing about it changed.
+    expect(screen.queryByRole('button', { name: 'Open sidebar' })).toBeNull()
+    b.regionOwner().expandSidebar()
+    expect(b.toggleSidebar).toHaveBeenCalledOnce()
+  })
+
+  it('the rail expand control folds the column through the layout service', () => {
+    const b = mountShell({ collapsed: true, portrait: true })
+    fireEvent.click(screen.getByTestId('ui-sidebar-expand'))
+    expect(b.toggleSidebar).toHaveBeenCalledOnce()
+  })
+
+  it('hands the region the portrait flag and a collapse-on-selection that is portrait and expanded only', () => {
+    const expanded = mountShell({ portrait: true })
+    expect(expanded.regionOwner().portrait).toBe(true)
+    // Expanded portrait: a selection collapses the column.
+    expanded.regionOwner().collapseOnSelection?.()
+    expect(expanded.toggleSidebar).toHaveBeenCalledOnce()
+    cleanup()
+
+    // Already collapsed: the collapse request must not flip it back open (the
+    // narrow toggle inverts), so it is a no-op.
+    const rail = mountShell({ collapsed: true, portrait: true })
+    rail.regionOwner().collapseOnSelection?.()
+    expect(rail.toggleSidebar).not.toHaveBeenCalled()
+    cleanup()
+
+    // Landscape: a selection never folds the column, expanded or not.
+    const landscape = mountShell({ portrait: false })
+    expect(landscape.regionOwner().portrait).toBe(false)
+    landscape.regionOwner().collapseOnSelection?.()
+    expect(landscape.toggleSidebar).not.toHaveBeenCalled()
   })
 })

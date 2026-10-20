@@ -9,11 +9,21 @@
  * entries retain identity. Pure component: everything arrives
  * through the three framework shares — zero cordis or framework imports,
  * zero self-made hooks.
+ *
+ * Two geometry contracts, picked by the frame's own shape (columns.ts): a
+ * landscape frame runs the concession chain exactly as it always has, while a
+ * portrait frame gives the sidebar no grid track at all — the column floats
+ * over a chat that keeps its full width, with a dimming scrim behind it when
+ * expanded and a transparent rail when collapsed. `data-portrait`,
+ * `data-portrait-overlay` and `data-portrait-mobile` are the CSS handles for
+ * those states; nothing in the landscape path reads them.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
+import {
+  computeFrameLayout, isPortrait, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT,
+} from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
 
@@ -96,7 +106,7 @@ export function AppFrame({
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
   const frameRef = useRef<HTMLDivElement | null>(null)
-  const [viewport, setViewport] = useState(() => window.innerWidth)
+  const [frame, setFrame] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
 
   const lastSession = useRef(detailsSession)
   useLayoutEffect(() => {
@@ -108,6 +118,7 @@ export function AppFrame({
   }, [actions, detailsSession])
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
+  // Both dimensions matter: the shape decides which geometry contract applies.
   useEffect(() => {
     const el = frameRef.current
     /* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
@@ -116,8 +127,8 @@ export function AppFrame({
     const observer = new ResizeObserver(() => {
       raf ??= requestAnimationFrame(() => {
         raf = null
-        const width = el.getBoundingClientRect().width
-        if (width > 0) setViewport(width)
+        const box = el.getBoundingClientRect()
+        if (box.width > 0) setFrame({ width: box.width, height: box.height })
       })
     })
     observer.observe(el)
@@ -132,14 +143,32 @@ export function AppFrame({
   // re-expand override, stores.ts). Collapsed is decided here, so the
   // solver stays breakpoint-free: a narrow re-expand passes the preference
   // (or the default when the wide preference is closed) and the center
-  // absorbs the squeeze.
-  const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
+  // absorbs the squeeze. A portrait frame is always narrow: its default is the
+  // rail, and its expanded state floats over the chat instead of squeezing it.
+  const portrait = isPortrait(frame.width, frame.height)
+  const narrow = portrait || frame.width < SIDEBAR_AUTO_COLLAPSE
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
+  useEffect(() => { actions.setPortrait(portrait) }, [actions, portrait])
   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
-  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  const layout = computeFrameLayout(
+    frame.width,
+    frame.height,
+    sidebarPreference,
+    detailsSession === undefined ? 0 : panels.details,
+  )
+  const cols = layout.columns
+  // Portrait: the column floats over the chat, so its rendered width is the
+  // overlay width (or the rail) rather than a grid track. Landscape keeps the
+  // concession solve's own number.
+  const sidebarWidth = !portrait
+    ? cols.sidebar
+    : sidebarCollapsed ? SIDEBAR_COLLAPSED : layout.portrait.width
+  // The dimming scrim belongs to the expanded portrait overlay only; the
+  // collapsed rail stays transparent over the chat.
+  const scrim = portrait && !sidebarCollapsed
   const colsRef = useRef(cols)
   colsRef.current = cols
 
@@ -165,20 +194,41 @@ export function AppFrame({
     <div
       ref={frameRef}
       className={css.frame}
-      style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}
+      style={{
+        gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px`,
+        // The rail inset the portrait chat leaves for the floating column, in
+        // both portrait states: one number, so switching states never reflows
+        // the conversation's text column.
+        ['--ui-frame-rail-width' as string]: `${SIDEBAR_COLLAPSED}px`,
+      }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={cols.details === 0 || undefined}
       data-dragging={dragging || undefined}
+      data-portrait={portrait || undefined}
+      data-portrait-overlay={(portrait && !sidebarCollapsed) || undefined}
+      data-portrait-mobile={(portrait && layout.portrait.fullscreen) || undefined}
     >
-      <div className={css.sidebarCol}>
+      {/* The dimming scrim sits between the chat and the floating column: it
+          darkens the chat the sidebar covers instead of the sidebar squeezing
+          it. Painted below the column (z-index in the stylesheet) and inert to
+          pointers and assistive tech — the column's own controls close it. */}
+      {scrim && <div className={css.scrim} data-testid="ui-layout-scrim" aria-hidden="true" />}
+      <div
+        className={css.sidebarCol}
+        // Portrait sizes the floating column here (its track is 0); landscape
+        // takes the track width from the grid.
+        style={portrait ? { width: sidebarWidth } : undefined}
+      >
         {/* Render-site slot call with live concession output: a closed
             sidebar keeps the mounted slot at the compact-rail width, and the
             component sees its rendered state as owner params decided here
             (collapsed follows the resolved rail, so a derived auto-collapse
-            renders the rail UI too). */}
+            renders the rail UI too). Portrait is the second owner fact: the
+            shell drops its opaque fill and floats over the chat. */}
         {renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
-          width: cols.sidebar,
+          width: sidebarWidth,
+          portrait,
         })}
       </div>
       <>
@@ -195,9 +245,10 @@ export function AppFrame({
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+      {/* The collapsed rail is fixed-width: no resize handle while closed, and a
+          portrait column has no track to drag (it floats over the chat). */}
+      {!portrait && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {cols.details > 0 && <DragHandle side="details" left={frame.width - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
     </div>
   )
 }

@@ -19,7 +19,9 @@ beforeEach(() => { localStorage.clear() })
 describe('createLayoutStore', () => {
   it('initializes the sidebar at its default width, details closed, wide viewport assumed', () => {
     const { store } = createLayoutStore().create()
-    expect(store.getSnapshot()).toEqual({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, page: null })
+    expect(store.getSnapshot()).toEqual({
+      sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, portrait: false, page: null,
+    })
   })
 
   it('each create() is an independent instance (factory is not a singleton)', () => {
@@ -55,7 +57,9 @@ describe('createLayoutStore', () => {
     actions.setSidebar(400)
     actions.setNarrow(true)
     actions.toggleSidebar()
-    expect(store.getSnapshot()).toEqual({ sidebar: 400, details: 0, narrow: true, narrowExpanded: true, page: null })
+    expect(store.getSnapshot()).toEqual({
+      sidebar: 400, details: 0, narrow: true, narrowExpanded: true, portrait: false, page: null,
+    })
     actions.toggleSidebar()
     expect(store.getSnapshot().narrowExpanded).toBe(false)
     expect(store.getSnapshot().sidebar).toBe(400)
@@ -72,6 +76,47 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot()).toMatchObject({ narrow: false, narrowExpanded: false })
     actions.setNarrow(true)
     expect(store.getSnapshot().narrowExpanded).toBe(false)
+  })
+
+  it('setPortrait records the shape and drops a stale re-expand override', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setNarrow(true)
+    actions.toggleSidebar()
+    expect(store.getSnapshot().narrowExpanded).toBe(true)
+    actions.setPortrait(true)
+    expect(store.getSnapshot()).toMatchObject({ portrait: true, narrowExpanded: false })
+    actions.toggleSidebar()
+    expect(store.getSnapshot().narrowExpanded).toBe(true)
+    actions.setPortrait(true) // same value: no write, override kept
+    expect(store.getSnapshot().narrowExpanded).toBe(true)
+    actions.setPortrait(false)
+    expect(store.getSnapshot()).toMatchObject({ portrait: false, narrowExpanded: false })
+  })
+
+  it('collapseOnSelection collapses a portrait frame and never touches a landscape one', () => {
+    const portrait = createLayoutStore().create()
+    portrait.actions.setNarrow(true)
+    portrait.actions.setPortrait(true)
+    portrait.actions.setSidebar(400)
+    portrait.actions.toggleSidebar() // manual expand
+    expect(portrait.store.getSnapshot().narrowExpanded).toBe(true)
+    portrait.actions.collapseOnSelection()
+    expect(portrait.store.getSnapshot().narrowExpanded).toBe(false)
+    // The width preference is not the collapse target: it survives untouched.
+    expect(portrait.store.getSnapshot().sidebar).toBe(400)
+
+    const landscape = createLayoutStore().create()
+    landscape.actions.setSidebar(400)
+    landscape.actions.collapseOnSelection()
+    expect(landscape.store.getSnapshot()).toMatchObject({ sidebar: 400, narrow: false, narrowExpanded: false })
+
+    const narrowLandscape = createLayoutStore().create()
+    narrowLandscape.actions.setNarrow(true)
+    narrowLandscape.actions.toggleSidebar()
+    expect(narrowLandscape.store.getSnapshot().narrowExpanded).toBe(true)
+    narrowLandscape.actions.collapseOnSelection()
+    // Landscape keeps its manual re-expand: the rule is portrait-only.
+    expect(narrowLandscape.store.getSnapshot().narrowExpanded).toBe(true)
   })
 
   it('openDetails uses the contract default, preserves an open width, and closeDetails zeroes', () => {
@@ -98,6 +143,7 @@ describe('createLayoutStore', () => {
       details: 0,
       narrow: false,
       narrowExpanded: false,
+      portrait: false,
       page: null,
     })
   })

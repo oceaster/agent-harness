@@ -16,6 +16,8 @@ Scrollbars in the column are a pointer affordance: the shell rebinds ui-theme's 
 
 The foot is the `sidebar.settings` seat: the sidebar renders only the bottom-pinned layout slot and shares its column state (`wide`); ui-settings registers the trigger row and settings panel there.
 
+In a portrait-shaped frame the column floats over the chat instead of taking a grid track (the layout package owns that geometry), and the shell adapts two things: the rail paints no fill of its own, so the collapsed state is exactly the controls — the heads, their dots and the fold control, which is then named **Expand inbox** and sits in the chat's left margin; and the region receives `portrait` plus `collapseOnSelection`, a callback the region calls from its own selection events to fold the column. That callback writes the narrow override, never the width preference, is a no-op when the column is already collapsed, and does nothing at all in landscape — so a manual expand survives until the next selection, and no landscape behaviour moves. Landscape keeps the `Open sidebar` / `Collapse sidebar` copy and the opaque column.
+
 The `/client` exports are the plugin body (`apply`/`inject`) plus the contract types only; SidebarRoot, the row components, and the tree derivation remain package-internal behind the slot registration.
 
 ## Model Experience
