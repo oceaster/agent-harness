@@ -403,6 +403,40 @@ describe('ConversationRoot resident composer', () => {
     expect(root?.getAttribute('data-phase')).toBe('settling')
   })
 
+  it('a conversation whose emptiness is unproven never claims there are no messages', () => {
+    // `cold` (never opened) and `error` (the history request failed) both leave
+    // the column without a transcript we have read. The branded mark says "no
+    // messages", so it must stay out of that body exactly as the deleted hero
+    // chrome did — otherwise a history failure is decorated as an empty
+    // conversation. The snapshot keeps `blank: false` here so the session body
+    // is really mounted (in the assembled app ChatView paints its
+    // `chat.loadError` row into it) and the assertion is about a decorated
+    // surface rather than about a null body.
+    for (const openState of ['cold', 'error'] as const) {
+      const b = mount(
+        conversationSnapshot({ composerPhase: 'blank', blank: false, openState }),
+        undefined,
+        { omitSummaryRow: true },
+      )
+      expect(b.view.queryByTestId('conversation-empty'), openState).toBeNull()
+      expect(b.view.getByTestId('view-chat'), openState).toBeTruthy()
+      expect(b.view.getByRole('textbox'), openState).toBeTruthy()
+      b.view.unmount()
+    }
+  })
+
+  it('a failed open still shows the mark once the summary proves the session blank', () => {
+    // The same proof that exempts a session from settling: there is no history
+    // to read, so the failure cannot have hidden one.
+    const b = mount(
+      conversationSnapshot({ composerPhase: 'blank', blank: true, openState: 'error' }),
+      undefined,
+      { summaryBlank: true },
+    )
+    expect(b.view.getByTestId('conversation-empty')).toBeTruthy()
+    expect(b.view.container.querySelector('[data-phase]')?.getAttribute('data-phase')).toBe('active')
+  })
+
   it('startup auto-selection: a summary-proven blank session opens straight into the placeholder', () => {
     const b = mount(
       conversationSnapshot({ composerPhase: 'blank', blank: true, openState: 'loading' }),

@@ -55,10 +55,15 @@ export function ConversationRoot({
   const settling = sessionId !== undefined && composerPhase === 'blank' && openState === 'loading'
     && summaryBlank !== true
   // A selected conversation with no messages: the household mark above the
-  // docked composer, which sits exactly where an active chat puts it. Settling
-  // withholds the art for the same reason it hides the composer — the column
-  // may still turn out to have a transcript.
-  const empty = composerPhase === 'blank' && !settling
+  // docked composer, which sits exactly where an active chat puts it. The mark
+  // states "no messages", so it is painted only when emptiness is known — the
+  // open landed (`open`), or the list summary proves the session blank (the
+  // same proof the settling exemption trusts, before a `cold` open and after a
+  // failed one). A session whose open is still in flight or has failed may hold
+  // a transcript nobody has read yet, and ChatView renders its history failure
+  // in this same body, so the body stays bare there. The gate subsumes
+  // `settling`, which is strictly a `loading` open with no summary proof.
+  const empty = composerPhase === 'blank' && (openState === 'open' || summaryBlank === true)
   const zone: InputZone | undefined =
     session === undefined || inputState === undefined ? undefined : { session, input: inputState }
 

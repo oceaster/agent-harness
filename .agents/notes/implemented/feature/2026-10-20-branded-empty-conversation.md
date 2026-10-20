@@ -12,9 +12,11 @@ Opening a conversation with no messages showed the harness's own empty state: an
 
 An empty conversation is the ordinary active layout with the household mark in the body. The conversation body holds the same art the welcome screen uses (the `HeroGlow` ellipse plus the brand mark masked into a soft gradient), centered in a flex-filling container carrying `data-testid="conversation-empty"`; the composer keeps its docked sticky seat, its card geometry, and its ordinary placeholder, so sending the first message neither moves nor resizes it, and the mark disappears when the transcript starts. The composer bar no longer has a centered variant: one geometry serves an empty conversation and an active one.
 
+The mark states that the conversation has no messages, so it is painted only when emptiness is known: the session's own open landed, or the session-list summary proves it blank — the same proof the deleted hero required. A session whose open is in flight or has failed keeps a bare body, because ChatView renders its history failure in the same body and an art block there would present a transcript nobody could read as an empty conversation.
+
 The empty-state headline chrome is deleted rather than hidden. `HeroShell` and `HeroShell.module.css` are gone, the `hero.headline` / `hero.preview` / `placeholder.hero` locale keys are gone in both languages, and the root reports only `active` and `settling`. The shared backdrop moved to `HeroGlow.tsx`, the one export that still had a caller.
 
-`settling` is unchanged: while a blank session's open is still loading and the session-list summary does not yet prove it blank, the composer seat stays hidden — and now the placeholder is withheld with it, because an art block that flashes and then gives way to a transcript reads as a page reload for the same reason the hidden composer did. A session the summary already proves blank skips settling and shows the placeholder immediately.
+`settling` is unchanged: while a blank session's open is still loading and the session-list summary does not yet prove it blank, the composer seat stays hidden — the readiness gate withholds the placeholder there too, and for a failed or unstarted open, because an art block that flashes and then gives way to a transcript reads as a page reload for the same reason the hidden composer did. A session the summary already proves blank skips settling and shows the placeholder immediately.
 
 ## Alternatives considered
 
@@ -32,4 +34,6 @@ The placeholder carries no text and is `aria-hidden`, so an empty conversation h
 
 ## Verification
 
-`packages/client/ui-conversation` vitest pins the placeholder's presence in an empty conversation, its absence while settling and after the first message, the sibling order of placeholder and composer seat inside `[data-conversation-scroll]`, the `active` phase, and the ordinary composer placeholder. Removing the source change fails those assertions.
+`packages/client/ui-conversation` vitest pins the placeholder's presence in an empty conversation, its absence while settling, after the first message, and for a session whose emptiness is unproven (`cold` or failed open, snapshot not blank, no summary proof), the sibling order of placeholder and composer seat inside `[data-conversation-scroll]`, the `active` phase, and the ordinary composer placeholder. Reverting the source change fails those assertions, and reverting only the readiness gate fails the unproven-emptiness case.
+
+The browser probe in `tests/fixture/` proves the readable-open path in a real engine (placeholder painted with the brand mask, composer geometry unchanged across the first message, no horizontal scrollbar at 480px). It cannot exercise the failed or `cold` open: the fixture intercepts HTTP, while the conversation's history round-trip rides the RPC uplink, so the client never reaches `openState='error'` there. That state is pinned at the unit layer only.

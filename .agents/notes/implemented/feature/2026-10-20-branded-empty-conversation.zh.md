@@ -12,9 +12,11 @@ Status: implemented
 
 空白会话即普通活跃布局，只是主体里放着家族标记。会话主体承载与欢迎页相同的那套图案（`HeroGlow` 椭圆，加上被遮罩成柔和渐变的品牌标），居中于一个以 `flex` 填满空间、带有 `data-testid="conversation-empty"` 的容器中；输入框保留其停靠的 sticky seat、卡片几何与常规 placeholder，因此发送首条消息既不会移动也不会改变它的尺寸，而在对话记录出现时标记消失。输入栏不再有居中变体：空白会话与活跃会话共用一套几何。
 
+该标记声明的是"此会话没有消息"，因此只在空状态确知时才绘制：会话自身的打开已落地，或会话列表摘要已证明它为空——与被删除的 hero 所要求的正是同一份证明。若会话的打开仍在飞行中或已失败，主体保持空白，因为 ChatView 会在同一主体里渲染历史加载失败，此时放一块图案就等于把无人能读的对话呈现为空白会话。
+
 空状态标题 chrome 是删除而非隐藏。`HeroShell` 与 `HeroShell.module.css` 已移除，`hero.headline` / `hero.preview` / `placeholder.hero` 三个 locale 键在两种语言中均已移除，根组件只报告 `active` 与 `settling`。共用的背景椭圆移到 `HeroGlow.tsx`，那也是唯一仍有调用者的导出。
 
-`settling` 保持不变：当空白会话的打开仍在加载、且会话列表摘要尚未证明它为空时，输入框 seat 继续隐藏——如今图案也一同隐藏，因为先闪现图案再让位给对话记录，与当初隐藏输入框所防的是同一种"整页重载"观感。摘要已证明为空的会话跳过 settling，立即显示图案。
+`settling` 保持不变：当空白会话的打开仍在加载、且会话列表摘要尚未证明它为空时，输入框 seat 继续隐藏——就绪门槛在此时也一并隐藏图案，打开失败或尚未开始时同理，因为先闪现图案再让位给对话记录，与当初隐藏输入框所防的是同一种"整页重载"观感。摘要已证明为空的会话跳过 settling，立即显示图案。
 
 ## Alternatives considered
 
@@ -32,4 +34,6 @@ Status: implemented
 
 ## Verification
 
-`packages/client/ui-conversation` 的 vitest 固定了以下行为：空白会话中 placeholder 存在、在 settling 期间与首条消息之后不存在、placeholder 与输入框 seat 在 `[data-conversation-scroll]` 内的兄弟顺序、`active` 阶段，以及常规的输入框 placeholder。移除该源码改动会使这些断言失败。
+`packages/client/ui-conversation` 的 vitest 固定了以下行为：空白会话中 placeholder 存在；在 settling 期间、首条消息之后，以及会话的空状态未被证明时（`cold` 或打开失败、快照并非空白、摘要也没有证明）不存在；placeholder 与输入框 seat 在 `[data-conversation-scroll]` 内的兄弟顺序；`active` 阶段；以及常规的输入框 placeholder。移除该源码改动会使这些断言失败，而只回退就绪门槛会使"空状态未被证明"的用例失败。
+
+`tests/fixture/` 中的浏览器探针在真实引擎里证明了"可读打开"这条路径（带品牌遮罩的 placeholder 已被绘制、首条消息前后输入框几何不变、480px 宽度下无横向滚动条）。它无法覆盖打开失败或 `cold` 的情况：探针拦截的是 HTTP，而会话的历史往返走 RPC 上行链路，客户端因此在该环境里不会进入 `openState='error'`。该状态只在单元层被固定。

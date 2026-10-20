@@ -222,9 +222,28 @@ re-applied on every upstream pull:
    InputBar's centered card variant — one docked card geometry serves an empty
    conversation and an active one. `settling` is unchanged: the composer seat and
    the placeholder both stay hidden while a blank session's open is loading and
-   the list summary does not yet prove it blank. The `apps/web/tests` hero
-   anchors (four e2e specs, the two lifecycle-chrome goldens, the placeholder
-   lookups in the workspace-flow helpers and the HMR source needle) moved with it.
+   the list summary does not yet prove it blank. The placeholder is gated on
+   proven emptiness (`openState === 'open' || summaryBlank === true`) exactly as
+   the deleted hero was, so a `cold` or failed open never paints "no messages"
+   over a conversation whose history was not read.
+
+   **The `apps/web` hero-anchor edits that go with it are UNVERIFIED, and that
+   lane needs its own ticket.** At this base commit `lifecycle-chrome`,
+   `startup-auto-selection`, `goal-command-presentation`,
+   `details-session-lifecycle` and `conversation-column-overflow` fail before
+   reaching any line this change touches: the first four stop in
+   `connectFreshWorkspace` on `getByRole('textbox', { name: 'Choose workspace' })`
+   (30 s timeout) and the last on its boot-state selector, because this fork
+   removed the workspace chip and picker (surface 8 above) and a
+   conversation-less boot now paints the branded welcome screen instead of a
+   hero. So the four e2e anchor edits, the three placeholder lookups in the
+   workspace-flow helpers and snapshot/init scripts, and the two hand-edited
+   `lifecycle-chrome` goldens (`hero.expected.md`, `plan-active.expected.md`)
+   are kept for reference alignment but are NOT proven by a run; they must be
+   re-recorded and executed by the ticket that drives selection through the
+   inbox API. The only `apps/web` spec verified here is `hmr-live.e2e.ts`, whose
+   needle moved to `'welcome.select'` and which passes; the browser proof of the
+   placeholder itself is `packages/client/ui-conversation/tests/fixture/`.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
