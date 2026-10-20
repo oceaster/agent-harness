@@ -1340,8 +1340,8 @@ are the candidates for open-sourcing.
      the `case 'reaction/note'` and re-home the projection there; if upstream
      adds its own envelope-intent argument to `Session.append`, keep theirs and
      drop ours. `npm run gen-persistence-catalog` regenerates the generated
-     pair either way. No client UI is involved (a separate ticket owns the
-     button and the badge); the fork has no other consumer of the kind.
+     pair either way. The client half of the feature is entry 28, and this note
+     owns only the log and the wire; the fork has no other consumer of the kind.
    - **Measured, not asserted** (`apps/web/tests/fixture/react-note/`, the real
      built harness with an isolated `DSH_HOME` and a recording mock provider):
      one `session.react` appends exactly `{"reaction/note": 1}`, writes the
@@ -1356,7 +1356,7 @@ are the candidates for open-sourcing.
      keeps the note with its marker, and accepts a second note on the resumed
      cold session.
 
-24. **Subagent sessions idle for six hours are destroyed** (`host/apiproxy`;
+27. **Subagent sessions idle for six hours are destroyed** (`host/apiproxy`;
     ticket `b1458dbd`) — the household asked for dead subagent conversations to
     clear themselves rather than be cleared by hand. This is a fork-only
     lifecycle policy: upstream never deletes a session on its own, so an
@@ -1400,6 +1400,53 @@ are the candidates for open-sourcing.
       millisecond newer is not; the config refuses nonsense at boot. Mutation
       checks: dropping the origin predicate, either live-work guard, or the
       inclusive threshold boundary each fails the suite.
+28. **The React button and the badge the log folds back** (`client/runtime`,
+    `client/ui-conversation`; ticket `f1a2c4ab`) — the client half of entry 26.
+    Each durable message row carries copy and a React button; the button opens a
+    fixed one-dozen unicode emoji table, and a choice appends one `session.react`
+    note. There is no client-side reaction state and no optimistic paint: the
+    badge is `ConversationSnapshot.reactions`, a fold of the raw
+    `reaction/note` events the Session already holds, keyed by `targetSeq`, last
+    note per target winning and a `removed` note dropping the entry. Three acts
+    post three notes — `added`, `changed` when the chosen glyph differs from the
+    recorded one, `removed` when it does not — each decided from the fold rather
+    than from local state, so a reload reaches the same conclusion.
+
+   - **Why the badge is not a Chat Node.** The note is log-only, so nothing
+     assembles it and it paints no row; the fold reads the raw window for
+     exactly that reason. If the badge were painted by a node the person would
+     see "owen reacted 👍" as a message, so both halves are pinned rather than
+     assumed: `reaction-note-transcript.client.spec.ts` (host-side, entry 26)
+     and the rendered-transcript comparison in `chat-view.client.spec.tsx`,
+     which asserts the flow's rows and words are unchanged and the only
+     difference is the badge.
+   - **`SessionReactionNotes`** (`packages/client/runtime/src/client/sessions/`)
+     is the fold, modelled on `SessionQueueMirror`: `replace(events)` on open,
+     resync and gap repair, `accept(event)` per durable append, and a snapshot
+     contributing `reactions` to `ConversationSnapshot`. `ISession.react` is the
+     one wire verb, `session.react` 1:1; the appended note's seq returns only so
+     a caller can correlate it with the push frame, and the call's result is
+     never awaited for rendering.
+   - **The slot seam** is a second hook on the keyed Chat Node inject face:
+     `ChatNodeInjected.hooks.reaction`, a `UseChatNodeReaction` that takes the
+     row's target seq (or `undefined` for a row with no durable message) and
+     returns the recorded reaction plus a fire-and-forget writer. `apply.ts`
+     resolves the session binding and turns a business refusal into a rejection
+     carrying the Host's own message, which the row renders as its refusal line;
+     a row left with no target refuses to write at all.
+   - **Keyboard and dismissal.** Escape, an outside press and choosing an entry
+     all close the table and return focus to the React button. The table treats
+     a press inside its anchor as the trigger's own: dismissing on the button's
+     `pointerdown` and then toggling on the `click` behind it made the button
+     open-only, which is the defect the recovered work carried and
+     `reaction-actions.client.spec.tsx` now pins.
+   - **Unproven here.** No browser run happened for this entry (see the ticket's
+     validation note): the client half is proved against the merged Host
+     contract in jsdom, not in a real browser against a real harness.
+     `apps/web/tests/message-actions.e2e.ts` asserts an assistant footer row
+     carries exactly one button and `.../snapshots/message-actions/ui.expected.md`
+     records that row in the a11y tree; both move with this change and need
+     `npm run test:web:refresh` in a browser-capable window.
 
 ## Model options from the household AWS account
 

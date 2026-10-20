@@ -1,6 +1,6 @@
 // Web e2e scenario: message IconActions + clocks. Cold-seeds a deterministic
 // two-turn transcript (zero model calls), pins that the settled assistant row
-// carries copy alone beside its timing/token reading, and forks through the
+// carries copy and react beside its timing/token reading, and forks through the
 // session-row action — the surface package jsdom tests cannot substitute for
 // (docs/testing.md snapshot rule).
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -107,14 +107,16 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
 
     // Focus-reveal the footers (hover:hover keeps them opacity-hidden until
-    // hover/focus-within). Every message row carries copy; nothing else does.
+    // hover/focus-within). Every message row carries copy and react; nothing
+    // else does.
     const copyButtons = page.getByRole('button', { name: 'Copy' })
     await expect.poll(() => copyButtons.count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(4)
     await copyButtons.first().focus()
-    // The assistant footer row: copy alone beside the timing/token reading.
+    // The assistant footer row: copy and react beside the timing/token reading.
     const row = page.locator('[data-turn-tail] div[class*="actions"]').last()
     await expect.poll(() => row.getByRole('button', { name: 'Copy' }).count(), { timeout: 5_000 }).toBe(1)
-    await expect.poll(() => row.locator('button').count(), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => row.getByRole('button', { name: 'React' }).count(), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => row.locator('button').count(), { timeout: 5_000 }).toBe(2)
     await expect.poll(() => row.getByText(/Ran for|TTFT|tok\/s/u).count(), { timeout: 5_000 }).toBeGreaterThanOrEqual(1)
     // Neither removed affordance survives anywhere in the transcript.
     await expect.poll(() => page.getByRole('button', { name: 'Branch into a new conversation' }).count(), {

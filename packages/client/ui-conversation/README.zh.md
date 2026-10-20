@@ -46,6 +46,8 @@ Host 带 placement 的 `session/queue` 快照也会携带待处理 steering。Qu
 
 完成的一轮会物化一个有序的 `turn-tail` Conversation Node。它由引擎维护的 `TurnLocation` 提供收尾 Assistant 和 Turn data；renderer 在该 Node 的 IconActions 之前渲染 `conversation.chat.turnTail` chain，并派发包含 Turn、收尾 seq 和 `openFile` 的 `TurnTailOwnerProps`。本包只拥有空位；`@deepseek-ai/dsh-client-ui-deliverables` 把改写工具的 `locations` 累积到 Turn data，并拥有产物行、chip 上限和文案，因此把该插件从 cordis.yml 中组合掉即可关闭该交互面，空位以零成本渲染为空。收尾正文经由同一个开关参与其中：chat 视图向可选的 `chatFileMentions` service（ctx.get；由同一插件提供）索取收尾消息的行内代码词表，并把结果接进 MarkdownText 的 `fileMentions` seam——service 缺席时正文保持死文本。
 
+每条已定稿消息行恰好携带两个图标操作：复制，以及一个打开固定十二个 emoji 表格的表情回应按钮。选中某个字形会追加一条 `session.react` note 并关闭表格；该写入是发后即忘的，因此客户端不持有任何回应状态，也不会有任何乐观绘制。消息行显示的表情标签来自日志自身的折算——`ConversationSnapshot.reactions`，由 client runtime 根据 Host 流出的 `reaction/note` 事件构建，以每条 note 指向的消息为键，同一目标以最后一条 note 为准，`removed` 的 note 会移除该项——因此重载、恢复与回放绘出完全相同的标签。选中消息已带有的字形会追加 `removed`，选中不同字形追加 `changed`，而拒绝会以 Host 自己的措辞呈现，消息行本身不变。note 本身只存在于日志：被回应的消息只多出一个标签，绝不出现行、气泡、分隔线、时间戳或系统提示文本，这也是标签读取原始事件窗口而非组装后 Chat Node 的原因。没有可指向的已定稿消息的行——例如待处理的 steering 投影——完全不提供表情回应按钮。
+
 ## 模型体验
 
 无。会话 UI 在浏览器中渲染会话历史与流；这里没有任何内容进入模型请求。
@@ -58,8 +60,8 @@ Host 带 placement 的 `session/queue` 快照也会携带待处理 steering。Qu
 
 - **统计行的回退折算只覆盖窗口内消息流**：未组合 `sessionStats` 投影单元的装配中，所有数字由快照的 assistant `timing` 与工具 call/result 配对折算，落在已加载事件窗口之外的节点（更早的历史）不计入，数字随加载页数增长。
 - **详情面板没有入口**：`ChatViewInjected.openDetails` 虽已实现却无人调用，因此以原始形式显示已选择调用的那部分在组装后的应用中不可达。没有 Input/Output/Metadata 切换、Prev/Next 步进，也没有 trajectory 深链接。
-- **assistant 逐消息分页是预留 slot**：设计中已有图稿，尚未实现。已定稿的内容 IconActions 行（复制／时钟／分支）只挂在每个已结束轮次中最后一条带 text 内容的 assistant 下；轮次中间的叙述、纯 Think 节点，以及仍在产出步骤的轮次里的所有节点都不带 chrome。除非该消息同时也是已完成轮次的最后一个 transcript 节点，否则分支保持禁用；启用后，它会 fork 到该轮次末尾，在 client 端递增继承标题并打开子会话。fork 或改名失败时源会话保持选中（[决策](../../../.agents/notes/implemented/bug-fix/2026-08-02-message-fork-actions-require-completed-turn-tail.md)）。
-- **已发送的 user 消息无法编辑**：user 气泡保留时钟和复制；分支只存在于 assistant 回答之下（[决策](../../../.agents/notes/implemented/simplification/2026-08-06-user-bubbles-drop-the-branch-action.md)）。编辑功能要与其背后的能力一起回归：既需要针对已定稿 user 消息的 client 变更，也需要 host 侧对已经消费过它的轮次给出行为（[决策](../../../.agents/notes/implemented/simplification/2026-07-31-drop-user-message-edit-stub.md)）。
+- **assistant 逐消息分页是预留 slot**：设计中已有图稿，尚未实现，且会话流不提供任何索取更早历史的控件。已定稿的内容 IconActions 行（复制／时钟／表情回应）只挂在每个已结束轮次中最后一条带 text 内容的 assistant 下；轮次中间的叙述、纯 Think 节点，以及仍在产出步骤的轮次里的所有节点都不带 chrome。
+- **已发送的 user 消息无法编辑**：user 气泡保留时钟、复制和表情回应。编辑功能要与其背后的能力一起回归：既需要针对已定稿 user 消息的 client 变更，也需要 host 侧对已经消费过它的轮次给出行为（[决策](../../../.agents/notes/implemented/simplification/2026-07-31-drop-user-message-edit-stub.md)）。
 - **others 工具行的闪光图标是手绘近似版本**：无法在本地导出设计字形的矢量几何；等到存在精确导出后再将其提升到 ui-primitives。
 - **审批面板的「始终允许此类」暂缓**：持久授权需要授权存储设计；今天只能回答允许一次／拒绝。
 - **TodoPanel 将过长条目截成单行省略号**：figma 条没有换行或展开入口，完整文本无法在行内读完。
