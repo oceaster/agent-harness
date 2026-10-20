@@ -237,8 +237,9 @@ export async function reapIdleSubagentSessions(
       report.skipped.push({ sessionId: header.id, reason: 'no-events' })
       continue
     }
-    // "At least the threshold" is idle: `>=` here means exactly six hours old
-    // already qualifies.
+    // "At least the threshold" is idle: a log whose last event is exactly
+    // `idleMs` old already qualifies, which is why the remaining age is tested
+    // with a strict `<` rather than `<=`.
     if (now - last < options.idleMs) {
       report.skipped.push({ sessionId: header.id, reason: 'fresh' })
       continue
