@@ -249,7 +249,8 @@ export class InboxController {
    * @returns once the snapshot reflects the outcome.
    */
   async open(agent: string): Promise<void> {
-    if (this.store.getSnapshot().busy.includes(agent)) return
+    if (this.store.getSnapshot().busy.includes(agent)
+      || this.store.getSnapshot().rows.find(row => row.agent === agent)?.enabled === false) return
     this.startAction(agent)
     const outcome = await this.api.open(agent)
     if (!outcome.ok) {
@@ -323,7 +324,8 @@ export class InboxController {
    * @returns once the snapshot reflects the outcome.
    */
   async clear(agent: string): Promise<void> {
-    if (this.store.getSnapshot().busy.includes(agent)) return
+    if (this.store.getSnapshot().busy.includes(agent)
+      || this.store.getSnapshot().rows.find(row => row.agent === agent)?.enabled === false) return
     this.startAction(agent)
     const before = this.store.getSnapshot()
     const opened = before.rows.find(row => row.agent === agent)?.sessionId ?? null

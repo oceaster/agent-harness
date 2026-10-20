@@ -12,6 +12,12 @@ Agent Channels occupy the main chat tile through layout's `conversation.page` sl
 
 Channel history, available pairs and Clear are scoped to the signed-in person by the backend. Clearing a channel removes its shared history and undelivered notifications; accepted messages remain in the recipient's agent conversation.
 
+## Presence and unread turns
+
+The roster includes disabled agents, which display Offline and Disabled without a launch control. Green means online, red offline, white running, blue an unread completed turn, and amber a terminal turn error. Channel dots are green only when both participants are available. Model retries and recoverable tool failures do not produce amber.
+
+Completed-turn and fatal-error markers come from trusted host events and persist per canonical person/agent conversation. While the corresponding conversation is selected, visible and idle, the browser acknowledges the exact completed sequence it displayed. A later completion remains unread even if the acknowledgment races it. Reading a channel or a sub-agent does not mark its parent inbox read.
+
 ## Extension points
 
 The plugin occupies `sidebar.workspaces` and registers the `agent-channel` center page. Its slot injection publishes controller snapshots and callbacks; components render only those props. The session-list, workspace-browser and new-session plugins are excluded from this deployment's composition.

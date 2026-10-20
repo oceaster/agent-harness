@@ -330,3 +330,12 @@
 .pairAvatar:first-of-type { left: 0; top: 0; }
 .pairAvatar:last-of-type { right: 0; bottom: 0; }
 .channelHeading { display: flex; align-items: center; gap: 8px; }
+.avatarStatus { position: relative; display: inline-flex; flex: none; }
+.presenceDot { position: absolute; right: -1px; bottom: -1px; display: block; width: 8px; height: 8px;
+  border: 2px solid var(--dsw-alias-bg-base); border-radius: 50%; box-shadow: 0 0 0 1px var(--dsw-alias-label-tertiary); }
+.presenceDot[data-presence='online'] { background: var(--dsw-alias-state-success-primary); }
+.presenceDot[data-presence='offline'] { background: var(--dsw-alias-state-error-primary); }
+.presenceDot[data-presence='running'] { background: var(--dsw-static-neutral-00); }
+.presenceDot[data-presence='unread'] { background: var(--dsw-static-blue-500); }
+.presenceDot[data-presence='error'] { background: var(--dsw-static-amber-500); }
+.rowButton:disabled, .menuButton:disabled, .railGlyph:disabled { cursor: not-allowed; opacity: 0.65; }

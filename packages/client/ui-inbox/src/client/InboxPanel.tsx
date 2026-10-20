@@ -23,6 +23,8 @@ import type { InboxNoticeCode } from './inbox-controller.ts'
 import type { InboxPanelProps } from './slots.ts'
 import { ConfirmClearDialog } from './ConfirmClearDialog.tsx'
 import { AgentAvatar } from './AgentAvatar.tsx'
+import { PresenceDot } from './PresenceDot.tsx'
+import { presenceOf } from './presence.ts'
 import css from './InboxPanel.module.css'
 
 /** The locale seat of this namespace, passed to the pure helpers below. */
@@ -59,7 +61,10 @@ function ageLabel(at: number, now: number, t: Translate): string {
  * @returns the state line.
  */
 function stateLine(row: InboxAgentRow, now: number, t: Translate): string {
+  if (row.enabled === false) return t(row.disabled === true ? 'row.disabled' : 'presence.offline')
   if (row.running) return t('row.running')
+  if (row.presence === 'error') return t('presence.error')
+  if (row.presence === 'unread') return t('presence.unread')
   if (!row.hasConversation) return t('row.fresh')
   if (row.blank || row.lastActivityAt === null) return t('row.blank')
   return ageLabel(row.lastActivityAt, now, t)
@@ -123,13 +128,14 @@ export function InboxPanel({
               data-testid={`ui-inbox-rail-${row.agent}`}
               aria-label={t('row.open', { name: row.name })}
               aria-busy={busy}
+              disabled={row.enabled === false}
               onClick={() => {
                 expandSidebar()
                 open(row.agent)
               }}
             >
               <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-              {row.running && <StateDot state="ongoing" size={8} className={css.railDot} />}
+              <PresenceDot status={presenceOf(row)} label={t(`presence.${presenceOf(row)}`)} />
             </button>
           )
         })}
@@ -214,9 +220,13 @@ export function InboxPanel({
                     aria-label={t('row.open', { name: row.name })}
                     aria-current={state.openAgent === row.agent && channelState.selected === null ? 'true' : undefined}
                     aria-busy={busy}
+                    disabled={row.enabled === false}
                     onClick={() => { open(row.agent) }}
                   >
-                    <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
+                    <span className={css.avatarStatus}>
+                      <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
+                      <PresenceDot status={presenceOf(row)} label={t(`presence.${presenceOf(row)}`)} />
+                    </span>
                     <span className={css.rowText}>
                       <span className={css.name}>{row.name}</span>
                       <span className={css.state} data-testid={`ui-inbox-state-${row.agent}`}>
@@ -228,7 +238,7 @@ export function InboxPanel({
                   <Menu
                     open={menuFor === row.agent}
                     onClose={() => { setMenuFor(null) }}
-                    items={[{ id: 'clear', label: t('row.clear'), icon: <IconTrashOutline16 size={14} />, danger: true }]}
+                    items={row.enabled === false ? [] : [{ id: 'clear', label: t('row.clear'), icon: <IconTrashOutline16 size={14} />, danger: true }]}
                     onSelect={(id) => {
                       setMenuFor(null)
                       if (id !== 'clear') return
@@ -241,6 +251,7 @@ export function InboxPanel({
                         className={css.menuButton}
                         aria-label={t('row.menu', { name: row.name })}
                         aria-haspopup="menu"
+                        disabled={row.enabled === false}
                         aria-expanded={menuFor === row.agent}
                         data-testid={`ui-inbox-menu-${row.agent}`}
                         onClick={() => { setMenuFor(current => (current === row.agent ? null : row.agent)) }}
@@ -264,30 +275,36 @@ export function InboxPanel({
       <section className={css.channels} aria-label={t('channel.section')}>
         <h3 className={css.channelTitle}>{t('channel.section')}</h3>
         <ul className={css.list}>
-          {channelState.rows.map(channel => <li key={channel.id}
-            className={clsx(css.row, channelState.selected?.id === channel.id && css.rowActive)}
-            data-testid={'agent-channel-row-' + channel.id}>
-            <div className={css.rowLine}>
-              <button type="button" className={css.rowButton} data-testid={'agent-channel-open-' + channel.id}
-                aria-current={channelState.selected?.id === channel.id ? 'true' : undefined}
-                onClick={() => { openChannel(channel.id) }}>
-                <AgentAvatar agents={channel.agents} label="↔" />
-                <span className={css.rowText}>
-                  <span className={css.name}>{channel.name}</span>
-                  <span className={css.state}>{t('channel.readOnly')}</span>
-                </span>
-              </button>
-              <Menu open={menuFor === 'channel:' + channel.id} onClose={() => { setMenuFor(null) }}
-                items={[{ id: 'clear', label: t('row.clear'), icon: <IconTrashOutline16 size={14} />, danger: true }]}
-                onSelect={() => { setMenuFor(null); setConfirmChannel(channel.id) }} portal
-                anchor={<button type="button" className={css.menuButton}
-                  aria-label={t('row.menu', { name: channel.name })} aria-haspopup="menu"
-                  aria-expanded={menuFor === 'channel:' + channel.id} data-testid={'agent-channel-menu-' + channel.id}
-                  onClick={() => { setMenuFor(current => current === 'channel:' + channel.id ? null : 'channel:' + channel.id) }}>
-                  <IconEllipsisOutline16 size={14} />
-                </button>} />
-            </div>
-          </li>)}
+          {channelState.rows.map((channel) => {
+            const online = channel.agents.every(agent => state.rows.some(row => row.agent === agent && row.enabled !== false))
+            return <li key={channel.id}
+              className={clsx(css.row, channelState.selected?.id === channel.id && css.rowActive)}
+              data-testid={'agent-channel-row-' + channel.id}>
+              <div className={css.rowLine}>
+                <button type="button" className={css.rowButton} data-testid={'agent-channel-open-' + channel.id}
+                  aria-current={channelState.selected?.id === channel.id ? 'true' : undefined}
+                  onClick={() => { openChannel(channel.id) }}>
+                  <span className={css.avatarStatus}>
+                    <AgentAvatar agents={channel.agents} label="↔" />
+                    <PresenceDot status={online ? 'online' : 'offline'}
+                      label={t(online ? 'presence.online' : 'presence.offline')} />
+                  </span>
+                  <span className={css.rowText}>
+                    <span className={css.name}>{channel.name}</span>
+                    <span className={css.state}>{t('channel.readOnly')}</span>
+                  </span>
+                </button>
+                <Menu open={menuFor === 'channel:' + channel.id} onClose={() => { setMenuFor(null) }}
+                  items={[{ id: 'clear', label: t('row.clear'), icon: <IconTrashOutline16 size={14} />, danger: true }]}
+                  onSelect={() => { setMenuFor(null); setConfirmChannel(channel.id) }} portal
+                  anchor={<button type="button" className={css.menuButton}
+                    aria-label={t('row.menu', { name: channel.name })} aria-haspopup="menu"
+                    aria-expanded={menuFor === 'channel:' + channel.id} data-testid={'agent-channel-menu-' + channel.id}
+                    onClick={() => { setMenuFor(current => current === 'channel:' + channel.id ? null : 'channel:' + channel.id) }}>
+                    <IconEllipsisOutline16 size={14} />
+                  </button>} />
+              </div>
+            </li> })}
         </ul>
         {channelState.rows.length === 0 && channelState.error === null && <p className={css.phase}>{t('channel.none')}</p>}
         {channelState.error !== null && channelState.selected === null && <p role="alert">{channelState.error}</p>}

@@ -64,6 +64,14 @@ export interface InboxAgentRow {
   lastActivityAt: number | null
   /** The agent is working right now. */
   running: boolean
+  /** Whether the configured agent can run on this deployment. */
+  enabled?: boolean
+  /** Explicit policy disablement, rather than temporary unavailability. */
+  disabled?: boolean
+  /** Online, offline, active, unread completion, or terminal failure. */
+  presence?: 'online' | 'offline' | 'running' | 'unread' | 'error'
+  /** Durable completed-turn event sequence used by read receipts. */
+  completion?: number
 }
 
 /** The signed-in person the server resolved from the profile cookie. */
@@ -186,7 +194,14 @@ function parseAgentRow(raw: unknown): InboxAgentRow | undefined {
   if (agent === undefined || name === undefined || hasConversation === undefined
     || blank === undefined || running === undefined
     || sessionId === undefined || lastActivityAt === undefined) return undefined
-  return { agent, name, hasConversation, sessionId, blank, lastActivityAt, running }
+  const enabled = booleanField(raw, 'enabled')
+  const disabled = booleanField(raw, 'disabled')
+  const presence = raw['presence']
+  const completion = raw['completion']
+  if (enabled === undefined || disabled === undefined
+    || (presence !== 'online' && presence !== 'offline' && presence !== 'running' && presence !== 'unread' && presence !== 'error')
+    || typeof completion !== 'number' || !Number.isSafeInteger(completion) || completion < 0) return undefined
+  return { agent, name, hasConversation, sessionId, blank, lastActivityAt, running, enabled, disabled, presence, completion }
 }
 
 /** Parse the list body. */

@@ -79,12 +79,9 @@ describe('resident composer', () => {
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
     await runtime.mount({ inject: [...inject], apply })
     const view = runtime.renderRoot()
-    const textarea = view.container.querySelector('textarea')
-    expect(textarea).not.toBeNull()
-    // Session-less composer: locked outright. It is no longer a workspace-picker
-    // trigger, so it carries no menu semantics and no chip exists beside it.
-    expect(textarea!.disabled).toBe(true)
-    expect(textarea!.getAttribute('aria-haspopup')).toBeNull()
+    expect(view.container.querySelector('textarea')).toBeNull()
+    expect(view.getByTestId('inbox-welcome')).toBeTruthy()
+    expect(view.getByText('Numquam Succumbe')).toBeTruthy()
     expect(view.queryByRole('button', { name: '选择工作区' })).toBeNull()
     expect(view.queryByRole('button', { name: 'Choose workspace' })).toBeNull()
     // The workspace-picker seat is gone from the ledger: a stray registrant
@@ -98,7 +95,7 @@ describe('resident composer', () => {
     await runtime.dispose()
   })
 
-  it('keeps the complete Hero tree mounted when the first session appears', async () => {
+  it('replaces the welcome screen with a composer when the first session appears', async () => {
     const runtime = await SlotTestRuntime.create()
     runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
     // The plugin injects both; these specs exercise no settings path.
@@ -115,11 +112,8 @@ describe('resident composer', () => {
     await runtime.mount({ inject: [...inject], apply })
     const view = runtime.renderRoot()
 
-    const root = view.container.querySelector('[data-phase="hero"]')!
-    const scrollBody = view.container.querySelector('[data-conversation-scroll]')!
-    const composerSeat = view.container.querySelector('[data-composer-seat]')!
-    const textarea = view.container.querySelector('textarea')!
-    expect(textarea.disabled).toBe(true)
+    expect(view.getByTestId('inbox-welcome')).toBeTruthy()
+    expect(view.container.querySelector('textarea')).toBeNull()
 
     await runtime.sessions.add({
       id: SID,
@@ -127,12 +121,9 @@ describe('resident composer', () => {
       snapshot: { blank: true, composerPhase: 'blank' },
     })
 
-    // Same tree, same nodes: the hero chrome and the composer simply unlock in
-    // place once a conversation is current (no workspace click in between).
-    expect(view.container.querySelector('[data-phase="hero"]')).toBe(root)
-    expect(view.container.querySelector('[data-conversation-scroll]')).toBe(scrollBody)
-    expect(view.container.querySelector('[data-composer-seat]')).toBe(composerSeat)
-    expect(view.container.querySelector('textarea')).toBe(textarea)
+    expect(view.queryByTestId('inbox-welcome')).toBeNull()
+    const textarea = view.container.querySelector('textarea')!
+    expect(textarea).not.toBeNull()
     expect(textarea.disabled).toBe(false)
     expect(textarea.readOnly).toBe(false)
     await runtime.dispose()

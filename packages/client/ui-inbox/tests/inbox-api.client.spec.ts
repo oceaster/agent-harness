@@ -37,10 +37,12 @@ const listBody = {
     {
       agent: 'agent-a', name: 'Alpha', hasConversation: true,
       sessionId: 's-1', blank: false, lastActivityAt: 1792466828.2, running: false,
+      enabled: true, disabled: false, presence: 'online', completion: 0,
     },
     {
       agent: 'agent-b', name: 'Beta', hasConversation: false,
       sessionId: null, blank: true, lastActivityAt: null, running: true,
+      enabled: true, disabled: false, presence: 'running', completion: 0,
     },
   ],
 }
@@ -91,10 +93,12 @@ describe('inbox api payloads', () => {
           {
             agent: 'agent-a', name: 'Alpha', hasConversation: true,
             sessionId: 's-1', blank: false, lastActivityAt: 1792466828.2, running: false,
+            enabled: true, disabled: false, presence: 'online', completion: 0,
           },
           {
             agent: 'agent-b', name: 'Beta', hasConversation: false,
             sessionId: null, blank: true, lastActivityAt: null, running: true,
+            enabled: true, disabled: false, presence: 'running', completion: 0,
           },
         ],
       },

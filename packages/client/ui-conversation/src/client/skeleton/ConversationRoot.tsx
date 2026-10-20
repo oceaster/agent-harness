@@ -1,6 +1,5 @@
-// Resident conversation skeleton. Hero chrome, composer positioning, the
-// chain, AND the composer bar (session-maybe slot) stay mounted across
-// no-session/session transitions — the bar renders inert via owner props.
+// Conversation skeleton. An unselected inbox shows the branded welcome screen;
+// selected conversations own the hero chrome, message chain and composer.
 
 import { useCallback, useRef } from 'react'
 import clsx from 'clsx'
@@ -60,30 +59,29 @@ export function ConversationRoot({
   const zone: InputZone | undefined =
     session === undefined || inputState === undefined ? undefined : { session, input: inputState }
 
-  // The bar is ONE session-maybe slot rendered unconditionally — inert is a
-  // prop, not a different tree, so the textarea DOM survives the transition.
-  // With no session there is nothing to send to and no workspace to pick any
-  // more (the inbox owns which conversation is open), so a session-less screen
-  // is inert with its own placeholder and the textarea stays read-only until a
-  // row opens a conversation.
-  const inert = sessionId === undefined
-  // A raised block is the same inert posture with the blocker's own reason:
-  // one disabled textarea, never a second tree. The session-less state wins
-  // when both hold — there is nothing to send to before a conversation opens.
-  const blocked = !inert && composerBlock !== undefined
+  if (sessionId === undefined) {
+    return <section className={css.inboxWelcome} data-testid="inbox-welcome" aria-label={t('welcome.select')}>
+      <div className={css.welcomeArt} aria-hidden="true">
+        <HeroGlow className={css.welcomeGlow} />
+        <div className={css.welcomeLogo} />
+      </div>
+      <div className={css.welcomeBottom}>
+        <p className={css.welcomePrompt}>- {t('welcome.select')} -</p>
+        <footer className={css.welcomeFooter}><span>© {new Date().getFullYear()} Easter LTD</span><span>Numquam Succumbe</span></footer>
+      </div>
+    </section>
+  }
+
+  // A real conversation owns the composer; the unselected screen has no controls.
+  const blocked = composerBlock !== undefined
   const inputBar = renderSlot('conversation.composer.bar', {
     variant: hero ? 'hero' : 'composer',
-    ...(inert
-      ? {
-        disabled: true,
-        placeholder: t('placeholder.noSession'),
-      }
-      : blocked
-        // `blocked`, not `disabled`: the bar refuses input either way, but a
-        // block keeps the model seat live because choosing a model is how the
-        // user clears it.
-        ? { blocked: composerBlock, placeholder: composerBlock.reason }
-        : hero ? { placeholder: t('placeholder.hero') } : {}),
+    ...(blocked
+    // `blocked`, not `disabled`: the bar refuses input either way, but a
+    // block keeps the model seat live because choosing a model is how the
+    // user clears it.
+      ? { blocked: composerBlock, placeholder: composerBlock.reason }
+      : hero ? { placeholder: t('placeholder.hero') } : {}),
     overlay: renderSlot('conversation.input.overlay', {}),
     leftItems: zone === undefined ? null : renderSlot('conversation.input.left', zone),
     rightItems: zone === undefined ? null : renderSlot('conversation.input.right', zone),

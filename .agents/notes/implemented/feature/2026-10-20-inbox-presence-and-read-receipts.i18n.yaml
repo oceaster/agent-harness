@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-20-inbox-presence-and-read-receipts.md
+2026-10-20-inbox-presence-and-read-receipts.md: 3ce54b26f525dea1be708b42b14283fde7fc8ce8
+2026-10-20-inbox-presence-and-read-receipts.zh.md: faf21a209fa2c7c0d1d011a2e92cdbbf7d221a38

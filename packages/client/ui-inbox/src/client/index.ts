@@ -105,7 +105,26 @@ export function apply(ctx: ClientContext): void {
     // (the server is the authority on the roster and on last activity).
     const stopFrames = controller.followSessions()
     const stopReset = ctx.on('connection/reset', () => { void controller.load() })
+    let checking = false
+    const timer = setInterval(async () => {
+      if (checking) return
+      checking = true
+      try {
+        await controller.load()
+        if (channels.store.getSnapshot().selected !== null || document.visibilityState !== 'visible') return
+        const current = sessions.list.getSnapshot().current
+        const row = controller.store.getSnapshot().rows.find(item => item.sessionId === current)
+        if (row === undefined || row.running || row.presence !== 'unread' || row.completion === undefined) return
+        const response = await fetch('/v1/browser/inbox/seen', { method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent: row.agent, completion: row.completion }),
+          signal: AbortSignal.timeout(8000),
+        })
+        if (response.ok) await controller.load()
+      } catch { /* A transient status/read-receipt failure retries on the next poll. */ }
+      finally { checking = false }
+    }, 2000)
     return () => {
+      clearInterval(timer)
       stopFrames()
       stopReset()
     }

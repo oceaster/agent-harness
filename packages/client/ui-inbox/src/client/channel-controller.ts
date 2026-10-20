@@ -2,7 +2,7 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 
 /** One channel the authenticated API allows this person to see. */
-export interface AgentChannel { id: string; name: string; agents: string[] }
+export interface AgentChannel { id: string; name: string; agents: string[]; online?: boolean }
 /** Durable peer-agent message, including its delivery outcome. */
 export interface ChannelMessage {
   id: string

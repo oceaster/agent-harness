@@ -54,6 +54,7 @@ async function bench(listBody: unknown = {
   agents: [{
     agent: 'agent-a', name: 'Alpha', hasConversation: true,
     sessionId: 's-a', blank: false, lastActivityAt: 100, running: false,
+    enabled: true, disabled: false, presence: 'online', completion: 0,
   }],
 }) {
   const sessions = sessionList()

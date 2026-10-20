@@ -10,7 +10,7 @@
  * for loading, empty, refused and failed reads.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { InboxAgentRow } from '../src/client/inbox-api.ts'
@@ -97,6 +97,28 @@ function mount(overrides: {
 }
 
 describe('inbox panel: rows', () => {
+  it('shows the five statuses and blocks disabled agents', () => {
+    const rows = [
+      row({ agent: 'delta', name: 'Delta', enabled: true, presence: 'online' }),
+      row({ agent: 'darwin', name: 'Darwin', enabled: true, running: true }),
+      row({ agent: 'diana', name: 'Diana', enabled: true, presence: 'unread' }),
+      row({ agent: 'dexter', name: 'Dexter', enabled: false, disabled: true, presence: 'offline' }),
+      row({ agent: 'failed', name: 'Failed', enabled: true, presence: 'error' }),
+    ]
+    const b = mount({ state: { rows } })
+    for (const [agent, status] of [['delta','online'],['darwin','running'],['diana','unread'],['dexter','offline'],['failed','error']] as const) {
+      expect(screen.getByTestId('ui-inbox-open-' + agent).querySelector('[data-presence="' + status + '"]')).not.toBeNull()
+    }
+    const dexter = screen.getByTestId('ui-inbox-open-dexter') as HTMLButtonElement
+    expect(dexter.disabled).toBe(true)
+    expect(dexter.textContent).toContain('Disabled')
+    fireEvent.click(dexter)
+    expect(b.open).not.toHaveBeenCalled()
+    expect(screen.getByTestId('agent-channel-open-delta-darwin').querySelector('[data-presence="online"]')).not.toBeNull()
+    act(() => { b.inbox.set({ ...b.inbox.getSnapshot(), rows: rows.map(item => item.agent === 'darwin' ? { ...item, enabled: false } : item) }) })
+    expect(screen.getByTestId('agent-channel-open-delta-darwin').querySelector('[data-presence="offline"]')).not.toBeNull()
+  })
+
   it('opens channels from full sidebar rows and clears through their dropdown confirmation', async () => {
     const b = mount()
     expect(screen.getByTestId('agent-channel-row-delta-darwin').tagName).toBe('LI')

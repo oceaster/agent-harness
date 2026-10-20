@@ -385,3 +385,15 @@
 .root[data-phase='settling'] .composerSeat {
   visibility: hidden;
 }
+
+.inboxWelcome { position: relative; isolation: isolate; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+.welcomeArt { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; }
+.welcomeGlow { position: absolute; width: min(1051px, 150%); height: auto; max-width: none; pointer-events: none; }
+.welcomeLogo { width: clamp(130px, 30vw, 300px); aspect-ratio: 755 / 712; opacity: 0.42;
+  background: linear-gradient(145deg, rgba(190, 197, 208, 0.72), rgba(140, 150, 168, 0.28) 52%, rgba(190, 197, 208, 0.5));
+  mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat;
+  -webkit-mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat; }
+.welcomeBottom { flex: none; padding: 24px clamp(16px, 4vw, 48px); color: var(--dsw-alias-label-tertiary); }
+.welcomePrompt { text-align: center; margin: 0 0 36px; font-size: 13px; letter-spacing: 0.08em; }
+.welcomeFooter { display: flex; justify-content: space-between; gap: 20px; font-size: 11px; }
+@media (max-width: 480px) { .welcomeFooter { font-size: 10px; gap: 12px; } .welcomePrompt { letter-spacing: 0; } }
