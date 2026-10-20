@@ -8,8 +8,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { useEffect } from 'react'
 import type {
   AssistantMessageNode, CommandNode, CompactionSummaryNode, ConversationNode, ConversationSnapshot,
-  ModelRetryNode, RunningToolCall, SessionId, SessionListState, ToolCallBlock, ToolResultNode, TurnErrorNode,
-  TurnMaxTokensNode, UserMessageNode, WorkspaceListState,
+  ModelRetryNode, RunningToolCall, SessionId, SessionListState, SessionReaction, ToolCallBlock, ToolResultNode,
+  TurnErrorNode, TurnMaxTokensNode, UserMessageNode, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
@@ -447,6 +447,41 @@ describe('ChatView', () => {
     // The flow opens on the window's own first row: no header row above it.
     const flow = view.container.querySelector('[data-chat-flow=""]') as HTMLElement
     expect(flow.firstElementChild?.textContent).toContain('first visible')
+  })
+
+  it('paints a reaction as a badge on its message and leaves the transcript text identical', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'hello there'), assistant(2, 'hi back', 1)],
+      turnEnds: new Map([[1, 2]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    const flow = (): HTMLElement => view.container.querySelector('[data-chat-flow=""]') as HTMLElement
+    // The transcript's own words, with the badge — chrome on the row — taken
+    // back out, so a badge can never hide a row of its own.
+    const transcriptText = (): string => {
+      const clone = flow().cloneNode(true) as HTMLElement
+      for (const badge of clone.querySelectorAll('[data-reaction-badge]')) badge.remove()
+      return clone.textContent ?? ''
+    }
+    const rowsBefore = flow().children.length
+    const textBefore = transcriptText()
+    // Both durable messages offer the affordance; nothing is recorded yet.
+    expect(view.getAllByRole('button', { name: zh['reaction.button'] }).length).toBeGreaterThanOrEqual(2)
+    expect(view.container.querySelector('[data-reaction-badge]')).toBeNull()
+    // The note comes back in the log, folded by the message it targets.
+    const reaction: SessionReaction = {
+      targetSeq: 1, emoji: '👍', action: 'added', actor: 'user', seq: 99,
+    }
+    act(() => {
+      h.set({ reactions: new Map([[1, reaction]]) })
+    })
+    // The badge is the only difference: same rows, same words, no reaction row,
+    // bubble, divider, timestamp or system line anywhere in the transcript.
+    expect(view.container.querySelector('[data-reaction-badge]')?.textContent).toBe('👍')
+    expect(flow().children.length).toBe(rowsBefore)
+    expect(transcriptText()).toBe(textBefore)
+    expect(view.queryByText(/reacted/u)).toBeNull()
+    expect(view.queryByText(/反应|回应了/u)).toBeNull()
   })
 
   it('renders the recent window only, starting at the oldest message the client holds', () => {

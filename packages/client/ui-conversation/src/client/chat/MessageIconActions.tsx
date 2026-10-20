@@ -84,6 +84,9 @@ export function MessageIconActions({
   const [tableOpen, setTableOpen] = useState(false)
   const [reactError, setReactError] = useState<string | null>(null)
   const reactButton = useRef<HTMLButtonElement | null>(null)
+  // The table and its trigger share this wrapper; the table treats a press
+  // inside it as the toggle's own press rather than a dismissal.
+  const reactAnchor = useRef<HTMLSpanElement | null>(null)
   const tableId = useId()
   const current = reaction?.reaction?.emoji
   // A row that stops owning a reactable message must not keep a table open.
@@ -191,7 +194,7 @@ export function MessageIconActions({
         </button>
       </Tooltip>
       {reaction !== undefined && (
-        <span className={css.reactionAnchor}>
+        <span ref={reactAnchor} className={css.reactionAnchor}>
           <Tooltip label={t('reaction.button')} side="bottom">
             <button
               ref={reactButton}
@@ -212,6 +215,7 @@ export function MessageIconActions({
           {tableOpen && (
             <EmojiTable
               id={tableId}
+              anchor={reactAnchor}
               current={current}
               onChoose={onChoose}
               onDismiss={closeTable}

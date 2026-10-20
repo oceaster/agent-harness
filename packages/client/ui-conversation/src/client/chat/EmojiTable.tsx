@@ -9,7 +9,7 @@
 // The parent returns focus to the React button whenever the table closes.
 
 import { useEffect, useId, useRef } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import css from './EmojiTable.module.css'
 
@@ -29,6 +29,13 @@ const GRID_COLUMNS = 6
 export interface EmojiTableProps {
   /** Id of the row's emoji table, so the triggering button can own the `aria-controls` pair. */
   readonly id: string
+  /**
+   * The element the table hangs off: the row's React-button wrapper. A pointer
+   * press inside it — including on the React button itself — belongs to the
+   * button's own toggle rather than to the dismissal, so pressing the button
+   * while the table is open closes it instead of closing then reopening.
+   */
+  readonly anchor: RefObject<HTMLElement | null>
   /** The glyph the log currently records for this message, marked as the chosen one. */
   readonly current: string | undefined
   /** Choose one glyph (the parent posts the note and closes). */
@@ -41,10 +48,10 @@ export interface EmojiTableProps {
 
 /**
  * The dismissible emoji table.
- * @param props - table id, current glyph, choose/dismiss callbacks, locale seat.
+ * @param props - table id, anchor element, current glyph, choose/dismiss callbacks, locale seat.
  * @returns the anchored table element.
  */
-export function EmojiTable({ id, current, onChoose, onDismiss, t }: EmojiTableProps) {
+export function EmojiTable({ id, anchor, current, onChoose, onDismiss, t }: EmojiTableProps) {
   const tableRef = useRef<HTMLDivElement | null>(null)
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const labelId = useId()
@@ -60,14 +67,18 @@ export function EmojiTable({ id, current, onChoose, onDismiss, t }: EmojiTablePr
   // before the outside target's own handler, without swallowing that click.
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
-      const table = tableRef.current
-      if (table === null) return
+      const root = tableRef.current
+      if (root === null) return
+      const trigger = anchor.current
       const target = event.target
-      if (target instanceof Node && !table.contains(target)) onDismiss()
+      if (!(target instanceof Node)) return
+      // The trigger's own press is the toggle's business, not a dismissal.
+      const inside = (trigger !== null && trigger.contains(target)) || root.contains(target)
+      if (!inside) onDismiss()
     }
     document.addEventListener('pointerdown', onPointerDown, true)
     return () => { document.removeEventListener('pointerdown', onPointerDown, true) }
-  }, [onDismiss])
+  }, [anchor, onDismiss])
 
   /** Roving index of the focused option; the first one when focus drifted. */
   const focusedIndex = (): number => {

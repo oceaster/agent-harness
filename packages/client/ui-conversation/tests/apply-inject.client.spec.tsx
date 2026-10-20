@@ -15,14 +15,15 @@
 // chat-toolview-slot.spec.tsx.
 
 import { describe, expect, it, vi } from 'vitest'
+import { render } from '@testing-library/react'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionBehaviorOverrides } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import type { ISession, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ISession, SessionId, SessionReaction } from '@deepseek-ai/dsh-client-runtime/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
-  ChatViewInjected, ComposerBarInjected, ConversationInjected, ConversationSessionHeaderInjected,
-  ConversationSessionInjected, DetailsInjected,
+  ChatNodeInjected, ChatNodeReaction, ChatViewInjected, ComposerBarInjected, ConversationInjected,
+  ConversationSessionHeaderInjected, ConversationSessionInjected, DetailsInjected, UseChatNodeReaction,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { createChatStore } from '../src/client/stores.ts'
 
@@ -41,6 +42,7 @@ function sessionFakeFor() {
     open: vi.fn(() => Promise.resolve()),
     prompt: vi.fn<ISession['prompt']>(() => Promise.resolve({ ok: true, value: { accepted: true } })),
     cancel: vi.fn<ISession['cancel']>(() => Promise.resolve({ ok: true, value: { accepted: true } })),
+    react: vi.fn<ISession['react']>(() => Promise.resolve({ ok: true, value: { seq: 42 } })),
   } satisfies SessionBehaviorOverrides
 }
 
@@ -120,10 +122,28 @@ async function bench() {
     }
     return { state, actions }
   }
+  /**
+   * Bind the keyed Chat Node entry's reaction hook factory the way the outlet
+   * does: one row's hook, over the standard props and that row's node key.
+   * The inject face is declared on the owning entry's `children`, not on the
+   * child's own ledger row — that split is the slot contract.
+   * @param standard - the `useSession` seat and session id the factory reads.
+   * @returns the row-level reaction hook.
+   */
+  const reactionHookApi = (standard: {
+    useSession: (selector: (snapshot: { reactions: ReadonlyMap<number, SessionReaction> }) => unknown) => unknown
+    sessionId: SessionId
+  }): UseChatNodeReaction => {
+    const owner = entryOf('conversation.view') as unknown as {
+      children: Record<string, { inject: ChatNodeInjected }>
+    }
+    const factory = owner.children['conversation.chat.node']!.inject.hooks.reaction
+    return factory(standard as never, 'chat-node-key')
+  }
   return {
     runtime, feature, slots: runtime.slots, entryOf,
     conversationApi, conversationHeaderApi, residentApi, composerApi, chatViewApi, inputApi,
-    sessionFake, layoutFake,
+    reactionHookApi, sessionFake, layoutFake,
   }
 }
 
@@ -274,6 +294,79 @@ describe('conversation slot inject API', () => {
     off()
     off2()
     unsub()
+    await b.runtime.dispose()
+  })
+})
+
+describe('reaction inject API', () => {
+  const NOTE: SessionReaction = { targetSeq: 7, emoji: '👍', action: 'added', actor: 'user', seq: 21 }
+
+  /**
+   * Read one row's reaction face the way a Chat Node renderer does — the hook
+   * is called during render, so it needs a mounted component.
+   * @param hook - the row-level reaction hook.
+   * @param targetSeq - the message this row owns, or undefined for none.
+   * @returns the face the row renders from and writes through.
+   */
+  function faceFor(hook: UseChatNodeReaction, targetSeq: number | undefined): ChatNodeReaction {
+    let captured: ChatNodeReaction | undefined
+    function Probe(): null {
+      captured = hook(targetSeq)
+      return null
+    }
+    render(<Probe />)
+    if (captured === undefined) throw new Error('reaction hook produced no face')
+    return captured
+  }
+
+  it('folds the log map by the row\'s own target sequence and posts the note through session.react', async () => {
+    const b = await bench()
+    const reactions = new Map<number, SessionReaction>([[7, NOTE]])
+    // The standard props' selector seat, resolving the snapshot exactly as the
+    // shipped one does, so this exercises the real selector rather than a stub
+    // of the hook.
+    const hook = b.reactionHookApi({
+      sessionId: ROOT,
+      useSession: selector => selector({ reactions }),
+    })
+    // The badge is the fold keyed by this row's message, and nothing else.
+    expect(faceFor(hook, 7).reaction).toEqual(NOTE)
+    expect(faceFor(hook, 8).reaction).toBeUndefined()
+    // A row carrying no durable message reads nothing at all.
+    expect(faceFor(hook, undefined).reaction).toBeUndefined()
+
+    await faceFor(hook, 7).react('🔥', 'changed')
+    // Mutation check: the target travels from the row, not from a constant.
+    expect(b.sessionFake.react).toHaveBeenCalledTimes(1)
+    expect(b.sessionFake.react).toHaveBeenLastCalledWith({ targetSeq: 7, emoji: '🔥', action: 'changed' })
+    await faceFor(hook, 8).react('✅', 'added')
+    expect(b.sessionFake.react).toHaveBeenLastCalledWith({ targetSeq: 8, emoji: '✅', action: 'added' })
+    await b.runtime.dispose()
+  })
+
+  it('surfaces the host refusal as a rejection instead of claiming the write landed', async () => {
+    const b = await bench()
+    b.sessionFake.react.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'target-not-valid',
+        message: 'target 7 is not an append-origin message',
+        details: { sessionId: ROOT, targetSeq: 7 },
+      },
+    })
+    const hook = b.reactionHookApi({ sessionId: ROOT, useSession: selector => selector({ reactions: new Map() }) })
+    // The caller paints an honest refusal from this message and leaves the row
+    // untouched; what must never happen is a resolved promise over a refusal.
+    await expect(faceFor(hook, 7).react('👍', 'added')).rejects.toThrow('target 7 is not an append-origin message')
+    await b.runtime.dispose()
+  })
+
+  it('refuses to write for a row with no target message', async () => {
+    const b = await bench()
+    const hook = b.reactionHookApi({ sessionId: ROOT, useSession: selector => selector({ reactions: new Map() }) })
+    // No seq means nothing to append a note about, and no wire call is made.
+    await expect(faceFor(hook, undefined).react('👍', 'added')).rejects.toThrow(/no reactable message/)
+    expect(b.sessionFake.react).not.toHaveBeenCalled()
     await b.runtime.dispose()
   })
 })
