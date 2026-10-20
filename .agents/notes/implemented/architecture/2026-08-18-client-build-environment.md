@@ -32,6 +32,8 @@ The root build wrapper supplies one exact public environment to both bundlers. I
 
 ## Consequences
 
+Deployment verification also compares the recorded commit with Git HEAD, rejects tracked source changes, requires the browser shell, and refuses dynamic browser artifacts whose package manifest has been deleted. `scripts/verify-deployment-build.spec.ts` exercises stale commits, partial rebuilds, missing output, and deleted plugin residue. Deployment must run this check before changing services; the check does not rebuild artifacts in a running server's checkout.
+
 The Vite static shell and shared tsdown dynamic bundles receive the same string for a given `DSH_CLIENT_*` build-process variable. An unset static property read evaluates to `undefined`; non-`DSH_CLIENT_*` values cannot enter browser artifacts through this mechanism, and business code cannot enumerate the build process environment. Every complete build carries its short source revision as public display metadata. CI build gates select the official profile without exposing its public values to source tests or unrelated workflow steps. npm packing and built Web tests verify the recorded environment and current artifact digest, so a default build followed by an official pack request, a partial rebuild, or modified output fails before consumption.
 
 Every `DSH_CLIENT_*` value referenced by business code becomes public artifact content, so a misnamed value can disclose information. Build choices are fixed when the artifact is generated; a setting that must change after deployment requires a validated, transported, and documented runtime configuration mechanism.
