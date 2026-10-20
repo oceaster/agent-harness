@@ -186,7 +186,6 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const { set, source } = makeSource(init)
   const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
-  const loadOlder = vi.fn()
   const inspectCall = vi.fn<(callId: string) => void>()
   // In-memory scroll memory matching the apply.ts per-session map contract.
   let savedScroll: ReturnType<ChatViewSlotProps['chatScroll']['read']> = null
@@ -314,7 +313,6 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     SessionProvider: SessionProviderStub,
     openDetails,
     openFile,
-    loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     inspectCall,
     chatScroll,
@@ -325,7 +323,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   }
   const setSelection = (next: SelectionTarget | null): void => { chat.actions.select(next) }
   return {
-    set, ChatView, props, openDetails, openFile, loadOlder, inspectCall,
+    set, ChatView, props, openDetails, openFile, inspectCall,
     chatScroll, setSelection, toolOwners,
   }
 }
@@ -417,36 +415,62 @@ describe('ChatView', () => {
     expect(h.toolOwners[0]).toMatchObject({ callId: 'w1', toolName: '' })
   })
 
-  it('prepend keeps the reader\'s latest pending-request scroll position anchored', () => {
+  it('offers no control that asks for older messages, even when the client holds a partial window', () => {
     const h = makeHarness({ nodes: [user(9, 'first visible'), user(10, 'next visible')], hasMore: true })
     const view = render(<h.ChatView {...h.props} />)
+    // The transcript is the window the session opened with: the tail page
+    // reported older history outside it, and nothing in the view can ask for
+    // that history. No paging row, no button, no busy label.
+    expect(view.container.querySelector('[class*="older"]')).toBeNull()
+    expect(view.queryByText('加载更早')).toBeNull()
+    expect(view.queryByText('Load earlier')).toBeNull()
+    expect(view.queryByText('加载中…')).toBeNull()
+    // Every button the view does render belongs to a message or the composer
+    // seat, never to history paging.
+    const labels = [...view.container.querySelectorAll('button')]
+      .map(button => `${button.textContent ?? ''}|${button.getAttribute('aria-label') ?? ''}`)
+    expect(labels.some(label => /加载更早|Load earlier|加载中/.test(label))).toBe(false)
+    // The flow opens on the window's own first row: no header row above it.
+    const flow = view.container.querySelector('[data-chat-flow=""]') as HTMLElement
+    expect(flow.firstElementChild?.textContent).toContain('first visible')
+  })
+
+  it('renders the recent window only, starting at the oldest message the client holds', () => {
+    // A 50-message window out of a session with more history before it.
+    const windowNodes = Array.from({ length: 50 }, (_, index) => (
+      index % 2 === 0
+        ? user(101 + index, `window message ${101 + index}`)
+        : assistant(101 + index, `window reply ${101 + index}`)
+    ))
+    const h = makeHarness({ nodes: windowNodes, hasMore: true })
+    const view = render(<h.ChatView {...h.props} />)
+    const rows = [...view.container.querySelectorAll('[data-chat-flow-key]')]
+    expect(rows).toHaveLength(50)
+    // The oldest rendered message is the window boundary itself, not a
+    // synthesized gap row and not a message the client never fetched.
+    expect(rows[0]?.textContent).toContain('window message 101')
+    expect(view.container.textContent).not.toContain('window message 100')
+    expect(rows.at(-1)?.textContent).toContain('window reply 150')
+  })
+
+  it('scrolling to the top of the window asks for nothing and keeps the window as it is', () => {
+    const windowNodes = Array.from({ length: 30 }, (_, index) => user(201 + index, `row ${201 + index}`))
+    const h = makeHarness({ nodes: windowNodes, hasMore: true })
+    const view = render(<h.ChatView {...h.props} />)
     const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
-    const first = view.container.querySelector('[data-chat-flow-key="fixture:user:9"]') as HTMLDivElement
-    const next = view.container.querySelector('[data-chat-flow-key="fixture:user:10"]') as HTMLDivElement
-    let firstTop = 100
-    let nextTop = 300
-    vi.spyOn(scroller, 'getBoundingClientRect').mockImplementation(
-      () => ({ top: 0, bottom: 200 } as DOMRect),
-    )
-    vi.spyOn(first, 'getBoundingClientRect').mockImplementation(
-      () => ({ top: firstTop, bottom: firstTop + 40 } as DOMRect),
-    )
-    vi.spyOn(next, 'getBoundingClientRect').mockImplementation(
-      () => ({ top: nextTop, bottom: nextTop + 40 } as DOMRect),
-    )
-    Object.defineProperty(scroller, 'scrollHeight', { value: 800, writable: true })
-    Object.defineProperty(scroller, 'clientHeight', { value: 200, writable: true })
-    readerScroll(scroller, 50)
-    fireEvent.click(view.getByText('加载更早'))
-    // The reader moves after the request starts; this, not the click-time
-    // row, is the intent the arriving page must preserve.
-    firstTop = -200
-    nextTop = 60
-    readerScroll(scroller, 90)
-    Object.defineProperty(scroller, 'scrollHeight', { value: 1300, writable: true })
-    nextTop = 560
-    act(() => { h.set({ nodes: [assistant(2, 'older'), user(9, 'first visible'), user(10, 'next visible')] }) })
-    expect(scroller.scrollTop).toBe(590) // latest 90 + the anchored row's 500px prepend shift
+    Object.defineProperty(scroller, 'scrollHeight', { value: 3_000, writable: true })
+    Object.defineProperty(scroller, 'clientHeight', { value: 400, writable: true })
+    // A reader leaves the floor (which disarms follow), then keeps going to
+    // the very top of what the client holds.
+    readerScroll(scroller, 100)
+    expect(scroller.scrollTop).toBe(100)
+    readerScroll(scroller, 0)
+    // Nothing is issued by reaching the top: no busy label, no paging row, no
+    // extra row — the transcript is the window it opened with.
+    expect(view.queryByText('加载中…')).toBeNull()
+    expect(view.container.querySelector('[class*="older"]')).toBeNull()
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(30)
+    expect(scroller.scrollTop).toBe(0)
   })
 
   it('renders the fixture main line as independently keyed business nodes', () => {
@@ -1110,43 +1134,17 @@ describe('ChatView', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('prepend preserves a semantic row; a trailing user node force-scrolls', () => {
-    const h = makeHarness({ nodes: [user(5, 'later'), assistant(6, 'a')], hasMore: true })
+  it('a trailing user node force-scrolls a reader who had scrolled away', () => {
+    const h = makeHarness({ nodes: [user(5, 'later'), assistant(6, 'a')] })
     const view = render(<h.ChatView {...h.props} />)
     const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
-    // jsdom has no layout: fake the metrics the anchor math reads.
     Object.defineProperty(scroller, 'scrollHeight', { value: 1000, writable: true })
     Object.defineProperty(scroller, 'clientHeight', { value: 400, writable: true })
-    const anchored = view.container.querySelector('[data-chat-flow-key="fixture:user:5"]') as HTMLDivElement
-    let anchoredTop = 100
-    vi.spyOn(anchored, 'getBoundingClientRect').mockImplementation(
-      () => ({ top: anchoredTop, bottom: anchoredTop + 40 } as DOMRect),
-    )
     readerScroll(scroller, 80)
-    // Arm the paging anchor, then deliver an older page (head seq decreases).
-    fireEvent.click(view.getByText('加载更早'))
     Object.defineProperty(scroller, 'scrollHeight', { value: 1600, writable: true })
-    anchoredTop = 700
-    act(() => { h.set({ nodes: [user(1, 'old'), assistant(2, 'b'), user(5, 'later'), assistant(6, 'a')] }) })
-    expect(scroller.scrollTop).toBe(680) // reader offset 80 + the anchored row's 600px shift
     // A new trailing user bubble (own words) force-scrolls to the bottom.
-    act(() => { h.set({ nodes: [user(1, 'old'), assistant(2, 'b'), user(5, 'later'), assistant(6, 'a'), user(9, 'mine')] }) })
+    act(() => { h.set({ nodes: [user(5, 'later'), assistant(6, 'a'), user(9, 'mine')] }) })
     expect(scroller.scrollTop).toBe(1600)
-  })
-
-  it('back-to-bottom cancels an in-flight paging anchor', () => {
-    const h = makeHarness({ nodes: [user(9, 'late')], hasMore: true })
-    const view = render(<h.ChatView {...h.props} />)
-    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
-    Object.defineProperty(scroller, 'scrollHeight', { value: 800, writable: true })
-    Object.defineProperty(scroller, 'clientHeight', { value: 200, writable: true })
-    readerScroll(scroller, 50)
-    fireEvent.click(view.getByText('加载更早'))
-    fireEvent.click(view.getByLabelText('回到底部'))
-    Object.defineProperty(scroller, 'scrollHeight', { value: 1_300, writable: true })
-    act(() => { h.set({ nodes: [assistant(2, 'older'), user(9, 'late')] }) })
-    expect(scroller.scrollTop).toBe(1_300)
-    expect(h.chatScroll.read()).toBeNull()
   })
 
   it('scrolling away disables follow and shows the back-to-bottom button; clicking returns', () => {
@@ -1360,13 +1358,16 @@ describe('ChatView', () => {
     }
   })
 
-  it('paging button loads older and shows its busy label', () => {
+  it('never grows the window when the session reports older history outside it', () => {
+    // `hasMore` survives on the snapshot as a runtime fact (the trajectory
+    // view reads it); the chat transcript must not act on it.
     const h = makeHarness({ nodes: [user(5, 'later')], hasMore: true })
     const view = render(<h.ChatView {...h.props} />)
-    fireEvent.click(view.getByText('加载更早'))
-    expect(h.loadOlder).toHaveBeenCalledTimes(1)
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(1)
     act(() => { h.set({ loadingOlder: true }) })
-    expect(view.getByText('加载中…')).toBeTruthy()
+    // A busy flag from any other surface still renders no chat affordance.
+    expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(1)
+    expect(view.queryByText('加载中…')).toBeNull()
   })
 
   it('shows open error and loading states', () => {

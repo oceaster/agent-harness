@@ -1091,6 +1091,65 @@ re-applied on every upstream pull:
    directions. Re-apply after an upstream pull, which will restore the larger
    corpus and the stricter comparison.
 
+23. **The chat transcript has no "Load earlier" and never grows**
+   (`ui-conversation`) — Owen: "as the user begins to scroll up in chat there
+   is a 'Load earlier' indicator, remove this feature, so the client side
+   visible messages are only ever so recent." The control is deleted, not
+   hidden, and the paging path behind it is deleted with it. A session still
+   opens on its most recent page (`PAGE_MESSAGES = 50` unchanged), so the
+   transcript is the window it fetched: a reader who scrolls up reaches its
+   oldest row and stops there. The agent's view of history is untouched — the
+   host still reads the whole log, and every whole-log projection (stats,
+   tokens, context) was already independent of the loaded window.
+
+   - **Removed.** `ChatView`'s `hasMore`/`loadingOlder` reads, the "Load
+     earlier" button and its `.older` CSS block, the scroll-anchor bookkeeping
+     that existed only to keep the viewport steady while an earlier page was
+     prepended (`PagingAnchor`, `anchorRef`, the reset effect, the prepend
+     branch of the layout effect, `firstSeqRef`, `loadOlderAnchored`),
+     `IConversation.loadOlder` and its implementation in `service.ts`,
+     `ChatViewInjected.loadOlder` in `contract/slots.ts`, the `apply.ts`
+     wiring and the `scopedConversation` resolution that only fed it, and
+     `chat.loadOlder` in both dictionaries. The scroll-position memory
+     (`chatScroll`) stays: `pagingAnchor`/`flowTop`/`anchorElement` are shared
+     with it and a view-tab round trip still restores the reader's row.
+   - **Kept on purpose, and it is the remaining paging surface.**
+     `Session.loadOlder`, `hasMore` and `loadingOlder` stay in
+     `packages/client/runtime`, together with `PAGE_MESSAGES` and the
+     tail-page open. They are not dead: the `conversation.view` target
+     `ui-trajectory` reads all three (`TrajectoryView`'s "Load earlier
+     history", `index.ts`'s injected `loadOlder`), and the generated
+     `cordis-client-runner` client catalogue publishes them. Deleting them
+     here would have broken that tab, so this entry removes the chat path only;
+     if the household wants no paging anywhere, `ui-trajectory` needs its own
+     change first.
+   - **Tests.** `ui-conversation` 467 → 469 unit tests, all green. Deleted the
+     four specs that only proved paging (the prepend-anchor case, the
+     back-to-bottom-cancels-an-anchor case, the anchor half of the
+     prepend/force-scroll case, and the button's busy-label case); re-pointed
+     the trailing-user force-scroll case and the `service`/`apply` route specs
+     that used `loadOlder` as a seam. Added: the control is absent even when
+     the snapshot reports older history; a 50-row window renders from its own
+     boundary with nothing above it; scrolling to the top issues nothing; and
+     an assembled-scene case that scrolls a partial window to the top and
+     observes zero calls on a proxy session face. Mutation-checked by putting
+     the button back: the absence assertions fail.
+   - **Web lanes, edited but not run.** `apps/web/tests` had five copies of the
+     old click. `chat-scroll-contract.e2e.ts` now records every
+     `session.history` request that carries `beforeSeq` and asserts the list
+     stays empty while a stream appends and the reader parks at the window's
+     head; its restore scenario scrolls the seeded window instead of paging it
+     first. `stats-paged-history.e2e.ts` scrolls to the top and asserts the
+     older marker never appears, no control exists, the strip does not move and
+     the window mounts `TURNS - 3` turn-tail footers (50 messages of 56).
+     `complex-history.perf.ts` lost its chat expand loop, its
+     `expanded-history-500-plus-8` scenario (it only existed to click the
+     button 500 messages deep) and its `historyPages` metric; the
+     workspace/history scenario still measures the trajectory rows, which do
+     page. These suites are already red at base for the `ui-inbox` composition
+     reason recorded in entry 22, so nothing here was executed in a browser in
+     this change — the committed aria goldens likewise could not be re-recorded.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

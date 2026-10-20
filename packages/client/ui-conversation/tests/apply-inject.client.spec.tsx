@@ -39,7 +39,6 @@ type ChatActions = ChatInstance['actions']
 function sessionFakeFor() {
   return {
     open: vi.fn(() => Promise.resolve()),
-    loadOlder: vi.fn<ISession['loadOlder']>(() => Promise.resolve()),
     prompt: vi.fn<ISession['prompt']>(() => Promise.resolve({ ok: true, value: { accepted: true } })),
     cancel: vi.fn<ISession['cancel']>(() => Promise.resolve({ ok: true, value: { accepted: true } })),
   } satisfies SessionBehaviorOverrides
@@ -137,9 +136,9 @@ describe('conversation slot inject API', () => {
     expect(b.sessionFake.open).not.toHaveBeenCalled()
     expect(injected.views.list().map(v => v.id)).toEqual(['chat'])
 
-    const chatView = b.chatViewApi(ROOT)
-    chatView.injected.loadOlder()
-    expect(b.sessionFake.loadOlder).toHaveBeenCalledTimes(1)
+    // The chat view's injected face carries no history-paging seam at all:
+    // the transcript is final, so there is nothing for it to ask for.
+    expect(Object.hasOwn(b.chatViewApi(ROOT).injected, 'loadOlder')).toBe(false)
     await b.runtime.dispose()
   })
 
@@ -244,13 +243,14 @@ describe('conversation slot inject API', () => {
     await b.runtime.dispose()
   })
 
-  it('scopedConversation fails loud when the session resolves no scope', async () => {
+  it('the chat-view inject resolves no session-scoped service: the transcript is final', async () => {
     const b = await bench()
-    // The chat-view inject resolves the scoped conversation service at inject
-    // time: an unlisted session hits the scope() === undefined throw directly.
+    // The chat view used to resolve the scoped conversation service at inject
+    // time for its paging seam. With paging gone the face carries no
+    // scope-addressed verb at all, so an unlisted session still assembles.
     const entry = b.entryOf('conversation.view')
     const injectFn = entry.inject as unknown as (sessionId: SessionId, actions: unknown) => unknown
-    expect(() => injectFn('never-listed' as SessionId, {})).toThrow(/resolved no scope/)
+    expect(() => injectFn('never-listed' as SessionId, {})).not.toThrow()
     await b.runtime.dispose()
   })
 

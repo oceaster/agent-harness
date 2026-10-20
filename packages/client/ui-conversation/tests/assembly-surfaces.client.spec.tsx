@@ -6,6 +6,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { ISession, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
+import type { SessionBehaviorOverrides } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 usePinnedBrowserLanguages('zh-CN')
@@ -56,7 +57,6 @@ async function bench(opts?: { blank?: boolean }) {
       ...(opts?.blank === true ? { blank: true, composerPhase: 'blank' as const } : {}),
     },
     session: {
-      loadOlder: vi.fn<ISession['loadOlder']>(),
       prompt: vi.fn<ISession['prompt']>(async () => ({ ok: true, value: { accepted: true } })),
     },
   })
@@ -165,7 +165,7 @@ describe('prompt rejection through the assembled composer', () => {
     await runtime.sessions.add({
       id: SID,
       summary: { title: 'S', displayTitle: 'S', cwd: '/proj' },
-      session: { prompt, loadOlder: vi.fn<ISession['loadOlder']>() },
+      session: { prompt },
     })
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
     await runtime.mount({ inject: [...inject], apply })
@@ -198,6 +198,55 @@ describe('title projection across assembled surfaces', () => {
     expect(view.queryByRole('navigation', { name: '会话层级' })).toBeNull()
     await runtime.sessions.updateSummary(SID, { displayTitle: '修订标题', title: '修订标题' })
     expect(view.queryByText('修订标题')).toBeNull()
+    await runtime.dispose()
+  })
+})
+
+describe('final transcript window', () => {
+  it('reports older history, offers no way to ask for it, and scrolling reaches no session verb', async () => {
+    const runtime = await SlotTestRuntime.create()
+    runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+    runtime.provide('remote', { $on: () => () => {} })
+    runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+    runtime.provide('layout', { openDetails: vi.fn(), closeDetails: vi.fn() })
+    const locale = new LocaleRuntime(runtime.ctx)
+    runtime.provide('locale', locale)
+    runtime.slots.installLocale(locale)
+    // Any session verb the assembled conversation reaches is recorded: a
+    // paging request would show up here as a call.
+    const calls: string[] = []
+    const sessionFace = new Proxy({}, {
+      get: (_target, key) => (..._args: unknown[]) => {
+        calls.push(String(key))
+        return Promise.resolve({ ok: true, value: {} })
+      },
+    }) as unknown as SessionBehaviorOverrides
+    await runtime.sessions.add({
+      id: SID,
+      summary: { title: 'S', displayTitle: 'S', cwd: '/proj' },
+      // The tail page reported older history outside the window.
+      snapshot: { nodes: [], hasMore: true },
+      session: sessionFace,
+    })
+    await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
+    await runtime.mount({ inject: [...inject], apply })
+    const view = runtime.renderRoot()
+
+    // No paging affordance of any kind, in either dictionary.
+    expect(view.queryByText('加载更早')).toBeNull()
+    expect(view.queryByText('Load earlier')).toBeNull()
+    expect(view.container.querySelector('[class*="older"]')).toBeNull()
+
+    // Reaching the top of the transcript is an ordinary reader scroll: it
+    // issues nothing, so the window stays the window the session opened with.
+    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLElement
+    expect(scroller).not.toBeNull()
+    const before = calls.length
+    scroller.scrollTop = 0
+    fireEvent.scroll(scroller)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(calls.length).toBe(before)
+    expect(view.queryByText('加载更早')).toBeNull()
     await runtime.dispose()
   })
 })

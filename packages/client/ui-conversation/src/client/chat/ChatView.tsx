@@ -1,13 +1,17 @@
 // ChatView: the default conversation view — one stable keyed parent list over
-// final business Nodes, plus paging, pending steering and bottom-follow.
+// final business Nodes, plus pending steering and bottom-follow.
 // Each row dispatches through 'conversation.chat.node'; ui-tool owns the
 // tool-call renderer and its recursive root/subcall composition. A Host
 // open-path refusal from the injected opener is an in-page dialog here.
 //
+// The transcript is the window the session opened with: there is no upward
+// paging, so the list is final and a reader who scrolls up reaches its oldest
+// row and stops.
+//
 // Scroll: when nested under `[data-conversation-scroll]` (active conversation
 // column), that host is the scrollport and this view is flow content; when
-// mounted alone (unit tests), `.scroll` owns overflow. Bottom-follow and
-// prepend anchoring always target the resolved scrollport.
+// mounted alone (unit tests), `.scroll` owns overflow. Bottom-follow targets
+// the resolved scrollport.
 //
 // Render economics: order changes only when rows enter, leave or move. Each
 // ChatNodeSeat subscribes to one Node key, so Assistant deltas and Tool
@@ -29,13 +33,6 @@ function scrollerOf(from: HTMLElement): HTMLElement {
   return (from.closest('[data-conversation-scroll]')) ?? from
 }
 
-interface PagingAnchor {
-  /** Stable node/call identity, independent of boundary-spanning group keys. */
-  key: string
-  /** Row top relative to the scrollport after the latest user scroll. */
-  top: number
-}
-
 /** Find an already-rendered settled row without interpolating a selector. */
 function anchorElement(list: HTMLElement, key: string): HTMLElement | null {
   for (const row of list.querySelectorAll<HTMLElement>('[data-chat-anchor-key]')) {
@@ -49,9 +46,9 @@ function flowTop(row: HTMLElement, scrollport: HTMLElement): number {
   return row.getBoundingClientRect().top - scrollport.getBoundingClientRect().top
 }
 
-/** Select a visible stable node/call identity, falling back only when layout
- * has not exposed a visible box yet. */
-function pagingAnchor(list: HTMLElement, scrollport: HTMLElement): HTMLElement | null {
+/** Select a visible stable node/call identity for the saved reader position,
+ * falling back only when layout has not exposed a visible box yet. */
+function visibleAnchor(list: HTMLElement, scrollport: HTMLElement): HTMLElement | null {
   const viewport = scrollport.getBoundingClientRect()
   const composer = scrollport.querySelector<HTMLElement>('[data-composer-seat]')
   const visibleBottom = composer?.getBoundingClientRect().top ?? viewport.bottom
@@ -86,7 +83,7 @@ type ChatScrollPosition = NonNullable<ReturnType<ChatViewSlotProps['chatScroll']
 
 /** Capture a reflow-resistant reader position from the current rendered window. */
 function scrollPosition(list: HTMLElement, scrollport: HTMLElement): ChatScrollPosition | null {
-  const row = pagingAnchor(list, scrollport)
+  const row = visibleAnchor(list, scrollport)
   const anchorKey = row?.dataset.chatAnchorKey
   if (row === null || anchorKey === undefined) return null
   return {
@@ -195,7 +192,7 @@ function TurnStatus({ startTime, verb, t }: {
  * ordered business Node crosses the keyed renderer seat.
  */
 export function ChatView({
-  useSession, useSessions, useStore, renderSlot, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll,
+  useSession, useSessions, useStore, renderSlot, sessionId, openFile, loadImage, inspectCall, chatScroll,
   fileMentions, t,
 }: ChatViewSlotProps) {
   const order = useSession(s => s.chat.order)
@@ -209,8 +206,6 @@ export function ChatView({
   const running = useSession(s => s.running)
   const openState = useSession(s => s.openState)
   const openError = useSession(s => s.openError)
-  const hasMore = useSession(s => s.hasMore)
-  const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
   const [fileOpenError, setFileOpenError] = useState<{ path: string; message: string } | null>(null)
   const [fileOpenBusy, setFileOpenBusy] = useState(false)
@@ -263,10 +258,6 @@ export function ChatView({
   const [atBottom, setAtBottom] = useState(true)
   /** Last position delivered or written on the main thread. */
   const observedTopRef = useRef(0)
-  /** Paging anchor: semantic row/position at click, updated by reader scrolls
-   * while the request is pending and restored after the prepend lands. */
-  const anchorRef = useRef<PagingAnchor | null>(null)
-  const firstSeqRef = useRef<number | null>(null)
   const openedRef = useRef(false)
   const lastKeyRef = useRef<string | null>(null)
   const lastSteeringIdRef = useRef<string | null>(null)
@@ -283,7 +274,6 @@ export function ChatView({
   const followSig = `${openState}:${firstSeq}:${lastKey}:${order.length}:${running ? 1 : 0}:${lastSteeringId ?? ''}`
 
   const toBottom = (el: HTMLElement): void => {
-    anchorRef.current = null
     el.scrollTop = el.scrollHeight
     observedTopRef.current = el.scrollTop
     atBottomRef.current = true
@@ -316,29 +306,11 @@ export function ChatView({
         if (isAtBottom) chatScroll.save(null)
         else if (normalized !== null) chatScroll.save(normalized)
       }
-      firstSeqRef.current = firstSeq
       lastKeyRef.current = lastKey
       lastSteeringIdRef.current = lastSteeringId
       followSigRef.current = followSig
       return
     }
-    // Prepend (head seq decreased): preserve the same settled row at the
-    // position established by the reader's latest scroll. This excludes
-    // unrelated tail/composer growth while the request was in flight.
-    if (anchorRef.current !== null && firstSeq !== null && firstSeqRef.current !== null && firstSeq < firstSeqRef.current) {
-      const anchor = anchorRef.current
-      anchorRef.current = null
-      const row = anchorElement(local, anchor.key)
-      if (row !== null) el.scrollTop += flowTop(row, el) - anchor.top
-      observedTopRef.current = el.scrollTop
-      firstSeqRef.current = firstSeq
-      /* v8 ignore next -- ?? arm: a prepend adds nodes, so the flow list here is never empty. */
-      lastKeyRef.current = lastKey
-      lastSteeringIdRef.current = lastSteeringId
-      followSigRef.current = followSig
-      return
-    }
-    firstSeqRef.current = firstSeq
     // Own words must be visible: a new trailing user node force-scrolls
     // (send lives in the composer, so arrival is detected here, not armed there).
     const appendedUser = lastKey !== lastKeyRef.current && lastNode?.kind === 'user'
@@ -377,11 +349,6 @@ export function ChatView({
     atBottomRef.current = isAtBottom
     setAtBottom(isAtBottom)
     const position = isAtBottom ? null : scrollPosition(local, el)
-    if (isAtBottom) {
-      anchorRef.current = null
-    } else if (anchorRef.current !== null && position !== null) {
-      anchorRef.current = { key: position.anchorKey, top: position.anchorTop }
-    }
     // Continuous save (unmount happens after ref detach, so saving there is
     // too late); pinned-to-bottom clears so a remount keeps following.
     if (isAtBottom) chatScroll.save(null)
@@ -431,28 +398,6 @@ export function ChatView({
     return () => { observer.disconnect() }
   }, [])
 
-  // A failed/empty page leaves the head unchanged. Once the request leaves
-  // its busy state there is no future prepend for the saved anchor to own.
-  useEffect(() => {
-    if (!loadingOlder) anchorRef.current = null
-  }, [loadingOlder])
-
-  const loadOlderAnchored = (): void => {
-    const local = listRef.current
-    /* v8 ignore next -- ref-null guard: the paging button renders inside the list tree. */
-    if (local !== null) {
-      const el = scrollerOf(local)
-      const row = pagingAnchor(local, el)
-      if (row !== null && row.dataset.chatAnchorKey !== undefined) {
-        anchorRef.current = {
-          key: row.dataset.chatAnchorKey,
-          top: flowTop(row, el),
-        }
-      }
-    }
-    loadOlder()
-  }
-
   return (
     <div className={css.root}>
       <div ref={listRef} className={css.scroll}>
@@ -461,13 +406,6 @@ export function ChatView({
           {openState === 'error' && openError !== null && (
             <div className={css.openError}>
               {t('chat.loadError', { message: openError.message, code: openError.code })}
-            </div>
-          )}
-          {hasMore && (
-            <div className={css.older}>
-              <button type="button" disabled={loadingOlder} onClick={loadOlderAnchored}>
-                {loadingOlder ? t('loading') : t('chat.loadOlder')}
-              </button>
             </div>
           )}
           {order.map(nodeKey => (

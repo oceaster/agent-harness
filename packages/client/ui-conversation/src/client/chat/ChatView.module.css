@@ -126,26 +126,6 @@
   line-height: 18px;
 }
 
-.older {
-  display: flex;
-  justify-content: center;
-}
-
-.older button {
-  border: none;
-  border-radius: 14px;
-  padding: 4px 12px;
-  font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-interactive-bg-hover-solid);
-  cursor: pointer;
-}
-
-.older button:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
 /* Back-to-bottom: zero-height sticky slot so the control does not extend
    scrollHeight; the button translates up into the viewport. Under the
    conversation host, clearance sits above the sticky composer stack. */

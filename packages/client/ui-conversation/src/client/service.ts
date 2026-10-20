@@ -52,11 +52,6 @@ export interface IConversation {
    * @returns completion; failures reject as in send.
    */
   cancel(): Promise<void>
-  /**
-   * Pull one older history page for the scoped session.
-   * @returns completion of the page pull.
-   */
-  loadOlder(): Promise<void>
 }
 
 /** Create one browser-only draft descriptor; only its id enters input state. */
@@ -300,11 +295,6 @@ export class ConversationController extends Service implements IConversation {
     const session = this.scopedSession('cancel')
     const result = await session.cancel()
     if (!result.ok) throw new Error(`conversation.cancel failed: ${result.error.code}: ${result.error.message}`)
-  }
-
-  /** Pull one older history page for the scoped Session. */
-  async loadOlder(): Promise<void> {
-    await this.scopedSession('loadOlder').loadOlder()
   }
 
   /** Resolve the caller scope's session face or throw on root contexts. */

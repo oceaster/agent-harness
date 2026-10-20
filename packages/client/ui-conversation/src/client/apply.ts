@@ -361,7 +361,6 @@ export function apply(ctx: Context): void {
     store: chatStore,
     inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>): ChatViewInjected => {
       const conversation = concreteConversation(ctx)
-      const scoped = scopedConversation(sessions, sessionId)
       return {
         openDetails: (target) => {
           actions.select(target)
@@ -372,7 +371,6 @@ export function apply(ctx: Context): void {
           const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
           return workspaces.openPath(resolveWorkspacePath(cwd, path))
         },
-        loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),
         // Unregistered 'trajectory' id is safe: the tab ring falls back to
         // the first view, and the untouched inspect target stays inert.

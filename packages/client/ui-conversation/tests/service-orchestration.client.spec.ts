@@ -18,10 +18,9 @@ async function bench(readAttachment?: SessionFace['readAttachment']) {
   const prompt = vi.fn(() => Promise.resolve({ ok: true as const, value: { accepted: true as const } }))
   const updateQueue = vi.fn(() => Promise.resolve({ ok: true as const, value: { accepted: true as const } }))
   const cancel = vi.fn(() => Promise.resolve({ ok: true as const, value: { accepted: true as const } }))
-  const loadOlder = vi.fn(() => Promise.resolve())
   await runtime.sessions.add({
     id: 's1',
-    session: { prompt, updateQueue, cancel, loadOlder, ...(readAttachment === undefined ? {} : { readAttachment }) },
+    session: { prompt, updateQueue, cancel, ...(readAttachment === undefined ? {} : { readAttachment }) },
   })
   // config.input is required (the apply shares its hub with the inject
   // factories); the bench passes its own instance explicitly.
@@ -34,7 +33,7 @@ async function bench(readAttachment?: SessionFace['readAttachment']) {
   const root = runtime.ctx.get('conversation') as ConversationController
   const scoped = runtime.sessions.scope('s1')!.get('conversation') as ConversationController
   const shell = hub.shellFor(runtime.sessions.binding('s1')!)
-  return { runtime, fiber, root, scoped, hub, shell, prompt, updateQueue, cancel, loadOlder }
+  return { runtime, fiber, root, scoped, hub, shell, prompt, updateQueue, cancel }
 }
 
 describe('ConversationController', () => {
@@ -43,11 +42,9 @@ describe('ConversationController', () => {
     await b.scoped.send('hello')
     await b.scoped.updateQueue('item-1' as never, { kind: 'remove' })
     await b.scoped.cancel()
-    await b.scoped.loadOlder()
     expect(b.prompt).toHaveBeenCalledWith([{ type: 'text', text: 'hello' }], 'queue')
     expect(b.updateQueue).toHaveBeenCalledWith('item-1', { kind: 'remove' })
     expect(b.cancel).toHaveBeenCalledOnce()
-    expect(b.loadOlder).toHaveBeenCalledOnce()
     await b.runtime.dispose()
   })
 

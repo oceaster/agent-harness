@@ -1245,19 +1245,9 @@ describe('manual web performance: complex workspace and history', () => {
       expect(trajectorySearch.value).toBeLessThan(20)
 
       await page.getByRole('tab', { name: 'Chat', exact: true }).click()
-      const historyPages: { turns: number; measurement: Measurement }[] = []
-      let turns = await conversationTurns(page)
-      while (turns < LONG_HISTORY_TURNS) {
-        const previousTurns = turns
-        const older = await measure(cdp, async () => {
-          await page.getByRole('button', { name: 'Load earlier', exact: true }).click()
-          await expect.poll(() => conversationTurns(page), { timeout: 30_000 })
-            .toBeGreaterThan(previousTurns)
-          return conversationTurns(page)
-        })
-        turns = older.value
-        historyPages.push({ turns, measurement: older.measurement })
-      }
+      // The chat holds the tail window it opened with and no control can widen
+      // it, so the round-trip below re-renders exactly the same window.
+      expect(await page.getByRole('button', { name: 'Load earlier', exact: true }).count()).toBe(0)
 
       const warmTrajectory = await measure(cdp, async () => {
         await page.getByRole('tab', { name: 'Trajectory', exact: true }).click()
@@ -1268,7 +1258,7 @@ describe('manual web performance: complex workspace and history', () => {
         await page.getByRole('tab', { name: 'Chat', exact: true }).click()
         return conversationTurns(page)
       })
-      expect(warmConversation.value).toBe(LONG_HISTORY_TURNS)
+      expect(warmConversation.value).toBe(DEFAULT_HISTORY_TURNS)
 
       console.info(`WEB_PERF_RESULT ${JSON.stringify({
         scenario: 'workspace-history-trajectory',
@@ -1292,7 +1282,6 @@ describe('manual web performance: complex workspace and history', () => {
         coldTrajectory: { rows: coldTrajectory.value, ...coldTrajectory.measurement },
         collapseTurns: { rows: collapseTurns.value, ...collapseTurns.measurement },
         trajectorySearch: { rows: trajectorySearch.value, ...trajectorySearch.measurement },
-        historyPages,
         warmTrajectory: { rows: warmTrajectory.value, ...warmTrajectory.measurement },
         warmConversation: { turns: warmConversation.value, ...warmConversation.measurement },
       }, null, 2)}`)
@@ -1327,52 +1316,6 @@ describe('manual web performance: complex workspace and history', () => {
         setupMs: rounded(world.setupMs),
         replayContextWindow: PERF_REPLAY_CONTEXT_WINDOW,
         openLongHistory: { turns: opened.value, ...opened.measurement },
-        conversation,
-      }, null, 2)}`)
-      expect(world.tripwire.warnings).toEqual([])
-      expect(world.tripwire.pageErrors).toEqual([])
-    } finally {
-      await closePerformanceWorld(world)
-    }
-  })
-
-  it('reports fully expanded 500-turn history plus eight continued turns', async () => {
-    const world = await launchPerformanceWorld({
-      browser,
-      replay: performanceReplayOverride(COMPARISON_TURNS, comparisonTurn),
-      seedLongHistory: true,
-    })
-    try {
-      await openPerformancePage(world, 1)
-      const cdp = await world.page.context().newCDPSession(world.page)
-      await cdp.send('Performance.enable')
-      expect(await openLongHistory(world.page)).toBe(DEFAULT_HISTORY_TURNS)
-      const historyPages: { turns: number; measurement: Measurement }[] = []
-      let turns = DEFAULT_HISTORY_TURNS
-      while (turns < LONG_HISTORY_TURNS) {
-        const previousTurns = turns
-        const older = await measure(cdp, async () => {
-          await world.page.getByRole('button', { name: 'Load earlier', exact: true }).click()
-          await expect.poll(() => conversationTurns(world.page), { timeout: 30_000 })
-            .toBeGreaterThan(previousTurns)
-          return conversationTurns(world.page)
-        })
-        turns = older.value
-        historyPages.push({ turns, measurement: older.measurement })
-      }
-      expect(turns).toBe(LONG_HISTORY_TURNS)
-      const conversation = await continueConversation(world, cdp, {
-        startingTurns: LONG_HISTORY_TURNS,
-        turnCount: COMPARISON_TURNS,
-        turnSpec: comparisonTurn,
-        expectedSessionId: SessionId(LONG_SESSION_ID),
-      })
-      expect(conversation.toolTurns).toBe(2)
-      console.info(`WEB_PERF_RESULT ${JSON.stringify({
-        scenario: 'expanded-history-500-plus-8',
-        setupMs: rounded(world.setupMs),
-        replayContextWindow: PERF_REPLAY_CONTEXT_WINDOW,
-        historyPages,
         conversation,
       }, null, 2)}`)
       expect(world.tripwire.warnings).toEqual([])

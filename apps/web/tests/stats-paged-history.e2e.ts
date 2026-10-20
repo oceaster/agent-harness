@@ -1,11 +1,12 @@
-// Web e2e scenario: full-session stats over paged history. A deterministic
-// 28-turn log (56 surface messages — more than one 50-message history page)
-// seeded cold through the REAL persistence API must render whole-log turn/step
-// counts from the sessionStats projection on first open, and loading the
-// older page must NOT change them. This pins the bug the projection fixed:
-// the pre-projection window fold recounted per loaded page, so 加载更早 grew
-// the counter. Zero model calls; the seed is generated, not recorded, because
-// no line of it is model output.
+// Web e2e scenario: full-session stats over a partial transcript window. A
+// deterministic 28-turn log (56 surface messages — more than one 50-message
+// history page) seeded cold through the REAL persistence API must render
+// whole-log turn/step counts from the sessionStats projection on first open,
+// and the window must stay exactly the tail page it opened with: no paging
+// control, no older message reachable by scrolling. This pins the bug the
+// projection fixed: the pre-projection window fold recounted per loaded page,
+// so a loaded page grew the counter. Zero model calls; the seed is generated,
+// not recorded, because no line of it is model output.
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -92,7 +93,7 @@ describe('web e2e: whole-session stats survive history paging', () => {
     await scaffold?.close()
   })
 
-  it('renders full-session counts on the partial tail page and keeps them across load-older', async () => {
+  it('renders full-session counts on the partial tail page and keeps them with no way back', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-stats-paged'))
     const groupRow = page.locator('[role="treeitem"]').first()
     await groupRow.waitFor({ timeout: 15_000 })
@@ -108,20 +109,23 @@ describe('web e2e: whole-session stats survive history paging', () => {
     expect(await page.getByText('m1', { exact: true }).count()).toBe(0)
     await expect.poll(() => page.getByText(FULL_COUNTS, { exact: false }).count(), { timeout: 10_000 }).toBe(1)
     const strip = page.getByText(FULL_COUNTS, { exact: false }).locator('..')
-    const stripBeforePaging = await strip.textContent()
+    const stripOnOpen = await strip.textContent()
 
-    // 加载更早: prepending the older page must not move ANY strip figure —
-    // counts, wall times, or token groups.
-    await page.getByRole('button', { name: 'Load earlier' }).click()
-    await expect.poll(() => page.getByText('m1', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
-    expect(await strip.textContent()).toBe(stripBeforePaging)
-    // With the whole log loaded, the window mounts one turn-tail footer per
-    // settled turn — the loaded-window probe the scroll/perf lanes count now
-    // that the strip is whole-log-scoped.
-    expect(await page.locator('[data-chat-flow-key^="9:turn-tail"]').count()).toBe(TURNS)
+    // Scrolling to the top of the transcript reaches the oldest message this
+    // client holds and stops: no paging control, no older page, and not one
+    // strip figure moves.
+    await page.locator('[data-conversation-scroll]').first()
+      .evaluate((host) => { host.scrollTop = 0 })
+    await expect.poll(() => page.getByText('m1', { exact: true }).count(), { timeout: 15_000 }).toBe(0)
+    expect(await page.getByRole('button', { name: 'Load earlier', exact: true }).count()).toBe(0)
+    expect(await strip.textContent()).toBe(stripOnOpen)
+    // The window holds the last PAGE_MESSAGES (50) of 56 messages, i.e. the
+    // last 25 two-message turns: one turn-tail footer each, while the strip
+    // above keeps reporting the whole 28-turn log.
+    expect(await page.locator('[data-chat-flow-key^="9:turn-tail"]').count()).toBe(TURNS - 3)
   }, 60_000)
 
-  it('matches the paged-stats aria golden', async () => {
+  it('matches the window-stats aria golden', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-stats-paged-aria'))
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
