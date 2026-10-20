@@ -181,6 +181,47 @@ describe.skipIf(MODE === 'record')('web e2e: composer interrupt for a running co
     if (failures.length > 1) throw new AggregateError(failures, 'subagent interrupt UI teardown failed')
   })
 
+  it('deletes two queued child messages through the GUI while the active turn continues', async () => {
+    await page.getByRole('button', { name: /1 subagent/ }).click()
+    await page.getByRole('treeitem', { name: new RegExp(LABEL) }).click()
+    const input = page.locator('textarea:enabled').first()
+    await input.fill('First queued message to delete')
+    await input.press('Enter')
+    await expect.poll(() => scaffold.ctx.agents.get(childId)?.inbox.nextTurn.length).toBe(1)
+    await input.fill('Second queued message to delete')
+    await input.press('Enter')
+    await expect.poll(() => scaffold.ctx.agents.get(childId)?.inbox.nextTurn.length).toBe(2)
+    await page.getByRole('button', { name: /2 queued messages/ }).click()
+    const dock = page.locator('[data-queue-dock]')
+    expect(await dock.getByRole('button', { name: 'Edit queued message' }).count()).toBe(0)
+    expect(await dock.getByRole('button', { name: 'Steer queued message' }).count()).toBe(0)
+    await compareOrRefreshGolden(
+      join(SNAPSHOT_DIR, 'child-queue-delete.expected.md'),
+      await captureStableAria(page, '[data-queue-dock]', scaffold.workspaceCwd),
+      MODE,
+    )
+    await dock.getByRole('button', { name: 'Remove queued message' }).first().click()
+    await expect.poll(() => scaffold.ctx.agents.get(childId)?.inbox.nextTurn.length).toBe(1)
+    const remaining = scaffold.ctx.agents.get(childId)!.inbox.nextTurn[0]!
+    expect(remaining.content).toEqual([{ type: 'text', text: 'Second queued message to delete' }])
+    const warningStart = tripwire.warnings.length
+    await page.reload({ waitUntil: 'load' })
+    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    acknowledgeReloadConnectionLoss(tripwire, warningStart)
+    await page.getByRole('button', { name: /1 subagent/ }).click()
+    await page.getByRole('treeitem', { name: new RegExp(LABEL) }).click()
+    await page.getByRole('button', { name: 'Remove queued message' }).click()
+    await expect.poll(() => scaffold.ctx.agents.get(childId)?.inbox.nextTurn.length).toBe(0)
+    const child = scaffold.ctx.agents.get(childId)!
+    expect(child.status).toBe('running')
+    expect(child.session.events.filter(event => event.type === 'turn/start')).toHaveLength(1)
+    expect(child.session.events.filter(event => event.type === 'turn/end')).toHaveLength(0)
+    expect(apiCalls).toContain('/api/session.updateQueue')
+    // Return to the parent so the independent Stop scenarios start at their catalog entry.
+    await page.reload({ waitUntil: 'load' })
+    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+  })
+
   it('interrupts the live child through the parent-offline composer', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-subagent-interrupt-offline'))
     // Simulate a parent that went offline: the catalog delivers
@@ -314,6 +355,6 @@ describe.skipIf(MODE === 'record')('web e2e: composer interrupt for a running co
   }, 120_000)
 
   it('keeps its snapshot inventory closed', async () => {
-    await assertFixtureInventory(SNAPSHOT_DIR, ['offline-composer.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['child-queue-delete.expected.md', 'offline-composer.expected.md'])
   })
 })

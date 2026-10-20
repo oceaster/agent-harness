@@ -1,0 +1,10 @@
+- button "2 queued messages" [expanded]
+- list:
+  - listitem:
+    - text: First queued message to delete
+    - button "Remove queued message":
+      - img
+  - listitem:
+    - text: Second queued message to delete
+    - button "Remove queued message":
+      - img
