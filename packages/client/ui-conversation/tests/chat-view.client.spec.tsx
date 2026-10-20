@@ -23,7 +23,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { createChatStore } from '../src/client/stores.ts'
 import { ChatView } from '../src/client/chat/ChatView.tsx'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
 import {
@@ -147,6 +147,39 @@ function emptyWorkspaces() {
     baselinesReady: true, recentWorkspaceId: undefined,
   })
   return bindSnapshotSelector(store)
+}
+
+/**
+ * Session-list hooks carrying one row for this chat's session, composed from
+ * `agentPreset`. Omitting it is a session row with no preset at all.
+ * @param agentPreset - the preset id the host records on the session.
+ * @returns the standard-kit sessions hook.
+ */
+function sessionsWith(agentPreset?: string) {
+  const store = createSnapshotStore<SessionListState>({
+    ids: [SID],
+    byId: {
+      [SID]: {
+        id: SID, displayTitle: 's1', running: true, blank: false, updatedAt: 0,
+        ...(agentPreset === undefined ? {} : { agentPreset }),
+      },
+    },
+    current: SID,
+    phase: 'ready',
+    subagentsByParent: {},
+    jobsBySession: {},
+    currentAddress: undefined,
+  })
+  return bindSnapshotSelector(store)
+}
+
+/**
+ * The verb the running-turn status shows, with its aria-hidden clock excluded.
+ * @param view - the rendered chat view.
+ * @returns the status line's leading text.
+ */
+function statusVerb(view: ReturnType<typeof render>): string | null {
+  return view.getByRole('status').firstChild?.textContent ?? null
 }
 
 function makeHarness(init?: Partial<ConversationSnapshot>) {
@@ -875,7 +908,8 @@ describe('ChatView', () => {
     const view = render(<h.ChatView {...h.props} />)
     expect(view.getByTestId('tool-seat-r1')).toBeTruthy()
     expect(h.toolOwners[0]?.block).toMatchObject({ callId: 'r1', argsRaw: '{"command":"cmd-r1"}' })
-    expect(view.getByRole('status').textContent).toBe('Deep diving...')
+    // This session row carries no preset: the generic verb, never empty.
+    expect(statusVerb(view)).toBe(zh['status.working'])
   })
 
   it('keeps the Tool renderer mounted when a running call settles into log order', () => {
@@ -935,7 +969,8 @@ describe('ChatView', () => {
     const view = render(<h.ChatView {...h.props} />)
     // Freshly mounted (as after a reload) yet already past the 15s gate.
     const status = view.getByRole('status')
-    expect(status.textContent).toMatch(/^Deep diving\.\.\.2分0\d秒$/)
+    expect(statusVerb(view)).toBe(zh['status.working'])
+    expect(status.textContent).toMatch(/^正在工作\.\.\.2分0\d秒$/)
     expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull()
     act(() => {
       h.set({ queue: [{
@@ -947,8 +982,34 @@ describe('ChatView', () => {
         text: 'also',
       }] })
     })
-    expect(status.textContent).toMatch(/^Deep diving\.\.\.2分0\d秒$/)
+    expect(statusVerb(view)).toBe(zh['status.working'])
+    expect(status.textContent).toMatch(/^正在工作\.\.\.2分0\d秒$/)
   })
+
+  // The verb Owen asked for, per agent preset, in English product copy.
+  const TURN_VERBS: ReadonlyArray<readonly [string | undefined, string]> = [
+    ['delta', 'Working...'],
+    ['darwin', 'Working...'],
+    ['diana', 'Chatting...'],
+    ['dexter', 'Thinking...'],
+    // A preset this deployment composes but the map does not know.
+    ['household-guest', 'Working...'],
+    // A session row that carries no preset at all.
+    [undefined, 'Working...'],
+  ]
+  for (const [preset, verb] of TURN_VERBS) {
+    it(`the running-turn status says ${verb} for preset ${preset ?? '(none)'}`, () => {
+      const h = makeHarness({ nodes: [user(1, 'q')], running: true })
+      h.props.useSessions = sessionsWith(preset)
+      h.props.t = makeTranslate(en, commonZh)
+      const view = render(<h.ChatView {...h.props} />)
+      const status = view.getByRole('status')
+      expect(statusVerb(view)).toBe(verb)
+      // The live-region contract and the clock's 15s gate are untouched.
+      expect(status.getAttribute('aria-live')).toBe('polite')
+      expect(status.querySelector('[aria-hidden="true"]')).toBeNull()
+    })
+  }
 
   it('hands each ordered root call to the keyed business-node slot', () => {
     const block = toolResult(3, 'a')

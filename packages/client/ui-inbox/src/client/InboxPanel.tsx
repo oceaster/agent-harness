@@ -66,6 +66,41 @@ function queuedOf(row: InboxAgentRow): number {
 }
 
 /**
+ * The working verb one row says. Each agent works its own way, so the row does
+ * not report one generic sentence for every agent.
+ */
+type AgentVerb = 'working' | 'chatting' | 'thinking'
+
+/**
+ * The verb each agent shows while it works, keyed by the agent id the server
+ * sends on the row. That id is also the session's agent preset, so the chat's
+ * running-turn status says the same word for the same agent.
+ *
+ * Deliberately local to this package, for the reason the household brand mark
+ * in `ChannelPlaceholder.tsx` is: ui-inbox and ui-conversation are independent
+ * client packages that must not import each other's internals, and both need
+ * this map. Two four-entry copies are cheaper than a new shared package both
+ * would depend on — keep them in step by hand. An id the map does not know
+ * (a deployment's own preset, a row with no preset at all) says the generic
+ * `working` verb rather than nothing.
+ */
+const AGENT_VERBS: Record<string, AgentVerb> = {
+  delta: 'working',
+  darwin: 'working',
+  diana: 'chatting',
+  dexter: 'thinking',
+}
+
+/**
+ * The verb for one agent id, with the generic fallback the map documents.
+ * @param agent - the row's agent id as the server sent it.
+ * @returns the verb this row says.
+ */
+function agentVerb(agent: string): AgentVerb {
+  return AGENT_VERBS[agent] ?? 'working'
+}
+
+/**
  * The working copy, count included. The state line and the dot's accessible
  * label both come from here, so the row never reports two different verbs for
  * the same work.
@@ -77,14 +112,16 @@ function queuedOf(row: InboxAgentRow): number {
  * carries a bare `/`, so zero working workers keep the bare verb.
  * @param active - running conversations below this row, at any depth.
  * @param queued - delegations the server reports waiting for a worker slot.
+ * @param agent - the row's agent id, which picks the verb.
  * @param t - the locale seat.
  * @returns the working copy.
  */
-function workingLabel(active: number, queued: number, t: Translate): string {
-  if (active <= 0) return t('row.working')
+function workingLabel(active: number, queued: number, agent: string, t: Translate): string {
+  const verb = agentVerb(agent)
+  if (active <= 0) return t(`verb.${verb}.line`)
   return queued > 0
-    ? t('row.workingQueued', { working: active, total: active + queued })
-    : t('row.workingSubagents', { n: active })
+    ? t(`verb.${verb}.pair`, { working: active, total: active + queued })
+    : t(`verb.${verb}.count`, { n: active })
 }
 
 /**
@@ -94,12 +131,15 @@ function workingLabel(active: number, queued: number, t: Translate): string {
  * @param status - the status the dot shows.
  * @param active - running conversations below this row, at any depth.
  * @param queued - delegations the server reports waiting for a worker slot.
+ * @param agent - the row's agent id, which picks the verb.
  * @param t - the locale seat.
  * @returns the label text.
  */
-function presenceLabel(status: InboxPresence, active: number, queued: number, t: Translate): string {
+function presenceLabel(
+  status: InboxPresence, active: number, queued: number, agent: string, t: Translate,
+): string {
   if (status !== 'running') return t(`presence.${status}`)
-  return active > 0 ? workingLabel(active, queued, t) : t('presence.working')
+  return active > 0 ? workingLabel(active, queued, agent, t) : t(`verb.${agentVerb(agent)}.dot`)
 }
 
 /**
@@ -112,7 +152,7 @@ function presenceLabel(status: InboxPresence, active: number, queued: number, t:
  */
 function stateLine(row: InboxAgentRow, now: number, t: Translate, active: number): string {
   if (row.enabled === false) return t(row.disabled === true ? 'row.disabled' : 'presence.offline')
-  if (row.running || active > 0) return workingLabel(active, queuedOf(row), t)
+  if (row.running || active > 0) return workingLabel(active, queuedOf(row), row.agent, t)
   if (row.presence === 'error') return t('presence.error')
   if (row.presence === 'unread') return t('presence.unread')
   if (!row.hasConversation) return t('row.fresh')
@@ -187,7 +227,7 @@ export function InboxPanel({
               }}
             >
               <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-              <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), t)} />
+              <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), row.agent, t)} />
             </button>
           )
         })}
@@ -279,7 +319,7 @@ export function InboxPanel({
                   >
                     <span className={css.avatarStatus}>
                       <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-                      <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), t)} />
+                      <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), row.agent, t)} />
                     </span>
                     <span className={css.rowText}>
                       <span className={css.name}>{row.name}</span>

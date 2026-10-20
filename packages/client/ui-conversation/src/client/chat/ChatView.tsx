@@ -115,11 +115,50 @@ function runningTurnStartTime(timeline: ConversationTimelineSnapshot): number | 
   return latest
 }
 
+/**
+ * What a session's agent says while its turn runs. Each agent works its own
+ * way, so the running-turn status does not report one generic sentence for
+ * every agent.
+ */
+type AgentVerb = 'working' | 'chatting' | 'thinking'
+
+/**
+ * The verb each agent says while it works, keyed by the agent preset id the
+ * host records on the session (`SessionSummary.agentPreset`) — never by a
+ * display name, which is presentation and can be localized or renamed.
+ *
+ * Deliberately local to this package, for the reason the household brand mark
+ * in ui-inbox's `ChannelPlaceholder.tsx` is: ui-inbox and ui-conversation are
+ * independent client packages that must not import each other's internals, and
+ * the inbox row needs this same map. Two four-entry copies are cheaper than a
+ * new shared package both would depend on — keep them in step by hand. A preset
+ * the map does not know, and a session carrying no preset at all, say the
+ * generic `working` verb rather than nothing.
+ */
+const AGENT_VERBS: Record<string, AgentVerb> = {
+  delta: 'working',
+  darwin: 'working',
+  diana: 'chatting',
+  dexter: 'thinking',
+}
+
+/**
+ * The verb for one session's agent preset, with the generic fallback the map
+ * documents.
+ * @param agentPreset - the preset id off the session list row, when it has one.
+ * @returns the verb this session says while it works.
+ */
+function agentVerb(agentPreset: string | undefined): AgentVerb {
+  return (agentPreset === undefined ? undefined : AGENT_VERBS[agentPreset]) ?? 'working'
+}
+
 /** Turn-level model activity label retained across first-token, tool, and streaming phases. */
-function TurnStatus({ startTime, t }: {
+function TurnStatus({ startTime, verb, t }: {
   /** The running turn's logged `turn/start` time; null falls back to mount
    *  time when that boundary is outside the window. */
   startTime: number | null
+  /** The verb this session's agent says while it works. */
+  verb: AgentVerb
   /** The owning view's locale seat. */
   t: ChatViewSlotProps['t']
 }) {
@@ -140,8 +179,8 @@ function TurnStatus({ startTime, t }: {
   // has clearly been running for a while.
   const showClock = elapsedMs >= 15_000
   return (
-    <div className={css.turnStatus} role="status" aria-live="polite">
-      Deep diving...
+    <div className={css.turnStatus} role="status" aria-live="polite" data-testid="turn-status">
+      {t(`status.${verb}`)}
       {showClock && (
         <span className={css.turnStatusClock} aria-hidden>
           {formatRunDuration(elapsedMs, t)}
@@ -165,6 +204,8 @@ export function ChatView({
   const inbox = useSession(s => s.queue)
   // Workspace root off the session list row: path summaries display relative to it.
   const cwd = useSessions(s => s.byId[sessionId]?.cwd)
+  // The composition this session actually runs, which picks its working verb.
+  const agentPreset = useSessions(s => s.byId[sessionId]?.agentPreset)
   const running = useSession(s => s.running)
   const openState = useSession(s => s.openState)
   const openError = useSession(s => s.openError)
@@ -450,7 +491,7 @@ export function ChatView({
               double-render the same wait. */}
           {/* Turn-level loading signal: rides the whole running turn (first-token
               wait, tool execution, streaming) so it never flickers per step. */}
-          {running && <TurnStatus startTime={runningTurnStart} t={t} />}
+          {running && <TurnStatus startTime={runningTurnStart} verb={agentVerb(agentPreset)} t={t} />}
           {pendingSteering.map(item => (
             <PendingSteeringBubble
               key={item.id}

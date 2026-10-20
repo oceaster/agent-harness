@@ -118,8 +118,11 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     // so the first step's message and tool result are already durable.
     await expect.poll(() => existsSync(marker), { timeout: 20_000 }).toBe(true)
     await expect.poll(() => page.getByText(NARRATION, { exact: true }).count(), { timeout: 10_000 }).toBe(1)
+    // Anchored on the status element itself, not on its copy: the line now
+    // names the agent's own verb, so filtering by text would pin a preset's
+    // wording into the spec.
     await expect.poll(
-      () => page.getByRole('status').filter({ hasText: 'Deep diving...' }).isVisible(),
+      () => page.getByTestId('turn-status').isVisible(),
       { timeout: 10_000 },
     ).toBe(true)
     // Only the user bubble owns a footer (clock + copy; user bubbles carry no

@@ -160,6 +160,56 @@ describe('inbox panel: rows', () => {
     expect(dot?.getAttribute('title')).toBe('Working')
   })
 
+  // The verb each agent says, in product copy: the state line in full and the
+  // dot's bare label. Only the verb changes with the agent.
+  const AGENT_VERBS: ReadonlyArray<readonly [string, string, string]> = [
+    ['delta', 'Working...', 'Working'],
+    ['darwin', 'Working...', 'Working'],
+    ['diana', 'Chatting...', 'Chatting'],
+    ['dexter', 'Thinking...', 'Thinking'],
+    // An id the map does not know (a preset this deployment composes): the
+    // generic verb, never an empty row.
+    ['agent-unknown', 'Working...', 'Working'],
+  ]
+  for (const [agent, line, bare] of AGENT_VERBS) {
+    it(`says the agent's own verb for ${agent}: ${line}`, () => {
+      mount({ state: { rows: [row({ agent, name: agent, running: true })] } })
+      expect(screen.getByTestId(`ui-inbox-state-${agent}`).textContent).toBe(line)
+      const dot = screen.getByTestId(`ui-inbox-open-${agent}`).querySelector('[data-presence="running"]')
+      expect(dot?.getAttribute('aria-label')).toBe(bare)
+      expect(dot?.getAttribute('title')).toBe(bare)
+    })
+  }
+
+  // Every count rule the row already had, now on the agent's own verb.
+  const COUNT_CASES: ReadonlyArray<readonly [string, number, number, string]> = [
+    ['delta', 2, 0, 'Working... (2)'],
+    ['delta', 3, 1, 'Working... (3/4)'],
+    ['diana', 2, 0, 'Chatting... (2)'],
+    ['dexter', 1, 1, 'Thinking... (1/2)'],
+    ['agent-unknown', 3, 0, 'Working... (3)'],
+  ]
+  for (const [agent, active, queued, line] of COUNT_CASES) {
+    it(`keeps the count on the agent's own verb: ${line}`, () => {
+      mount({
+        state: {
+          rows: [row({ agent, name: agent, ...(queued > 0 ? { queuedWorkers: queued } : {}) })],
+          activeSubagents: { [agent]: active },
+        },
+      })
+      expect(screen.getByTestId(`ui-inbox-state-${agent}`).textContent).toBe(line)
+      // The dot label IS the state line once a count is shown.
+      const dot = screen.getByTestId(`ui-inbox-open-${agent}`).querySelector('[data-presence="running"]')
+      expect(dot?.getAttribute('aria-label')).toBe(line)
+    })
+  }
+
+  it('says the agent\'s own verb on the rail dot too', () => {
+    mount({ wide: false, state: { rows: [row({ agent: 'diana', name: 'Diana', running: true })] } })
+    const dot = screen.getByTestId('ui-inbox-rail-diana').querySelector('[data-presence="running"]')
+    expect(dot?.getAttribute('aria-label')).toBe('Chatting')
+  })
+
   it('reports an idle parent row as working while one subagent runs, with the count inline', () => {
     mount({ state: { rows: [row({ agent: 'agent-a', name: 'Alpha', running: false })], activeSubagents: { 'agent-a': 1 } } })
     expect(screen.getByTestId('ui-inbox-state-agent-a').textContent).toBe('Working... (1)')

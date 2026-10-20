@@ -11,6 +11,11 @@ const PLAN_NEXT_ACTION_EN = 'describe your task to generate plan'
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
   'view.chat': '对话',
+  // The running-turn status says what that agent is doing. Same verbs the
+  // inbox row says for the same agent (see the copy in ChatView.tsx).
+  'status.working': '正在工作...',
+  'status.chatting': '聊天中...',
+  'status.thinking': '思考中...',
   'hint.plan': PLAN_NEXT_ACTION_ZH,
   'hint.goal': '输入目标，智能体将持续执行',
   'hint.goal.active': '当前目标进行中。可输入 edit 修改 / pause 暂停 / resume 继续 / clear 清除',
@@ -179,6 +184,9 @@ export type ConversationKey = keyof typeof zh
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
   'view.chat': 'Chat',
+  'status.working': 'Working...',
+  'status.chatting': 'Chatting...',
+  'status.thinking': 'Thinking...',
   'hint.plan': PLAN_NEXT_ACTION_EN,
   'hint.goal': 'describe the objective for a long-running task',
   'hint.goal.active': 'goal active — edit / pause / resume / clear',
