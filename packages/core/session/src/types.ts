@@ -194,6 +194,33 @@ export interface TodoItem {
 }
 
 /**
+ * One human reaction to an already logged message — the payload of the
+ * log-only `reaction/note` {@link SessionEventMap} event.
+ *
+ * The note records an act of attention, not conversation: it never enters the
+ * ordered surface (`surfaceOp`/`sourceEventSeqs` are rejected for it), so the
+ * browser transcript and compaction are untouched by construction. It is
+ * projected into the model's next request by `deriveEventMessage`, which is why
+ * the kind is declared here in core rather than by a plugin — the projection
+ * has one home and no per-kind registration seam.
+ *
+ * Every write carries the envelope's `ignorable: true` marker (see
+ * {@link EnvelopeIntent}): a reader that does not know the kind may skip it,
+ * and a build that predates this vocabulary must skip it rather than refuse the
+ * log.
+ */
+export interface ReactionNoteEventData {
+  /** Seq of the logged message being reacted to; always an earlier log entry. */
+  targetSeq: number
+  /** Reaction glyph as the client sent it (one emoji sequence, not a name). */
+  emoji: string
+  /** Who reacted, as the calling client labels them (e.g. a household profile name). */
+  actor: string
+  /** What changed about the reaction this note records. */
+  action: 'added' | 'removed' | 'changed'
+}
+
+/**
  * Logged request state outside derived history: call config, system prompt, and
  * tools. The latest full `request/header` snapshot reconstructs it; canonical
  * empty optional fields are absent.
@@ -302,6 +329,15 @@ export interface SessionEventMap {
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }
   /**
+   * A human reaction to an earlier message. Log-only and prose-free: it never
+   * enters the ordered surface, so it is invisible in the transcript and
+   * excluded from compaction, and it is always written with the envelope's
+   * `ignorable: true` marker. It reaches the model only through
+   * `deriveEventMessage`, which appends one user-role line per note to the next
+   * request.
+   */
+  'reaction/note': ReactionNoteEventData
+  /**
    * Full header for the next request, appended inside its step before dispatch.
    * It is log-only; the latest snapshot reconstructs the request header.
    */
@@ -390,6 +426,22 @@ export interface SurfaceIntent {
    * Other surface events require a non-empty set when this field is present.
    */
   sourceEventSeqs?: number[]
+}
+
+/**
+ * Envelope marker intent for {@link Session.append} on a log-only event.
+ * Required on no event and forbidden on message-producing events: a surface
+ * event is reconstructed history, so a reader must not skip one.
+ */
+export interface EnvelopeIntent {
+  /**
+   * Sets {@link SessionEvent.ignorable} on the appended event. Declare it on a
+   * purely informational record whose loss cannot affect reconstruction; a
+   * reader that does not recognize the event's `type` then skips the event
+   * instead of refusing the whole log. Without it, a newer build's new event
+   * type makes its log unreadable to an older build.
+   */
+  ignorable?: true
 }
 
 /**

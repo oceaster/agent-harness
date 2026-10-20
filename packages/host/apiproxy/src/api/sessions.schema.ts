@@ -127,6 +127,30 @@ export const sessionRenameValueSchema = z.object({
   seq: z.number().int().nonnegative(),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.rename'>>>
 
+/**
+ * Fixed wire bound for one reaction glyph. A reaction is one emoji (or a short
+ * ZWJ sequence), never prose: the bound keeps a client from smuggling a
+ * paragraph into the next request through a field the model is told is a glyph.
+ */
+const SESSION_REACT_EMOJI_MAX_CHARS = 32
+
+/** Fixed wire bound for the reactor's client-supplied label. */
+const SESSION_REACT_ACTOR_MAX_CHARS = 120
+
+/** session.react request payload (the message being reacted to, the glyph, and the act). */
+export const sessionReactRequestSchema = z.object({
+  sessionId: sessionIdSchema,
+  targetSeq: z.number().int().nonnegative(),
+  emoji: z.string().trim().min(1).max(SESSION_REACT_EMOJI_MAX_CHARS),
+  action: z.enum(['added', 'removed', 'changed']).optional(),
+  actor: z.string().trim().min(1).max(SESSION_REACT_ACTOR_MAX_CHARS).optional(),
+}) satisfies z.ZodType<Wire<RequestPayload<'session.react'>>>
+
+/** session.react response value (the appended note event's seq). */
+export const sessionReactValueSchema = z.object({
+  seq: z.number().int().nonnegative(),
+}) satisfies z.ZodType<Wire<ResponseValue<'session.react'>>>
+
 /** session.fork request payload (atSeq anchors the completed-turn cut). */
 export const sessionForkRequestSchema = z.object({
   sessionId: sessionIdSchema,

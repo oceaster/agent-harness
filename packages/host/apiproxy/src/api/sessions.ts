@@ -7,7 +7,7 @@
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ReactionNoteEventData, SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
 // The pure-type outlet: api/ is browser-importable, and the package root's
 // cordis Context merge (via dsh-agent) must not enter client aggregates.
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
@@ -311,6 +311,40 @@ export interface SessionsApi {
    */
   rename(request: RpcRequest<{ sessionId: SessionId; title: string }>):
   Promise<RpcResponse<{ title: string; seq: number }>>
+
+  /**
+   * Records one human reaction to a message that is already in this session's
+   * log: appends a log-only `reaction/note` event carrying the envelope's
+   * `ignorable: true` marker, and nothing else. It starts no turn, makes no
+   * model call, generates no title, touches no queue, budget or goal, and
+   * produces no transcript row — the note is model-visible only, through the
+   * session's own derived history, so it reaches the model on the conversation's
+   * NEXT run (at the tail of that request, after the conversation so far).
+   *
+   * `targetSeq` must name an append-origin message in this session (a
+   * `user/message`, `assistant/message`, or `tool/result` event that entered the
+   * surface at its own log position); a seq that names anything else, or no log
+   * entry at all, fails with `target-not-valid` and appends nothing. `action`
+   * defaults to `'added'`, and `actor` — the label of whoever reacted, which the
+   * calling client supplies — defaults to `'user'`.
+   *
+   * The appended event's `seq` returns so a caller can correlate the note with
+   * the push frame. A cold session is resumed first (the `session.rename`
+   * precedent); an unknown id fails with `session-not-found`, and session-backed
+   * subagents reject with `agent-busy`.
+   *
+   * Authorisation belongs to the caller, exactly as for `rename` and `destroy`:
+   * this is loopback/trusted-host behaviour and the harness has no identity
+   * concept, so the profile proxy in front of this host decides who may react.
+   */
+  react(request: RpcRequest<{
+    sessionId: SessionId
+    targetSeq: number
+    emoji: string
+    action?: ReactionNoteEventData['action']
+    actor?: string
+  }>):
+  Promise<RpcResponse<{ seq: number }>>
 
   /**
    * Sends a message. content is core's ContentBlock[] verbatim; mode maps 1:1 — queue→send, steer→steer.

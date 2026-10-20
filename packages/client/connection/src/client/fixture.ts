@@ -2395,6 +2395,32 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         const appended = logOf(sessionId).at(-1) as SessionEvent
         return ok(request, { title: normalized, seq: appended.seq })
       },
+      react: (request) => {
+        const missing = requireSession(request)
+        if (missing !== undefined) return missing
+        const { sessionId, targetSeq, emoji, action, actor } = request.payload
+        const log = logOf(sessionId)
+        const target = log.find(e => e.seq === targetSeq)
+        // Same refusal the host makes: only an append-origin message is a
+        // reaction target, so the fixture answers the shape the real service
+        // answers rather than accepting anything.
+        if (target === undefined
+          || (target.type !== 'user/message' && target.type !== 'assistant/message' && target.type !== 'tool/result')
+          || target.surfaceOp !== 'append') {
+          return err(request, {
+            code: 'target-not-valid',
+            message: `targetSeq ${targetSeq} does not name a message in this session`,
+            details: { sessionId, targetSeq },
+          })
+        }
+        append(sessionId, {
+          type: 'reaction/note',
+          ignorable: true,
+          data: { targetSeq, emoji, actor: actor ?? 'user', action: action ?? 'added' },
+        })
+        const appended = logOf(sessionId).at(-1) as SessionEvent
+        return ok(request, { seq: appended.seq })
+      },
       fork: (request) => {
         const { sessionId, atSeq } = request.payload
         const source = summaryOf(sessionId)
@@ -3205,6 +3231,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'session.models': return this.api.sessions.models(request)
       case 'session.selectModel': return this.api.sessions.selectModel(request)
       case 'session.rename': return this.api.sessions.rename(request)
+      case 'session.react': return this.api.sessions.react(request)
       case 'session.fork': return this.api.sessions.fork(request)
       case 'session.prompt': return this.api.sessions.prompt(request)
       case 'session.attachment': return this.api.sessions.attachment(request)

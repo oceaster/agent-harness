@@ -1080,6 +1080,100 @@ re-applied on every upstream pull:
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 
+23. **Reaction notes: a log-only event kind the model reads and nothing else
+    shows** (`core/session`, `host/apiproxy`; ticket `f1bdaed3`) — Owen's
+   reaction feature needs a durable record of "a person reacted 👍 to that
+   message" that is invisible in the transcript, excluded from compaction, and
+   yet present in the model's next request. The spike
+   (`feat/react-note-spike`, `9d0684d166`) measured that no such carrier exists:
+   the transcript-invisible carrier is also model-invisible
+   (`deriveEventMessage` is a closed switch over three surface types), the only
+   model-visible carrier is a `user/message` surface event which leaks into
+   both the transcript and the compaction checkpoint, and **nothing in the repo
+   could write the envelope's `ignorable` marker**, so appending a new kind
+   bricked the session on the next load with `SessionFormatUnsupportedError`.
+
+   Four hunks, all of them fork-only until upstream grows equivalent seams:
+
+   - **The event kind** (`packages/core/session/src/types.ts`):
+     `ReactionNoteEventData` (`{targetSeq, emoji, actor, action}`) and the
+     `'reaction/note': ReactionNoteEventData` member of `SessionEventMap`. It is
+     declared in CORE, not by a plugin that merges the map, because the model
+     projection lives in core and there is no per-kind registration seam there —
+     a plugin-declared kind could never be projected.
+   - **The envelope capability** (`types.ts` + `Session.append` in
+     `index.ts`): `EnvelopeIntent { ignorable?: true }` as the third argument of
+     a log-only append (`[opts?: EnvelopeIntent]` in place of the empty rest
+     tuple), written as `ignorable: true` on the envelope. `true` is the only
+     legal value, and the marker is rejected on a surface-eligible type: a
+     surface event is reconstructed history, so a reader that skips an
+     unrecognized one would silently shorten the model's conversation.
+     This is the brick fix — a build that predates the kind now skips the note
+     instead of refusing the whole log.
+   - **The projection** (`packages/core/session/src/surface.ts`):
+     `isModelNoteEvent` plus a `case 'reaction/note'` in `deriveEventMessage`
+     rendering a user-role message with `id: 'reaction-note-<seq>'` (the fold
+     re-runs on replay, resume and compaction, so the id is derived from the
+     log, never from a clock), `source: { kind: 'plugin', plugin: 'react-note' }`,
+     and one line naming the act, the actor, the glyph and the target seq. The
+     message is frozen locally (`freezeSynthesized`) rather than with
+     `freezeMessage` from `@deepseek-ai/dsh-llm`: `surface.ts` is the
+     browser-safe, value-import-free subpath, and a plugin value import there is
+     exactly what the client bundle purity gate rejects (it failed the build
+     until this was local).
+   - **The fold** (`Session.deriveMessages` in `index.ts`): a second segment.
+     `deriveMessages` walked surface nodes only, and a log-only note is not a
+     surface node — so the projection case alone reaches nobody. Notes now
+     project AFTER the surface segment, in log order, appended in a second pass.
+     Two segments rather than interleaving each note at its log position is what
+     keeps the result a pure function of the log: a later surface append never
+     reorders, and replay, cold resume and a post-compaction rebuild produce the
+     identical array. The practical effect is that an unreacted-to note sits
+     immediately before whatever the human types next.
+   - **The wire** (`packages/host/apiproxy`): `session.react` — name, doc,
+     schema pair, `rpc-map` row, `fetch/handler` route, `fetch/client` face and
+     the `api-proxy` implementation, following `session.rename` (also a
+     log-only append). Payload `{sessionId, targetSeq, emoji, action?, actor?}`
+     (`action` defaults to `'added'`, `actor` to `'user'`); return `{seq}`; new
+     error code `target-not-valid` (`{sessionId, targetSeq}`) for a target that
+     is not an append-origin message, appended nothing; cold sessions resume
+     through the shared `agentFor` path, and subagents answer `agent-busy` as
+     every other unary does. The event vocabulary is generated —
+     `npm run gen-persistence-catalog` rewrote `known-event-types.ts` and
+     `docs/persistence-catalog.md`, and `verify-persistence-catalog` gates it.
+
+   - **What stays free, and why a test pins it.** A log-only event is dropped by
+     the client node registry because no Definition claims it (the fallback
+     matches append-surface events only), and it never enters the surface spans
+     that `compaction-basic` folds — so no transcript row and no summarisation.
+     Both are properties of someone else's default, so they are pinned rather
+     than assumed: `packages/client/ui-conversation/tests/reaction-note-transcript.client.spec.ts`
+     asserts the chat snapshot is byte-identical with and without a note and
+     that no Definition (fallback included) matches one, and
+     `packages/core/session/tests/reaction-note.spec.ts` asserts the note is
+     absent from `foldSurface`, from every shadowed span, and from anything
+     `deriveEventMessage` would hand a summariser.
+   - **Re-apply on an upstream pull.** If upstream ships a plugin seam for
+     model-visible log-only events, delete the `deriveMessages` note segment and
+     the `case 'reaction/note'` and re-home the projection there; if upstream
+     adds its own envelope-intent argument to `Session.append`, keep theirs and
+     drop ours. `npm run gen-persistence-catalog` regenerates the generated
+     pair either way. No client UI is involved (a separate ticket owns the
+     button and the badge); the fork has no other consumer of the kind.
+   - **Measured, not asserted** (`apps/web/tests/fixture/react-note/`, the real
+     built harness with an isolated `DSH_HOME` and a recording mock provider):
+     one `session.react` appends exactly `{"reaction/note": 1}`, writes the
+     marker, starts no turn or step, makes no model request, generates no title,
+     writes no goal/retry/command/queue record, leaves the agent idle with an
+     empty inbox and the surface unchanged; the note reaches the next request at
+     index 6 of 7 (last, user role, `owen reacted 👍 to the message at seq 7.`)
+     and is the only addition; a `/compact` whose span (7–55) spans the note at
+     seq 23 puts no reaction text in the summarisation request or in the durable
+     checkpoint and the note still reaches the model afterwards; and a real
+     restart of the same build on the same `DSH_HOME` reopens the conversation,
+     keeps the note with its marker, and accepts a second note on the resumed
+     cold session.
+
 ## Model options from the household AWS account
 
 The `amazon-bedrock` route in `$DSH_HOME/settings.yaml` (category **Amazon Web

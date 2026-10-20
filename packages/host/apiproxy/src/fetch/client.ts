@@ -27,6 +27,7 @@ import {
   sessionListValueSchema,
   sessionModelsValueSchema,
   sessionPromptValueSchema,
+  sessionReactValueSchema,
   sessionRenameValueSchema,
   sessionSearchValueSchema,
   sessionSelectModelValueSchema,
@@ -94,6 +95,7 @@ export interface IApiClient {
     models(payload: RequestPayload<'session.models'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.models'>>>
     selectModel(payload: RequestPayload<'session.selectModel'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.selectModel'>>>
     rename(payload: RequestPayload<'session.rename'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.rename'>>>
+    react(payload: RequestPayload<'session.react'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.react'>>>
     fork(payload: RequestPayload<'session.fork'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.fork'>>>
     destroy(payload: RequestPayload<'session.destroy'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.destroy'>>>
     prompt(payload: RequestPayload<'session.prompt'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.prompt'>>>
@@ -178,6 +180,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'session.history': sessionHistoryValueSchema,
   'session.models': sessionModelsValueSchema,
   'session.selectModel': sessionSelectModelValueSchema,
+  'session.react': sessionReactValueSchema,
   'session.rename': sessionRenameValueSchema,
   'session.fork': sessionForkValueSchema,
   'session.destroy': sessionDestroyValueSchema,
@@ -420,6 +423,7 @@ export abstract class AbstractApiClient implements IApiClient {
     models: (payload, signal) => this.callUnary('session.models', payload, signal),
     selectModel: (payload, signal) => this.callUnary('session.selectModel', payload, signal),
     rename: (payload, signal) => this.callUnary('session.rename', payload, signal),
+    react: (payload, signal) => this.callUnary('session.react', payload, signal),
     fork: (payload, signal) => this.callUnary('session.fork', payload, signal),
     destroy: (payload, signal) => this.callUnary('session.destroy', payload, signal),
     prompt: (payload, signal) => this.callUnary('session.prompt', payload, signal),

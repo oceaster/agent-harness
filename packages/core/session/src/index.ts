@@ -14,9 +14,9 @@ import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, SessionId } from './types.ts'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
-import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SurfaceIntent, SurfaceEventType } from './types.ts'
+import type { CreateSessionOptions, EnvelopeIntent, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SurfaceIntent, SurfaceEventType } from './types.ts'
 import { snapshotJsonValue } from './json.ts'
-import { deriveEventMessage, SurfaceManager } from './surface.ts'
+import { deriveEventMessage, isModelNoteEvent, isSurfaceEligibleType, SurfaceManager } from './surface.ts'
 import type { SessionSurface } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
 
@@ -30,7 +30,7 @@ export { interruptedTurnClosers, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from '
 export { decodeStorageRecord, packChunkRuns } from './chunk-rows.ts'
 export type { ChunkRow, StorageRecord } from './chunk-rows.ts'
 export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult } from './surface.ts'
-export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
+export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isModelNoteEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
 export { canonicalHeader, foldRequestHeader, headerEquals } from './request-header.ts'
 export { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
 
@@ -583,7 +583,10 @@ export class Session {
    *   declare how it joins the surface, the sole source of derived model
    *   history) and
    *   rejected by the compiler for non-surface types like `turn/start` or
-   *   `assistant/chunk`.
+   *   `assistant/chunk`. On a log-only event the same position instead accepts
+   *   {@link EnvelopeIntent}: `ignorable: true` writes the envelope's skip
+   *   marker, which is what makes a new event kind readable by a build that
+   *   does not know it.
    * @returns the logged event — its assigned `seq`/`time` plus the SNAPSHOT of
    *   `data` that entered the log, so reading `event.data` back sees the logged
    *   value, never the caller's still-mutable input.
@@ -604,13 +607,27 @@ export class Session {
   append<T extends SessionEventType>(
     type: T,
     data: SessionEventMap[T],
-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : []
+    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : [opts?: EnvelopeIntent]
   ): SessionEvent<T> {
-    const surfaceOpts: SurfaceIntent | undefined = opts[0]
+    const intent: SurfaceIntent | EnvelopeIntent | undefined = opts[0]
+    const surfaceIntent = intent as SurfaceIntent | undefined
     const surfaceMetadata = {
-      ...surfaceOpts?.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surfaceOpts.sourceEventSeqs },
-      ...surfaceOpts?.surfaceOp === undefined ? {} : { surfaceOp: surfaceOpts.surfaceOp },
+      ...surfaceIntent?.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surfaceIntent.sourceEventSeqs },
+      ...surfaceIntent?.surfaceOp === undefined ? {} : { surfaceOp: surfaceIntent.surfaceOp },
     }
+    // A surface event is reconstructed history, so skipping an unrecognized one
+    // would silently shorten the model's conversation: the two intent shapes
+    // are disjoint by type, and this guard catches the untyped path (a caller
+    // passing a widened variable). Read the raw value as `unknown` for exactly
+    // that reason — the declared type cannot express the value being wrong.
+    const rawIgnorable: unknown = (intent as { ignorable?: unknown } | undefined)?.ignorable
+    if (rawIgnorable !== undefined && rawIgnorable !== true) {
+      throw new Error(`session event "${type}" carries an invalid ignorable marker; only true is legal`)
+    }
+    if (rawIgnorable === true && isSurfaceEligibleType(type)) {
+      throw new Error(`session event "${type}" is surface-eligible and cannot be marked ignorable`)
+    }
+    const envelopeMetadata = rawIgnorable === true ? { ignorable: true as const } : {}
     const dataSnapshot = snapshotJsonValue(data)
     if (dataSnapshot === undefined) {
       throw new Error(`session event "${type}" carries non-JSON-serializable data`)
@@ -630,6 +647,7 @@ export class Session {
       time: Date.now(),
       data: dataSnapshot,
       ...(surfaceMetadataSnapshot as { surfaceOp?: unknown; sourceEventSeqs?: unknown }),
+      ...envelopeMetadata,
     } as unknown as SessionEvent<T>)
     this.surfaceManager.validateNext(event as SessionEvent)
 
@@ -700,8 +718,12 @@ export class Session {
 
   /** The derived-message cache: frozen projections, extended per unseen node. */
   private derived: Message[] = []
+  /** Derived model-note messages, in log order; they follow the surface segment. */
+  private derivedNotes: Message[] = []
   /** Surface position (nodes projected) the cache has reached. */
   private derivedNodes = 0
+  /** Log position the model-note scan has reached (notes project after the surface prefix). */
+  private derivedNoteScan = 0
   /** {@link SurfaceManager.replaceGeneration} the cache was built under. */
   private derivedGeneration = 0
 
@@ -713,6 +735,17 @@ export class Session {
    * turn boundary) is correctly absent, and a compaction `replace` deletes the
    * shadowed nodes from the derivation. The projection rules are
    * {@link deriveEventMessage}, folded per node.
+   *
+   * Model notes ({@link isModelNoteEvent}) are the one exception, and it is
+   * one-directional: they are log-only — absent from {@link Session.surface},
+   * so absent from the client transcript and from every compaction span — but
+   * they do reach the model as a second segment appended AFTER the surface
+   * segment, in log order. Keeping the two segments apart (rather than
+   * interleaving each note at its log position) is what makes the result a pure
+   * function of the log: a later surface append never reorders, and replay, a
+   * resume, and a post-compaction rebuild produce the identical array. The
+   * practical effect is that an unreacted-to note sits immediately before
+   * whatever the human types next.
    *
    * CACHED: each surface node is projected exactly once, when first seen — a
    * call costs O(new nodes), and a surface rewrite (a `replace`;
@@ -729,7 +762,9 @@ export class Session {
     const generation = surface.replaceGeneration
     if (generation !== this.derivedGeneration) {
       this.derived = []
+      this.derivedNotes = []
       this.derivedNodes = 0
+      this.derivedNoteScan = 0
       this.derivedGeneration = generation
     }
     for (const seq of nodes.slice(this.derivedNodes)) {
@@ -743,7 +778,17 @@ export class Session {
       if (msg) this.derived.push(msg)
     }
     this.derivedNodes = nodes.length
-    return [...this.derived]
+    // Notes are not surface nodes, so they never appear in the loop above; a
+    // rebuild re-scans them from the log start for the same reason.
+    for (let seq = this.derivedNoteScan; seq < this.log.length; seq++) {
+      // oxlint-disable-next-line typescript/no-non-null-assertion
+      const event = this.log[seq]!
+      if (!isModelNoteEvent(event)) continue
+      const msg = this.deriveEventMessage(event)
+      if (msg) this.derivedNotes.push(msg)
+    }
+    this.derivedNoteScan = this.log.length
+    return [...this.derived, ...this.derivedNotes]
   }
 
   /**

@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-session/surface
  */
 
-import type { Message } from '@deepseek-ai/dsh-llm'
+import type { Message, MessageId } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SurfaceEvent, SurfaceEventType, SurfaceOp } from './types.ts'
 
 /** Runtime counterpart of the message-producing event union. */
@@ -17,6 +17,15 @@ const SURFACE_EVENT_TYPES = new Set<string>([
   'assistant/message',
   'tool/result',
 ])
+
+/**
+ * Runtime counterpart of the model-note event set: log-only events that reach
+ * the model without joining the ordered surface. They project into the request
+ * tail (`Session.deriveMessages` appends their messages after the surface
+ * prefix), so they are absent from the transcript — the client renders surface
+ * events only — and from compaction, which folds the surface's shadowed seqs.
+ */
+const MODEL_NOTE_EVENT_TYPES = new Set<string>(['reaction/note'])
 
 /**
  * Whether an event type can join the model-visible surface.
@@ -68,6 +77,58 @@ export function isReplacementSurfaceEvent(
 }
 
 /**
+ * Narrow an event to a model note: a log-only event that reaches the model
+ * without entering the ordered surface.
+ *
+ * A model note is the one kind of record that is model-visible and yet not
+ * transcript material: `Session.deriveMessages` appends its projection after
+ * the surface prefix, while `foldSurface` (which the client transcript and
+ * compaction both fold) never sees it. Its message id is derived from the
+ * event's seq, so replay, resume and compaction rebuild the same message.
+ * @param event - event to test.
+ * @returns true for a log-only event with a model projection.
+ */
+export function isModelNoteEvent(event: SessionEvent): event is SessionEvent<'reaction/note'> {
+  return MODEL_NOTE_EVENT_TYPES.has(event.type)
+}
+
+/**
+ * Render one reaction note as the model-facing line it projects to.
+ *
+ * One line, prose-free, and naming the act, the actor, the glyph and the seq of
+ * the message reacted to — the target is named by seq because that is the only
+ * identifier the log itself carries.
+ * @param data - the note's payload.
+ * @returns the exact text of the projected message.
+ */
+function reactionNoteText(data: SessionEvent<'reaction/note'>['data']): string {
+  const target = `the message at seq ${data.targetSeq}`
+  switch (data.action) {
+    case 'added': return `${data.actor} reacted ${data.emoji} to ${target}.`
+    case 'removed': return `${data.actor} removed their ${data.emoji} reaction from ${target}.`
+    case 'changed': return `${data.actor} changed their reaction on ${target} to ${data.emoji}.`
+  }
+}
+
+/**
+ * Deep-freeze a message this module synthesized.
+ *
+ * Local on purpose: this module is browser-safe and value-import-free, so it
+ * cannot call `freezeMessage` from `@deepseek-ai/dsh-llm` (a plugin value
+ * import here is exactly what the client bundle purity gate rejects). The
+ * message is built from primitives, so a plain recursive freeze is equivalent.
+ * @param message - the message to freeze in place.
+ * @returns the same message, frozen.
+ */
+function freezeSynthesized<T>(message: T): T {
+  if (message !== null && typeof message === 'object') {
+    for (const nested of Object.values(message)) freezeSynthesized(nested)
+    Object.freeze(message)
+  }
+  return message
+}
+
+/**
  * Project a single event into the LLM message it derives to, or null when it
  * produces none — a non-surface event (chunk, boundary, log-only record) or an
  * empty-content assistant/message (which exists only to host usage). This is
@@ -77,6 +138,10 @@ export function isReplacementSurfaceEvent(
  * request was built from. The returned message is the already frozen message
  * nested in the event wrapper and shared by delivery, durable history, and
  * model requests.
+ *
+ * A model note ({@link isModelNoteEvent}) has no message in its event wrapper,
+ * so its projection is synthesized here — frozen, and identified by its seq so
+ * every fold of the same log yields the same message identity.
  * @param event - the event to project.
  * @returns the derived message, or null when the event produces none.
  */
@@ -105,6 +170,21 @@ export function deriveEventMessage(event: SessionEvent): Message | null {
     }
     case 'tool/result': {
       return event.data.message
+    }
+    case 'reaction/note': {
+      // A model note: log-only (never on the surface, so never in the
+      // transcript and never inside a compaction span), yet projected so the
+      // next request tells the model what the human just did. The id is
+      // derived from the event seq: the fold re-runs on replay, resume and
+      // compaction, so a random or timestamped id would change identity under
+      // the model's feet. Source is the plugin kind, not `user`, because no
+      // human authored this text — the note is the harness's account of one.
+      return freezeSynthesized({
+        id: `reaction-note-${event.seq}` as MessageId,
+        role: 'user',
+        content: [{ type: 'text', text: reactionNoteText(event.data) }],
+        source: { kind: 'plugin', plugin: 'react-note' },
+      } satisfies Message)
     }
     default:
       // A non-surface event (boundary, chunk, log-only record) projects to

@@ -80,6 +80,13 @@ export interface RpcErrorDetailsMap {
    * details name the endpoint asked, never the credential offered.
    */
   'model-discovery-failed': { settingsNs: string; baseURL?: string }
+  /**
+   * A `session.react` target that names no message the transcript holds: no log
+   * entry at that seq, or one that is not an append-origin `user/message`,
+   * `assistant/message`, or `tool/result` (a boundary marker, a raw chunk, a
+   * compaction replacement copy, or another note). Nothing is appended.
+   */
+  'target-not-valid': { sessionId: SessionId; targetSeq: number }
   'title-invalid': { sessionId: SessionId }
   'fork-unavailable': { sessionId: SessionId }
   'subagent-parent-unavailable': { parentSessionId: SessionId }

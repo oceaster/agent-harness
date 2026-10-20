@@ -2403,6 +2403,37 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
       },
 
+      async react(request) {
+        const { sessionId, targetSeq, emoji, action, actor } = request.payload
+        const found = await agentFor(sessionId)
+        if ('error' in found) return err(request, found.error)
+        const session = found.agent.session
+        // The target must be a message the human could have reacted to in the
+        // transcript: an append-origin surface event. A boundary marker, a raw
+        // chunk, a compaction replacement copy (model-only), a note itself, or
+        // a seq past the log end is not one, and a note naming it would tell the
+        // model about a reaction to something it cannot see.
+        const target = session.events[targetSeq]
+        if (target === undefined || !isAppendSurfaceEvent(target)) {
+          return err(request, {
+            code: 'target-not-valid',
+            message: `targetSeq ${targetSeq} does not name a message in this session`,
+            details: { sessionId, targetSeq },
+          })
+        }
+        // Log-only and model-visible, with the envelope marker that lets a
+        // build which does not know `reaction/note` skip it instead of refusing
+        // the whole log. Nothing else moves: no turn, no model call, no title,
+        // no queue entry, no budget or goal record.
+        const note = session.append('reaction/note', {
+          targetSeq,
+          emoji,
+          actor: actor ?? 'user',
+          action: action ?? 'added',
+        }, { ignorable: true })
+        return ok(request, { seq: note.seq })
+      },
+
       async fork(request) {
         const { sessionId, atSeq } = request.payload
         let source: SessionReadState
