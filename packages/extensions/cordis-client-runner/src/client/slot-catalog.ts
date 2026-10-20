@@ -1157,51 +1157,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     source: 'packages/client/runtime/src/client/slots.ts:41',
   },
   {
-    key: 'settings.action',
-    kind: 'list',
-    scope: 'root',
-    summary: 'Optional actions rendered in the content-column header before Close.',
-    doc: 'Optional actions rendered in the content-column header before Close.\nRegistrants own visibility, behavior, copy, and failure presentation;\nthe shell supplies only the ordered render site.',
-    registerOptions: [
-      {
-        name: 'id',
-        requirement: 'required',
-        type: 'string',
-        doc: 'Your cell key. Use an id of your own: a fresh id is added beside the shipped entries, while reusing a shipped id puts you in THAT cell and replaces it. Owners that filter by id address you by it.',
-      },
-      {
-        name: 'order',
-        requirement: 'optional',
-        type: 'number',
-        doc: 'Position among the entries, ascending (default 0).',
-      },
-      {
-        name: 'label',
-        requirement: 'optional',
-        type: 'string | (() => string)',
-        doc: 'Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering.',
-      },
-    ],
-    ownerProps: [
-      '/** Owner share of the header title seat (the shell supplies nothing). */\nexport interface SettingsHeaderOwnerProps {\n  /** Marker field: header owner props are intentionally empty. */\n  children?: never\n}',
-    ],
-    ownerPropsReferences: [],
-    standardProps: [
-      'useSessions: SnapshotSelectorHook<SessionListState>',
-      'useWorkspaces: SnapshotSelectorHook<import(\'./workspaces/service.ts\').WorkspaceListState>',
-    ],
-    keyDomain: '',
-    hookContext: '',
-    slotInject: '',
-    declaredBy: 'an entry in \'sidebar.settings\' (client-ui-settings-general), so it exists while that entry is mounted',
-    occupants: [
-      'client-ui-settings-general SettingsDocumentAction id \'open-document\'',
-    ],
-    replaceRisk: 'none',
-    example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.action\', () => ctx.slots.register(\n      { name: \'settings.action\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-settings/src/client/contract/slots.ts:35',
-  },
-  {
     key: 'settings.close',
     kind: 'single',
     scope: 'root',
@@ -1225,7 +1180,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.close\', () => ctx.slots.register(\n      { name: \'settings.close\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-settings/src/client/contract/slots.ts:41',
+    source: 'packages/client/ui-settings/src/client/contract/slots.ts:36',
   },
   {
     key: 'settings.general.item',
@@ -1271,14 +1226,14 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.general.item\', () => ctx.slots.register(\n      { name: \'settings.general.item\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-settings/src/client/contract/slots.ts:79',
+    source: 'packages/client/ui-settings/src/client/contract/slots.ts:76',
   },
   {
     key: 'settings.header',
     kind: 'single',
     scope: 'root',
     summary: 'The panel title text seat.',
-    doc: 'The panel title text seat. Content renders inside the nav heading row;\nthe dialog\'s accessible name points at that node via aria-labelledby.\nAbsent contribution leaves the heading empty.',
+    doc: 'The panel title text seat. Content renders in the panel\'s title row, with\nthe shell-owned Close control beside it; the dialog\'s accessible name\npoints at that node via aria-labelledby. Absent contribution leaves the\ntitle empty.',
     registerOptions: [],
     ownerProps: [
       '/** Owner share of the header title seat (the shell supplies nothing). */\nexport interface SettingsHeaderOwnerProps {\n  /** Marker field: header owner props are intentionally empty. */\n  children?: never\n}',
@@ -1297,7 +1252,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.header\', () => ctx.slots.register(\n      { name: \'settings.header\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-settings/src/client/contract/slots.ts:29',
+    source: 'packages/client/ui-settings/src/client/contract/slots.ts:30',
   },
   {
     key: 'settings.onboarding',
@@ -1326,7 +1281,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       },
     ],
     ownerProps: [
-      '/** Owner share of the currently active settings-backed onboarding step. */\nexport interface SettingsOnboardingOwnerProps {\n  /** Stable id of the step currently selected by the coordinator. */\n  stepId: string\n  /** Complete or skip this step and transfer ownership to the next entry. */\n  complete: () => void\n  /** Open the settings panel directly on one registered section. */\n  openSection: (id: string) => void\n}',
+      '/** Owner share of the currently active settings-backed onboarding step. */\nexport interface SettingsOnboardingOwnerProps {\n  /** Stable id of the step currently selected by the coordinator. */\n  stepId: string\n  /** Complete or skip this step and transfer ownership to the next entry. */\n  complete: () => void\n  /** Open the settings panel (it has one section and no navigation to name). */\n  openSettings: () => void\n}',
     ],
     ownerPropsReferences: [],
     standardProps: [
@@ -1343,14 +1298,14 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.onboarding\', () => ctx.slots.register(\n      { name: \'settings.onboarding\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-settings/src/client/contract/slots.ts:64',
+    source: 'packages/client/ui-settings/src/client/contract/slots.ts:61',
   },
   {
     key: 'settings.section',
     kind: 'list',
     scope: 'root',
     summary: 'One settings page per list entry.',
-    doc: 'One settings page per list entry. Registrant options carry the nav\nidentity: `id` (section key, drives `only` filtering), `order` (nav\nposition), `label` (registrant-localized display text — the registrant\nre-registers with fresh text on locale change, so the shell never\nsubscribes locale state; the ledger bump doubles as the shell\'s\nre-render trigger). Sections render inside the panel content column.\n(`settings.general.item`, declared by ui-settings-general\'s General\nentry, is typed in the locale package — the common dependency of every\nitem registrant; the shell neither declares nor renders it.)',
+    doc: 'One settings page per list entry. Registrant options carry the ordering\nidentity: `id` (section key, drives the shell\'s `only` filtering) and\n`order` (render position). The panel renders the FIRST ordered entry and\noffers no navigation — the household asked for the settings tabs to be\ngone — so exactly one section is reachable and a second registration is a\ncomposition error rather than a tab. A registrant may still pass `label`;\nnothing in the shell renders it, so section copy belongs in the\nregistrant\'s own content. (`settings.general.item`, declared by\nui-settings-general\'s General entry, is typed in the locale package — the\ncommon dependency of every item registrant; the shell neither declares\nnor renders it.)',
     registerOptions: [
       {
         name: 'id',
@@ -1372,7 +1327,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       },
     ],
     ownerProps: [
-      '/**\n * Owner share of a settings section entry. The shell owns modal visibility\n * and navigation; a section\'s data arrives through its own inject faces and\n * stores. `close` is the one shell affordance a section receives, for flows\n * that leave settings altogether (starting a session from a section) — the\n * onboarding coordinator\'s `openSection`/`complete` precedent, inverted.\n */\nexport interface SettingsSectionOwnerProps {\n  /** Close the settings panel (the shell owns the open state). */\n  close: () => void\n}',
+      '/**\n * Owner share of a settings section entry. The shell owns modal visibility; a\n * section\'s data arrives through its own inject faces and stores. `close` is\n * the one shell affordance a section receives, for flows that leave settings\n * altogether (starting a session from a section) — the onboarding\n * coordinator\'s `openSettings`/`complete` precedent, inverted.\n */\nexport interface SettingsSectionOwnerProps {\n  /** Close the settings panel (the shell owns the open state). */\n  close: () => void\n}',
     ],
     ownerPropsReferences: [],
     standardProps: [
@@ -1389,7 +1344,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.section\', () => ctx.slots.register(\n      { name: \'settings.section\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-settings/src/client/contract/slots.ts:53',
+    source: 'packages/client/ui-settings/src/client/contract/slots.ts:50',
   },
   {
     key: 'settings.trigger',

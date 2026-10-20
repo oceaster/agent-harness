@@ -1,8 +1,11 @@
 /* Settings shell (figma 501:29904 mask context / 501:29947 panel): sidebar
    foot trigger row + centered 1080x700 modal panel. The trigger uses the
    sidebar foot's 42px row / 36px rail circle rhythm; the
-   panel is a two-column layout — 188px nav rail + content column with a
-   54px header and the 24px-padded options area. */
+   panel is a single full-width column — a title row (title + Close) and the
+   24px-padded options area. The nav rail that used to sit beside the content
+   is gone (the household asked for the tabs gone), so the section takes the
+   whole inner width. */
+
 
 /* Trigger row: the 42px foot-row box shared with the Cordis footer action. */
 .trigger {
@@ -66,14 +69,17 @@
 
 /* Panel (figma Settings 501:29947): r24, white, lv3 shadow (figma effects
    match --dsw-shadow-lv3 exactly); figma's 1080x700 is shrunk to 800 wide.
-   One height for every section, taken from the viewport rather than the
-   content: sections differ by hundreds of pixels (a settings list against the
-   composition editor), and a content-sized panel would resize under the
-   pointer on every nav click. Whatever does not fit scrolls in `.options`. */
+   One column, top to bottom: the title row, then the section. There is no nav
+   rail, so the section takes the panel's full inner width instead of the
+   content column that used to sit beside a 188px rail. One height for every
+   viewport, taken from the viewport rather than the content: a content-sized
+   panel would resize under the pointer as rows change. Whatever does not fit
+   scrolls in `.options`. */
 .panel {
   position: relative;
   z-index: 1;
   display: flex;
+  flex-direction: column;
   width: 800px;
   height: min(800px, calc(100vh - 48px));
   max-width: calc(100vw - 48px);
@@ -90,102 +96,26 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-/* Nav rail (figma .Setting-nav 501:29958): 188 wide, pad (12,22,12,0),
-   gap 18, no own fill — the panel white shows through. */
-.nav {
+/* Title row: the panel title (figma 501:29959 — 16/500 lh24) on the left and
+   the shell-owned Close control on the right. The 24px left inset matches the
+   options area below it, so the title sits on the section's own text edge; the
+   header used to start after a 188px nav rail and now spans the panel. */
+.header {
   flex: none;
   display: flex;
-  flex-direction: column;
-  gap: 18px;
-  width: 188px;
-  padding: 22px 12px 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 20px 14px 8px 24px;
   box-sizing: border-box;
 }
 
-/* Title row (figma 501:29959): 16/500 lh24, 12px side padding. */
-.navTitle {
-  padding: 0 12px;
+.title {
+  min-width: 0;
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
-}
-
-/* Cell stack (figma 501:29961): gap 4. */
-.navList {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* Nav cell (figma .Setting-nav-cell 501:29962): 164x40, r12, pad
-   (12,9,16,9), gap 8; label 14/400 lh22; selected fill #EBEEF2. */
-.navCell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 9px 16px 9px 12px;
-  box-sizing: border-box;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 22px;
-  font-weight: 400;
-  color: var(--dsw-alias-label-primary);
-  text-align: left;
-}
-
-.navCell:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
-}
-
-.navCell.active {
-  background: var(--dsw-specific-sidebar-nav-item-active);
-}
-
-.navIcon {
-  flex: none;
-}
-
-.navLabel {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* Content column (figma Content 501:29980): header + options. */
-.content {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Header (figma .Header 501:29981): h54, pad (10,20,14,8), close right. */
-.header {
-  flex: none;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  height: 54px;
-  padding: 20px 14px 8px 10px;
-  box-sizing: border-box;
-}
-
-.actions {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-left: auto;
 }
 
 /* Close button (figma .Icon_container 501:29982): 28x28, r28, 14px glyph. */

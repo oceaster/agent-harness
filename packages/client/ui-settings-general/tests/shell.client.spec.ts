@@ -10,14 +10,16 @@ import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
 async function bench() {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
-  // Copy machinery the shell only reads a revision from; the real locale
-  // plugin would drag its own settings-row dependencies into this bench.
+  // Copy machinery for the shell's dictionaries; the real locale plugin would
+  // drag its own settings-row dependencies into this bench.
   ctx.provide('locale', {
     register: () => () => {},
     bind: () => (key: string) => key,
     getSnapshot: () => ({ active: 'zh', locales: [], revision: 0 }),
     subscribe: () => () => {},
   } as never)
+  // Services ui-settings' own apply injects (its settings mirror); this bench
+  // declares the slots and never exercises the wire.
   ctx.provide('connection', {
     api: { settings: { describe: async () => ({ result: { ok: false } }) } },
     isLoopback: false,
@@ -39,19 +41,20 @@ function injectedOf(slots: SlotRegistry): SettingsRootInjected {
   return (entry.inject as () => SettingsRootInjected)()
 }
 
-/** The shell's child declarations (chrome, actions, sections, and onboarding overlays). */
+/** The shell's child declarations (chrome, sections, and onboarding overlays). */
 const CHILD_SPECS = {
   'settings.trigger': { kind: 'single', scope: 'root' },
   'settings.header': { kind: 'single', scope: 'root' },
-  'settings.action': { kind: 'list', scope: 'root' },
   'settings.close': { kind: 'single', scope: 'root' },
   'settings.section': { kind: 'list', scope: 'root' },
   'settings.onboarding': { kind: 'list', scope: 'root' },
 } as const
 
 describe('ui-settings apply', () => {
-  it('declares only the slot registry (a pure composition face, no locale)', () => {
-    expect(inject).toEqual(['slots', 'locale', 'connection', 'settingsScope'])
+  it('declares only the services a pure composition face uses', () => {
+    // `connection` and `settingsScope` left with the configuration-file action:
+    // this package reads no settings wire and owns no document store.
+    expect(inject).toEqual(['slots', 'locale'])
   })
 
   it('registers the shell and declares every child slot, before or after the declaration', async () => {
@@ -73,32 +76,28 @@ describe('ui-settings apply', () => {
     expect(after.slots.entries('sidebar.settings')).toHaveLength(1)
   })
 
-  it('projects the section ledger into ordered nav rows with option defaults', async () => {
+  it('projects the section ledger into ordered ids with option defaults', async () => {
     const b = await bench()
     declare(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
-    const { sections } = injectedOf(b.slots).hooks
+    const { sectionIds } = injectedOf(b.slots).hooks
     // This package registers the General section itself; every other section
-    // arrives from a feature registrant.
-    const GENERAL = { id: 'general', order: 0, label: 'general.nav' }
-    expect(sections.getSnapshot()).toEqual([GENERAL])
-    b.slots.register({ name: 'settings.section', id: 'z', order: 20, label: 'Z' } as never, () => null)
-    // No order and no label: both projection defaults apply.
+    // arrives from a feature registrant. Labels play no part — the panel renders
+    // one section and there is no nav to caption.
+    expect(sectionIds.getSnapshot()).toEqual(['general'])
+    b.slots.register({ name: 'settings.section', id: 'z', order: 20 } as never, () => null)
+    // No order: the projection default applies, so `a` sorts before `z`.
     b.slots.register({ name: 'settings.section', id: 'a' } as never, () => null)
-    const rows = sections.getSnapshot()
-    expect(rows).toEqual([
-      GENERAL,
-      { id: 'a', order: 0, label: '' },
-      { id: 'z', order: 20, label: 'Z' },
-    ])
+    expect(sectionIds.getSnapshot()).toEqual(['general', 'a', 'z'])
     // Snapshot identity is stable until the ledger moves (uSES contract).
-    expect(sections.getSnapshot()).toBe(rows)
+    expect(sectionIds.getSnapshot()).toBe(sectionIds.getSnapshot())
+    const rows = sectionIds.getSnapshot()
     const listener = vi.fn()
-    const off = sections.subscribe(listener)
-    b.slots.register({ name: 'settings.section', id: 'b', order: 1, label: 'B' } as never, () => null)
+    const off = sectionIds.subscribe(listener)
+    b.slots.register({ name: 'settings.section', id: 'b', order: 1 } as never, () => null)
     await Promise.resolve()
     expect(listener).toHaveBeenCalled()
-    expect(sections.getSnapshot()).not.toBe(rows)
+    expect(sectionIds.getSnapshot()).not.toBe(rows)
     off()
   })
 

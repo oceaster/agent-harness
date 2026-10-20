@@ -127,13 +127,13 @@ function harness(options: {
     },
   }
   const controller = new ModelsSettingsStore(face as never, settingsSchema, new SettingsDescribeMirror(face as never))
-  const openSection = vi.fn()
+  const openSettings = vi.fn()
   const complete = vi.fn()
   const unusedHook = (() => { throw new Error('unused standard hook') }) as never
   const props: DeepSeekOnboardingDialogProps = {
     stepId: 'deepseek-official',
     complete,
-    openSection,
+    openSettings,
     useSessions: unusedHook,
     useWorkspaces: unusedHook,
     controller,
@@ -143,7 +143,7 @@ function harness(options: {
     t: key => en[key],
   }
   return {
-    controller, complete, openSection, props, mutate, set,
+    controller, complete, openSettings, props, mutate, set,
     configure: () => { fileConfigured = true },
   }
 }
@@ -220,7 +220,7 @@ describe('DeepSeekOnboardingDialog', () => {
     await screen.findByRole('dialog')
     fireEvent.click(screen.getByRole('button', { name: en.onboardingLater }))
     expect(h.complete).toHaveBeenCalledOnce()
-    expect(h.openSection).not.toHaveBeenCalled()
+    expect(h.openSettings).not.toHaveBeenCalled()
     expect(h.set).not.toHaveBeenCalled()
     expect(h.mutate).not.toHaveBeenCalled()
   })
@@ -239,7 +239,7 @@ describe('DeepSeekOnboardingDialog', () => {
       await act(async () => { await h.controller.load() })
       expect(screen.queryByRole('dialog')).toBeNull()
       await waitFor(() => { expect(h.complete).toHaveBeenCalledOnce() })
-      expect(h.openSection).not.toHaveBeenCalled()
+      expect(h.openSettings).not.toHaveBeenCalled()
       view.unmount()
     }
   })

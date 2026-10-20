@@ -75,7 +75,7 @@ function mount(
   const props: WelcomeNoticeProps = {
     stepId: 'welcome-notice',
     complete,
-    openSection: vi.fn(),
+    openSettings: vi.fn(),
     useSessions: unusedHook,
     useWorkspaces: unusedHook,
     controller,

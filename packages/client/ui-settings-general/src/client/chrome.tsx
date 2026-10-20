@@ -1,8 +1,8 @@
 /**
  * Shell chrome content registered into the shell's trigger/header seats: the
  * trigger row icon + label (figma sidebar foot) and the panel title text.
- * The shell renders the surrounding chrome (button, nav heading row) and
- * reads each entry's `label` option for aria text.
+ * The shell renders the surrounding chrome (the trigger button, the title row
+ * with the Close control beside it).
  */
 import { IconSettingsOutline14, IconSettingsOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'

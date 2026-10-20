@@ -1,5 +1,5 @@
-// Web e2e scenarios: the settings surface — the modal shell (trigger, nav,
-// section switching, both close paths), the Appearance preference row (the
+// Web e2e scenarios: the settings surface — the modal shell (trigger, the one
+// rendered section, both close paths), the Appearance preference row (the
 // real theme gesture — click 深色 and the whole cascade runs: ThemeRuntime preference -> Host settings
 // -> theme/change -> ui-layout's presenter -> body attribute -> alias token +
 // browser theme-color metadata)
@@ -26,10 +26,8 @@ import { ZH_BROWSER_LOCALE, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/settings-chrome', import.meta.url))
 const DIALOG_EXPECTED = join(SNAPSHOT_DIR, 'dialog.expected.md')
-const PLUGINS_EXPECTED = join(SNAPSHOT_DIR, 'plugins.expected.md')
 // The English fallback surface: a browser naming no shipped language.
 const DIALOG_EN_EXPECTED = join(SNAPSHOT_DIR, 'dialog-en.expected.md')
-const PLUGIN_ROW_SELECTOR = '[data-plugin-entry$="ui-settings"]'
 const MODE = webSnapshotMode()
 
 describe('web e2e: settings modal and General preferences', () => {
@@ -54,7 +52,7 @@ describe('web e2e: settings modal and General preferences', () => {
     await scaffold?.close()
   })
 
-  it('opens the settings dialog, switches sections, and closes by every path', async () => {
+  it('opens the settings dialog on its section and closes by every path', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-settings-shell'))
     const trigger = page.getByRole('button', { name: '设置', exact: true })
     expect(await trigger.getAttribute('aria-haspopup')).toBe('dialog')
@@ -63,68 +61,37 @@ describe('web e2e: settings modal and General preferences', () => {
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.waitFor({ timeout: 10_000 })
     expect(await trigger.getAttribute('aria-expanded')).toBe('true')
-    // General is active by default; Permission and Appearance are functional.
-    expect(await dialog.getByRole('button', { name: '通用设置' }).getAttribute('aria-current')).toBe('true')
-    await dialog.getByRole('button', { name: 'Workspace Write' }).waitFor({ timeout: 10_000 })
+    // No nav rail and no section switching: the panel is one content column and
+    // the household's rows are there the moment the dialog opens.
+    expect(await dialog.locator('nav').count()).toBe(0)
+    expect(await dialog.getByRole('tab').count()).toBe(0)
+    expect(await dialog.getByRole('button', { name: '通用设置' }).count()).toBe(0)
+    expect(await dialog.getByRole('button', { name: '模型' }).count()).toBe(0)
+    expect(await dialog.getByRole('button', { name: '插件', exact: true }).count()).toBe(0)
+    // The rows that remain are there immediately: Appearance and the busy-Enter
+    // behavior. (The Permission and Language rows this scenario used to anchor on
+    // are gone — FORK-NOTES 12 and the Language-row removal — which predates the
+    // nav removal.)
     await expect.poll(() => dialog.getByText('外观', { exact: true }).count(), { timeout: 5_000 }).toBe(1)
-    const openDocument = dialog.getByRole('button', { name: '打开配置文件' })
-    await openDocument.waitFor({ timeout: 10_000 })
-    let openRequests = 0
+    // The configuration-file action is gone, not hidden: nothing in the dialog
+    // asks the Host to open a document, and no request is made for one.
+    let documentRequests = 0
     await page.route('**/api/settings.openDocument', async (route) => {
-      const envelope = route.request().postDataJSON() as {
-        rpcId: string
-        payload: Record<string, never>
-      }
-      expect(envelope.payload).toEqual({})
-      openRequests += 1
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          type: 'server-response',
-          rpcId: envelope.rpcId,
-          result: { ok: true, value: { opened: true } },
-        }),
-      })
+      documentRequests += 1
+      await route.continue()
     })
-    await openDocument.click()
-    await expect.poll(() => openRequests, { timeout: 5_000 }).toBe(1)
-    await expect.poll(() => openDocument.isEnabled(), { timeout: 5_000 }).toBe(true)
-    await page.unroute('**/api/settings.openDocument')
-    // Golden of the freshly opened dialog (default zh, General active).
+    expect(await dialog.getByRole('button', { name: '打开配置文件' }).count()).toBe(0)
+    // The top-right of the dialog holds the Close control and nothing else.
+    const headerButtons = await dialog.evaluate((panel) => {
+      const header = panel.firstElementChild
+      return [...(header?.querySelectorAll('button') ?? [])].map(button => button.textContent?.trim())
+    })
+    expect(headerButtons).toEqual(['关闭'])
+    // Golden of the freshly opened dialog (default zh, section rendered directly).
     const snapshot = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(DIALOG_EXPECTED, snapshot, MODE)
-    // Section switch: aria-current moves (the Models page itself has its own scenario file).
-    await dialog.getByRole('button', { name: '模型' }).click()
-    await expect.poll(() => dialog.getByRole('button', { name: '模型' }).getAttribute('aria-current'), { timeout: 5_000 }).toBe('true')
-    expect(await dialog.getByRole('button', { name: '通用设置' }).getAttribute('aria-current')).toBeNull()
-    // Plugins is a read-only projection of the same assembled Loader tree, and
-    // the sole contribution renders bare: there is no tab strip to select, so
-    // the inventory is already mounted when the section is.
-    // Capture one stable shipped row rather than the whole inventory so adding
-    // an unrelated plugin does not rewrite this surface's golden.
-    await dialog.getByRole('button', { name: '插件', exact: true }).click()
-    await dialog.getByRole('heading', { name: '插件', exact: true }).waitFor({ timeout: 10_000 })
-    const pluginRow = dialog.locator(PLUGIN_ROW_SELECTOR)
-    await pluginRow.waitFor({ timeout: 10_000 })
-    const expectedPluginCount = [...scaffold.ctx.loader.entries()]
-      .filter(entry => !entry.options.group)
-      .length
-    expect(await dialog.getByRole('searchbox', { name: '搜索插件' }).count()).toBe(1)
-    expect(await dialog.locator('[data-plugin-entry]').count()).toBe(expectedPluginCount)
-    expect(await dialog.locator('[data-plugin-count]').getAttribute('data-plugin-count'))
-      .toBe(String(expectedPluginCount))
-    expect(await dialog.getByRole('button', { name: '插件', exact: true }).getAttribute('aria-current')).toBe('true')
-    // One read-only page is not a tab strip: no lone button sits in a tab bar.
-    expect(await dialog.getByRole('tab').count()).toBe(0)
-    expect(await dialog.getByRole('tablist').count()).toBe(0)
-    expect(await dialog.getByRole('button', { name: '模型' }).getAttribute('aria-current')).toBeNull()
-    const pluginsSnapshot = await captureStableAria(
-      page,
-      PLUGIN_ROW_SELECTOR,
-      scaffold.workspaceCwd,
-    )
-    await compareOrRefreshGolden(PLUGINS_EXPECTED, pluginsSnapshot, MODE)
+    expect(documentRequests).toBe(0)
+    await page.unroute('**/api/settings.openDocument')
     // Close path 1: Escape.
     await page.keyboard.press('Escape')
     await expect.poll(() => page.getByRole('dialog', { name: '设置' }).count(), { timeout: 5_000 }).toBe(0)
@@ -525,6 +492,6 @@ describe('web e2e: settings modal and General preferences', () => {
 
   it.skipIf(MODE === 'record')('keeps the fixture inventory closed', async () => {
     expect(tripwire.warnings).toEqual([])
-    await assertFixtureInventory(SNAPSHOT_DIR, ['dialog-en.expected.md', 'dialog.expected.md', 'plugins.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['dialog-en.expected.md', 'dialog.expected.md'])
   })
 })

@@ -16,13 +16,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsShellActions, SettingsShellState } from './settings-shell-store.ts'
 
-/** One nav row projected from a settings.section registration's options. */
-export interface SettingsSectionRow {
-  id: string
-  order: number
-  label: string
-}
-
 /** One ordered onboarding step projected from a slot registration. */
 export interface SettingsOnboardingStep {
   id: string
@@ -31,13 +24,14 @@ export interface SettingsOnboardingStep {
 
 /**
  * Registrant-private injected share of the settings shell (assembled in
- * apply): the ledger's nav-row projection as a hooks-compartment source —
- * the shell reads no locale state and subscribes through the bound hook.
+ * apply): the section ledger as a hooks-compartment source. The projection is
+ * ordered ids only — the shell renders the first one and has no navigation, so
+ * there is no row label or active-row state to project.
  */
 export type SettingsRootInjected = {
   hooks: {
-    /** settings.section ledger projected into ordered nav rows. */
-    sections: HostObservable<readonly SettingsSectionRow[]>
+    /** settings.section ledger projected into ascending registration order. */
+    sectionIds: HostObservable<readonly string[]>
     /** settings.onboarding ledger projected into coordinator order. */
     onboardingSteps: HostObservable<readonly SettingsOnboardingStep[]>
   }
@@ -53,16 +47,15 @@ export type SettingsShellStoreHandle =
 /**
  * Full component props of the settings shell root: the sidebar owner share
  * (wide/rail state), the declared render shares, the injected face (hooks
- * compartment bound to useSections), and the registration's store seat —
- * modal open state and the active section id live in that store so a reload
- * restores the reader's position instead of dropping it.
+ * compartment bound to useSectionIds), and the registration's store seat —
+ * modal open state lives in that store so a reload restores the panel the
+ * reader left behind instead of dropping it.
  */
 export type SettingsRootComponentProps =
   PropsRuntime<'sidebar.settings'>
   & PropsRenderSlots<
     | 'settings.trigger'
     | 'settings.header'
-    | 'settings.action'
     | 'settings.close'
     | 'settings.section'
     | 'settings.onboarding'

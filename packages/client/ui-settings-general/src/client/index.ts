@@ -1,30 +1,22 @@
 /**
  * Settings shell and ownerless-copy plugin, browser half: renders the
- * `sidebar.settings` occupant — panel chrome, section navigation, and the
+ * `sidebar.settings` occupant — panel chrome, the one settings section, and the
  * onboarding stage — and registers everything on the Settings pages that
- * belongs to no single feature: the trigger/header chrome content,
- * local-document action, General section, and `settings` dictionaries.
- * Feature-owned rows and sections stay with their features.
+ * belongs to no single feature: the trigger/header/close chrome content, the
+ * General section, and `settings` dictionaries. Feature-owned rows and sections
+ * stay with their features.
  * Export discipline: packages/client/AGENTS.md.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
-import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
-// Type-only: the settings slot declarations plus the ctx.settingsScope Context
-// merge. Cross-plugin collaboration goes through the service, never a value
-// import (client bundle purity gate).
+// Type-only: the settings slot declarations. Cross-plugin collaboration goes
+// through the service, never a value import (client bundle purity gate).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: pulls ctx.locale into this program.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {
-  SettingsOnboardingStep, SettingsRootInjected, SettingsSectionRow,
-} from './shell-contract.ts'
+import type { SettingsOnboardingStep, SettingsRootInjected } from './shell-contract.ts'
 import { SettingsRoot } from './SettingsRoot.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
-import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
-import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
-import { SettingsDocumentStore } from './settings-document-store.ts'
 import { createSettingsShellStore } from './settings-shell-store.ts'
 import { en, zh, type SettingsKey } from './locales.ts'
 
@@ -34,11 +26,8 @@ export type {
 export type {
   GeneralSectionComponentProps,
 } from './GeneralSection.tsx'
-export type { SettingsDocumentActionInjected, SettingsDocumentActionProps } from './SettingsDocumentAction.tsx'
-export type { SettingsDocumentState } from './settings-document-store.ts'
 export type { SettingsShellActions, SettingsShellState } from './settings-shell-store.ts'
 export { createSettingsShellStore } from './settings-shell-store.ts'
-export { SettingsDocumentStore } from './settings-document-store.ts'
 export type { SettingsKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -56,7 +45,7 @@ const NS = 'settings'
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registrations depend on their slots through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection', 'settingsScope']
+export const inject = ['slots', 'locale']
 
 /**
  * Register the `settings` dictionaries, the chrome content, and the General
@@ -66,69 +55,30 @@ export const inject = ['slots', 'locale', 'connection', 'settingsScope']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-general: dictionaries')
 
-  // Copy freshness is framework-owned: components read the standard `t`
-  // seat, and the nav label is a thunk the owner resolves per render — no
-  // locale/change re-registration wiring.
-  const t = ctx.locale.bind(NS)
-  const connection = ctx.get('connection') as ConnectionHandle
-  // The action is registered for every browser that can read the host document;
-  // whether it PAINTS is decided by availability, not page authority — the
-  // component renders only at `hasDocument`. There is deliberately no loopback
-  // test here: fork commit bc2970c4af ("settings work behind trusted-host proxy")
-  // made the whole settings plane read the host document from every origin this
-  // deployment serves, because the household reaches the app at
-  // 100.100.1.0:8443 through the e-server profile proxy — a page authority that
-  // is NOT loopback while the document still lives on this machine.
-  // `connection.isLoopback` is therefore false for the owner at his own desk, so
-  // upstream's loopback-only rule would hide a working control from him. That
-  // rule is intentionally overridden (FORK-NOTES 17); the `undefined` branch it
-  // used to leave behind here was dead code that read like a rule.
-  // The action follows the shared describe mirror, whose owning plugin already
-  // refreshes it on document commits and reconnects.
-  const documentController = new SettingsDocumentStore(connection.api, ctx.settingsScope.describe())
-  const documentInjected = (): SettingsDocumentActionInjected => ({
-    controller: documentController,
-    hooks: { snapshot: documentController.store },
-  })
-  ctx.effect(() => () => { documentController.dispose() }, 'ui-settings-general: document action directory')
   // The settings shell: this package occupies the sidebar-owned hole and
-  // declares the settings slots. Ledger → nav-row projection as an observable
-  // source (uSES contract: getSnapshot returns the cached rows until the
-  // ledger version moves). Labels may be locale-following thunks, so the cache
-  // key includes the locale revision and subscribers ride both sources.
-  let rowsVersion = -1
-  let rowsRevision = -1
-  let rows: readonly SettingsSectionRow[] = []
+  // declares the settings slots. Ledger → ordered-id projection as an observable
+  // source (uSES contract: getSnapshot returns the cached ids until the ledger
+  // version moves). The panel renders the first id and offers no navigation, so
+  // the projection carries no row label and subscribes to no locale revision.
+  let idsVersion = -1
   let onboardingVersion = -1
+  let sectionIds: readonly string[] = []
   let onboardingSteps: readonly SettingsOnboardingStep[] = []
   const shellInjected = (): SettingsRootInjected => ({
     hooks: {
-      sections: {
+      sectionIds: {
         getSnapshot: () => {
           const version = ctx.slots.getVersion('settings.section')
-          const revision = ctx.locale.getSnapshot().revision
-          if (version !== rowsVersion || revision !== rowsRevision) {
-            rowsVersion = version
-            rowsRevision = revision
-            rows = ctx.slots.entries('settings.section')
-              .map(e => ({
-                /* v8 ignore next -- list-slot registration requires id (SlotCore rejects an entry without one) */
-                id: e.options.id ?? '',
-                order: e.options.order ?? 0,
-                label: resolveSlotLabel(e.options.label) ?? '',
-              }))
+          if (version !== idsVersion) {
+            idsVersion = version
+            sectionIds = ctx.slots.entries('settings.section')
+              .map(e => ({ id: e.options.id ?? '', order: e.options.order ?? 0 }))
               .sort((a, b) => a.order - b.order)
+              .map(row => row.id)
           }
-          return rows
+          return sectionIds
         },
-        subscribe: (listener) => {
-          const offLedger = ctx.slots.subscribe('settings.section', listener)
-          const offLocale = ctx.locale.subscribe(listener)
-          return () => {
-            offLedger()
-            offLocale()
-          }
-        },
+        subscribe: listener => ctx.slots.subscribe('settings.section', listener),
       },
       onboardingSteps: {
         getSnapshot: () => {
@@ -154,15 +104,14 @@ export function apply(ctx: ClientContext): void {
     children: {
       'settings.trigger': { kind: 'single', scope: 'root' },
       'settings.header': { kind: 'single', scope: 'root' },
-      'settings.action': { kind: 'list', scope: 'root' },
       'settings.close': { kind: 'single', scope: 'root' },
       'settings.section': { kind: 'list', scope: 'root' },
       'settings.onboarding': { kind: 'list', scope: 'root' },
     },
     // Exclusive store: the factory itself — the framework instantiates it for
     // this root-scope entry and delivers useStore/actions to SettingsRoot as
-    // standard props. The shell's persisted state (open + last section) rides
-    // there so a reload restores the reader's position.
+    // standard props. The shell's persisted state (open) rides there so a
+    // reload restores the panel the reader left behind.
     store: createSettingsShellStore,
     inject: shellInjected,
   }, SettingsRoot))
@@ -171,20 +120,12 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent))
   ctx.slots.inject('settings.header', () =>
     ctx.slots.register({ name: 'settings.header', locale: NS }, HeaderContent))
-  ctx.slots.inject('settings.action', () => ctx.slots.register({
-    name: 'settings.action',
-    id: 'open-document',
-    order: 0,
-    locale: NS,
-    inject: documentInjected,
-  }, SettingsDocumentAction))
   ctx.slots.inject('settings.close', () =>
     ctx.slots.register({ name: 'settings.close', locale: NS }, CloseLabel))
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'general',
     order: 0,
-    label: () => t('general.nav'),
     locale: NS,
     children: { 'settings.general.item': { kind: 'list', scope: 'root' } },
   }, GeneralSection))

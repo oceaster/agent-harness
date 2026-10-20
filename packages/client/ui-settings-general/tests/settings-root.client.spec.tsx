@@ -7,41 +7,35 @@ import type { SettingsRootComponentProps } from '../src/client/shell-contract.ts
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
 import { createSettingsShellStore } from '../src/client/settings-shell-store.ts'
 
-// The shell's viewing state now persists (dsh.settings.shell), so cases must not
+// The shell's viewing state persists (dsh.settings.shell), so cases must not
 // inherit each other's stored panel: clear storage with the unmount.
 afterEach(() => {
   cleanup()
   localStorage.clear()
 })
 
-type Row = { id: string; order: number; label: string }
 type Step = { id: string; order: number }
 
 /** Slot-content stand-ins: the shell renders whatever the seats contribute. */
 const SEAT_CONTENT: Record<string, string> = {
   'settings.trigger': 'Settings',
   'settings.header': 'Settings Title',
-  'settings.action': 'Open configuration file',
   'settings.close': 'Close',
 }
 
 function mount({
   wide = true,
   onboardingActive = true,
-  rows = [
-    { id: 'general', order: 0, label: 'General' },
-    { id: 'models', order: 10, label: 'Models' },
-    { id: 'agent-presets', order: 20, label: 'Agent presets' },
-  ],
+  sectionIds = ['general', 'models', 'agent-presets'],
   steps = [
     { id: 'welcome', order: -100 },
     { id: 'credential', order: 0 },
-  ],
+  ] as Step[],
   seed,
 }: {
   wide?: boolean
   onboardingActive?: boolean
-  rows?: Row[]
+  sectionIds?: string[]
   steps?: Step[]
   /**
    * Pre-render store writes: the reload case (a rehydrated store before mount).
@@ -49,9 +43,9 @@ function mount({
    */
   seed?: (actions: SettingsRootComponentProps['actions']) => void
 } = {}) {
-  // Mutable row source standing in for the bound useSections hook; bump()
-  // plays a ledger change through the same observable contract.
-  let current = rows
+  // Mutable id list standing in for the bound useSectionIds hook; bump() plays a
+  // ledger change through the same observable contract.
+  let current = sectionIds
   const listeners = new Set<() => void>()
   const renderSlot = vi.fn(
     ((key: string, _owner: unknown, opts?: { only?: string }) => {
@@ -68,8 +62,7 @@ function mount({
     })) as never
   const unusedHook = (() => { throw new Error('unused by SettingsRoot') }) as never
   // The shell's viewing state lives in its registration store, so the harness
-  // supplies a real instance (same factory the registration declares) instead
-  // of the old component-local useState.
+  // supplies a real instance (same factory the registration declares).
   const shell = createSettingsShellStore().create()
   seed?.(shell.actions)
   const props: SettingsRootComponentProps = {
@@ -79,7 +72,7 @@ function mount({
     useWorkspaces: unusedHook,
     wide,
     useOnboardingSteps: select => select(steps),
-    useSections: (select) => {
+    useSectionIds: (select) => {
       const [, force] = useState(0)
       useEffect(() => {
         const listener = () => { force(n => n + 1) }
@@ -91,7 +84,7 @@ function mount({
     renderSlot,
   }
   const view = render(<SettingsRoot {...props} />)
-  const bump = (next: Row[]) => {
+  const bump = (next: string[]) => {
     act(() => {
       current = next
       for (const fn of [...listeners]) fn()
@@ -142,11 +135,22 @@ describe('SettingsPanel chrome seats', () => {
     expect(close.textContent).toContain('Close')
   })
 
-  it('renders header actions before the shell-owned close control', () => {
+  it('holds only the Close control: no nav rail, no section buttons, no header actions', () => {
+    // The household asked for the settings tabs and the configuration-file
+    // action gone; the dialog's remaining controls are exactly one Close.
     const { renderSlot } = mount()
     openPanel()
-    expect(screen.getByText('Open configuration file')).toBeTruthy()
-    expect(renderSlot).toHaveBeenCalledWith('settings.action', {})
+    const dialog = screen.getByRole('dialog')
+    const buttons = [...dialog.querySelectorAll('button')].map(button => button.textContent)
+    expect(buttons).toEqual(['Close'])
+    expect(dialog.querySelector('nav')).toBeNull()
+    // The header's action cluster is gone: the shell renders exactly these seats
+    // and the `settings.action` slot type is deleted from the contract, so there
+    // is nothing left to fill.
+    expect(new Set(renderSlot.mock.calls.map(call => call[0]))).toEqual(new Set([
+      'settings.trigger', 'settings.header', 'settings.close', 'settings.section', 'settings.onboarding',
+    ]))
+    expect(screen.queryByText('Open configuration file')).toBeNull()
   })
 })
 
@@ -186,46 +190,70 @@ describe('SettingsPanel close paths', () => {
   })
 })
 
-describe('SettingsPanel navigation', () => {
-  it('projects rows, marks the first active, and renders only that section', () => {
-    mount()
+describe('SettingsPanel section rendering', () => {
+  it('renders the registered section directly, with no nav', () => {
+    // Opening Settings lands on the section rows immediately: the section slot
+    // is called for the first registered id and nothing else renders.
+    const { renderSlot } = mount({ sectionIds: ['general'] })
     openPanel()
-    expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-current')).toBe('true')
-    expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBeNull()
+    expect(screen.getByRole('dialog')).toBeTruthy()
     expect(screen.getByTestId('section-general')).toBeTruthy()
+    const sectionCalls = renderSlot.mock.calls.filter(call => call[0] === 'settings.section')
+    expect(sectionCalls).toHaveLength(1)
+    expect(sectionCalls[0]![2]).toEqual({ only: 'general' })
+    // No navigation exists to reach a second section; the ids the ledger used to
+    // project into rows are gone with the rail.
+    expect(screen.getByRole('dialog').querySelector('nav')).toBeNull()
+    for (const name of ['General', 'Models', 'Agent presets']) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
   })
 
-  it('gives every section a nav glyph, distinct for the ids the shell knows', () => {
-    mount({
-      rows: [
-        { id: 'general', order: 0, label: 'General' },
-        { id: 'models', order: 10, label: 'Models' },
-        { id: 'agent-presets', order: 20, label: 'Agent presets' },
-        { id: 'plugins', order: 30, label: 'Plugins' },
-        { id: 'contributed', order: 40, label: 'Contributed' },
-      ],
-    })
+  it('renders whichever section the ledger lists first, not a hardcoded id', () => {
+    // After the Learn More and Plugins packages are gone General is the only
+    // registrant — but the shell does not name it. A different first entry
+    // renders instead, which is what keeps this honest if the set changes.
+    const { renderSlot } = mount({ sectionIds: ['models', 'general'] })
     openPanel()
-    // Glyphs carry no id of their own, so the drawn paths are what tells them apart.
-    const glyphs = ['General', 'Models', 'Agent presets', 'Plugins', 'Contributed']
-      .map(name => screen.getByRole('button', { name }).querySelector('svg')?.innerHTML)
-
-    expect(glyphs.every(glyph => glyph !== undefined && glyph !== '')).toBe(true)
-    // The three ids the shell names get their own glyph; every other section —
-    // including one this package never heard of — shares the gear.
-    expect(new Set(glyphs.slice(0, 4)).size).toBe(4)
-    expect(glyphs[4]).toBe(glyphs[0])
+    expect(screen.getByTestId('section-models')).toBeTruthy()
+    const sectionCalls = renderSlot.mock.calls.filter(call => call[0] === 'settings.section')
+    expect(sectionCalls.at(-1)![2]).toEqual({ only: 'models' })
   })
 
-  it('switches the rendered section on nav click', () => {
-    mount()
+  it('follows a ledger change to the first entry', () => {
+    const { bump } = mount({ sectionIds: ['general', 'models'] })
     openPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Models' }))
-    expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe('true')
+    expect(screen.getByTestId('section-general')).toBeTruthy()
+    bump(['models'])
     expect(screen.getByTestId('section-models')).toBeTruthy()
     expect(screen.queryByTestId('section-general')).toBeNull()
   })
 
+  it('hands the section the shell-owned close affordance', () => {
+    const { renderSlot } = mount({ sectionIds: ['general'] })
+    openPanel()
+    const sectionCall = renderSlot.mock.calls.find(call => call[0] === 'settings.section')!
+    act(() => { (sectionCall[1] as { close: () => void }).close() })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('renders an empty content column when the ledger is empty', () => {
+    const { renderSlot } = mount({ sectionIds: [] })
+    openPanel()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    const sectionCalls = renderSlot.mock.calls.filter(call => call[0] === 'settings.section')
+    expect(sectionCalls).toHaveLength(0)
+  })
+
+  it('drops the ledger subscription on unmount', () => {
+    const { view, listeners } = mount()
+    expect(listeners.size).toBe(1)
+    view.unmount()
+    expect(listeners.size).toBe(0)
+  })
+})
+
+describe('SettingsRoot onboarding handoff', () => {
   it('mounts onboarding steps in order and transfers ownership only on completion', () => {
     const { renderSlot } = mount()
     const first = renderSlot.mock.calls.find(call => call[0] === 'settings.onboarding')
@@ -240,11 +268,13 @@ describe('SettingsPanel navigation', () => {
     expect(second?.[1]).toMatchObject({ stepId: 'credential' })
     expect(second?.[2]).toEqual({ only: 'credential' })
 
+    // The step opens the panel itself; with one section there is no id to name.
+    expect(second?.[1]).not.toHaveProperty('openSection')
     act(() => {
-      (second?.[1] as { openSection: (id: string) => void }).openSection('models')
+      (second?.[1] as { openSettings: () => void }).openSettings()
     })
     expect(screen.getByRole('dialog')).toBeTruthy()
-    expect(screen.getByTestId('section-models')).toBeTruthy()
+    expect(screen.getByTestId('section-general')).toBeTruthy()
 
     cleanup()
     const inactive = mount({ onboardingActive: false }).renderSlot.mock.calls
@@ -267,70 +297,31 @@ describe('SettingsPanel navigation', () => {
     view.unmount()
     appRoot.remove()
   })
-
-  it('falls back to the first row when the active entry unregisters', () => {
-    const { bump } = mount()
-    openPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Models' }))
-    bump([{ id: 'general', order: 0, label: 'General' }])
-    expect(screen.queryByRole('button', { name: 'Models' })).toBeNull()
-    expect(screen.getByTestId('section-general')).toBeTruthy()
-  })
-
-  it('renders an empty content column when the ledger is empty', () => {
-    const { renderSlot } = mount({ rows: [] })
-    openPanel()
-    expect(screen.getByRole('dialog')).toBeTruthy()
-    const sectionCalls = renderSlot.mock.calls.filter(c => c[0] === 'settings.section')
-    expect(sectionCalls).toHaveLength(0)
-  })
-
-  it('drops the ledger subscription on unmount', () => {
-    const { view, listeners } = mount()
-    expect(listeners.size).toBe(1)
-    view.unmount()
-    expect(listeners.size).toBe(0)
-  })
 })
 
 describe('SettingsRoot viewing-state persistence', () => {
-  it('reopens on the stored section when the store rehydrates open (the reload case)', () => {
+  it('reopens the panel when the store rehydrates open (the reload case)', () => {
     // This is what a reload renders: the registration's store came back from
-    // dsh.settings.shell with the panel open on Models, and the very first paint
-    // after boot shows that panel rather than an empty frame.
-    mount({ seed: (actions) => { actions.open(); actions.select('models') } })
+    // dsh.settings.shell with the panel open, and the very first paint after
+    // boot shows the panel rather than an empty frame.
+    mount({ sectionIds: ['general'], seed: (actions) => { actions.open() } })
     expect(screen.getByRole('dialog')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe('true')
-    expect(screen.getByTestId('section-models')).toBeTruthy()
+    expect(screen.getByTestId('section-general')).toBeTruthy()
   })
 
   it('stays closed across a reload that left it closed', () => {
     // open then close is the sequence a reader performs; the stored value is
     // the closed state, so the boot render must not surprise-reopen the panel.
-    mount({ seed: (actions) => { actions.open(); actions.select('models'); actions.close() } })
+    mount({ seed: (actions) => { actions.open(); actions.close() } })
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('writes the open state and the section into the store, not component state', () => {
+  it('writes the open state into the store, not component state', () => {
     const { shell } = mount()
-    expect(shell.getSnapshot()).toEqual({ open: false, sectionId: null })
+    expect(shell.getSnapshot()).toEqual({ open: false })
     openPanel()
-    expect(shell.getSnapshot().open).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Models' }))
-    expect(shell.getSnapshot()).toEqual({ open: true, sectionId: 'models' })
-  })
-
-  it('closing writes the closed state and keeps the reading position', () => {
-    const { shell } = mount()
-    openPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Agent presets' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-    // Closed is a written value; the section is not cleared, so a reopen returns
-    // to the row the reader last saw instead of resetting to the first one.
-    expect(shell.getSnapshot()).toEqual({ open: false, sectionId: 'agent-presets' })
-    openPanel()
-    expect(screen.getByRole('button', { name: 'Agent presets' }).getAttribute('aria-current')).toBe('true')
+    expect(shell.getSnapshot()).toEqual({ open: true })
   })
 
   it('each close path records the closed state', () => {
