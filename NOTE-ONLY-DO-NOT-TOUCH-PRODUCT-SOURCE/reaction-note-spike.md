@@ -6,6 +6,18 @@ or a measurement from the keyless fixture in
 `packages/client/ui-conversation/tests/fixture/react-note/`. Evidence dump:
 `packages/client/ui-conversation/tests/fixture/react-note/evidence.json`.
 
+**Superseded as a tool, kept as a record.** The implementation landed in
+`f45e50f31f` (FORK-NOTES 23) with its own measured fixture at
+`apps/web/tests/fixture/react-note/`, which runs against the shipped code and is
+the one to use from now on. This fixture reproduces the pre-change measurement
+only, and its mock provider has a known latent flaw that the shipped fixture
+fixed: it echoes any reaction text it is shown into *every* reply rather than
+only into a compaction request, so a later request could carry text the mock
+itself introduced. `evidence.json` was produced with that flaw present. Its
+conclusions were read from the recorded request bodies, not from the mock's
+replies, so they stand — but do not re-run this fixture expecting clean
+compaction evidence.
+
 ## Headline
 
 **The mechanism does not exist, and the missing piece is not the append — it is
