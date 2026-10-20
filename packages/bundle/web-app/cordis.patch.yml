@@ -209,6 +209,14 @@
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
+    # The Learn More settings tab: what each of the person's agents is for, how
+    # it works, what it will not do and how to work with it, served per profile
+    # by e-server (`GET /v1/browser/learn`) and rendered as a compressed
+    # reference sheet. The plugin holds no agent copy of its own, so editing the
+    # guides is an e-server content change and needs no rebuild here.
+    - id: ui-settings-learn
+      name: '@deepseek-ai/dsh-client-ui-settings-learn'
+
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
 

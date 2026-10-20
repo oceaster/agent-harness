@@ -382,6 +382,59 @@ re-applied on every upstream pull:
    nothing to blend against), and the ellipse is `cx 525.5 cy 234 rx 425.5
    ry 134`, `#6187D8` at 0.08.
 
+11. **Learn More settings tab** (`packages/client/ui-settings-learn`, new package;
+    plus one browser-roster row in `packages/bundle/web-app/cordis.patch.yml`)
+    — the Settings modal's Agent Presets tab was replaced by a **Learn More**
+    tab that explains, per agent the signed-in person may use, what that agent
+    is for, how it works, what it will not do and how to work with it. The copy
+    is household content owned by **e-server** (`api/learn_routes.py` serving
+    `context/agent-guides.json` at `GET /v1/browser/learn`), so the plugin holds
+    no agent id, agent name, section id or sentence of prose: it renders whatever
+    arrives, in the server's order, and editing the guides needs no browser
+    rebuild. The tab sits between General and Plugins (`settings.section`,
+    `id: learn`, `order: 5`).
+
+    Three facts about that route the tab is built around, each measured, not
+    assumed:
+
+    - **A refusal is not an empty list.** e-server answers Guest
+      `403 {"detail": "DSH is unavailable to Guest"}` before the learn route
+      runs, while an authenticated profile whose roster resolves to no agent
+      answers `200 {"agents": []}`. Both are real and they mean different
+      things, so the tab has separate screens for them — and the refusal offers
+      no retry, because retrying cannot change a policy answer.
+    - **`sections[].id` is not an enum.** Delta and Darwin carry
+      `what-it-is-for` / `how-it-works` / `what-it-will-not-do` / `how-to-use-it`
+      plus `waiting-and-workers` or `waiting-and-handoff`; Diana carries the
+      first four plus `memory-and-privacy`. A hardcoded section set would drop
+      one the day the content is edited, so the count of agents, their names and
+      every section are read from the payload.
+    - **Failures carry FastAPI's `{"detail": …}`** — a string for
+      `HTTPException(500, "…")`, which is the sentence naming the agent whose
+      guide is missing, and an object for `HTTPException(502, {error, code,
+      message})`. The tab shows that sentence verbatim and uses its own copy only
+      when the body has none: a generic "failed to load" over a server sentence
+      that names the problem is a worse product.
+
+    **Re-apply on every upstream pull.** The package itself is a plugin and
+    survives a pull; the embedded pieces are the three registration surfaces a
+    new client plugin needs, and a pull that rewrites the bundle patch or the
+    aggregates drops all three: the `ui-settings-learn` row in
+    `packages/bundle/web-app/cordis.patch.yml`
+    (`name: '@deepseek-ai/dsh-client-ui-settings-learn'`), its dependency entry
+    in `packages/bundle/web-app/package.json`, and its project reference in
+    `tsconfig.client.json`. The tab reads the guides on first render rather than
+    at plugin load (a person who never opens it costs no request), and it does
+    not poll: a guide edited in e-server appears on the next page load.
+
+    **Layer proven here:** the package suite proves the wire parsing (every
+    status, every `detail` shape, and a payload with a section missing), the
+    controller's four states, and the rendered sheet against the real payload
+    copied out of e-server. The composed surface — this tab inside the real
+    modal, behind the PIN proxy, against the live route — is the coordinator's
+    post-merge browser gate, not this package's proof.
+
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

@@ -1,0 +1,230 @@
+/* Learn More fills the settings content column: the sheet IS the panel, not a
+   card inside it. The rhythm is tight and the type small because this is
+   reference reading — a person arrives looking for one agent and one question,
+   not to read the whole thing top to bottom.
+
+   Nothing here may introduce a horizontal scrollbar at any width. The content
+   column is narrow on a small viewport (the settings nav rail keeps its 188px
+   and the modal keeps its 24px padding), so every text seat carries
+   `min-width: 0` and wraps LONG words rather than overflowing, and the one
+   two-column row is a grid with `minmax(0, …)` tracks that collapses to a
+   single column before it can overflow. */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  color: var(--dsw-alias-label-primary);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-width: 0;
+}
+
+.intro {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Which profile's roster this is: the guides are per person, so the sheet names
+   the person the server resolved rather than implying a shared list. */
+.person {
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.agents {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* One agent: a rule between blocks rather than a card per agent, so the panel
+   holds several agents without the padding of several boxes. */
+.agent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.agents > .agent:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.agentHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.summary {
+  margin: 0;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+/* The reference-sheet row: heading in its own narrow column, prose beside it.
+   The heading column is capped and both tracks may shrink to zero, so a long
+   word in either seat wraps instead of widening the row. */
+.section {
+  display: grid;
+  grid-template-columns: minmax(0, 132px) minmax(0, 1fr);
+  gap: 1px 14px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  /* The server splits paragraphs with a blank line; a single newline inside one
+     is still that paragraph's own line break, so it is kept. */
+  white-space: pre-line;
+}
+
+.sectionBody p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Below this viewport the content column is too narrow to seat a heading beside
+   its prose, so the row stacks. The breakpoint follows the viewport because the
+   settings panel is sized from it. */
+@media (max-width: 760px) {
+  .section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+.phase {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.phaseBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.phaseTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+.phaseBody {
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  overflow-wrap: anywhere;
+}
+
+/* The server's own sentence, quoted rather than restyled: a left rule marks it
+   as something the page did not write. */
+.detail {
+  margin: 0;
+  min-width: 0;
+  padding: 1px 0 1px 10px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  font-size: 12.5px;
+  line-height: 19px;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+.detailLabel {
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.retry {
+  align-self: flex-start;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}
