@@ -24,7 +24,7 @@ preset 文件只发布一份未本地化的 `name` 与 `description`，Web 对�
 
 ## 模型体验
 
-无。本标签只读取一份名单并渲染文本；会话组装向模型呈现什么，由 [`dsh-agent-presets`](../../preset/agent-presets/README.md) 负责。
+间接地，经由本会话所运行的 preset：本标签只读取一份名单并渲染文本，而该 preset 注册的每一项面向模型的效果都由 [`dsh-agent-presets`](../../preset/agent-presets/README.md) 负责。
 
 #### KV Cache 影响
 

@@ -15,7 +15,6 @@ import { apply as nodeApply } from '../src/index.ts'
 import { apply as invariantApply, inject as invariantInject, name as invariantName } from '../src/invariant.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
-import type { PanelActions } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
 import type { InboxInjected } from '../src/client/slots.ts'
 
 const sid = (id: string): SessionId => id as SessionId
@@ -119,7 +118,7 @@ async function bench(listBody: unknown = {
     ctx, fiber, sessions, opened, fetches, openPage,
     // The root entry's first render, which is what hands the layout store's
     // bound actions to the face (ui-layout/src/client/index.ts's inject hook).
-    mountFrame: () => { layout.attachPanels(panels as unknown as PanelActions) },
+    mountFrame: () => { layout.attachPanels(panels) },
     clearedFlag: () => cleared,
     entry: () => ctx.slots.entries('sidebar.workspaces')[0],
   }

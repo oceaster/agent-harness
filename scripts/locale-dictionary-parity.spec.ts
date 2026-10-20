@@ -300,9 +300,17 @@ describe('shipped locale dictionaries', () => {
       if (enOnly.length > 0) problems.push(`${en.file} ${en.name} has keys absent from ${zh.name}: ${enOnly.join(', ')}`)
     }
 
-    // The shipped dictionary count only grows; a collapse means discovery or
-    // pairing broke, which would hide real asymmetry.
-    expect(comparedPairs).toBeGreaterThan(25)
+    // Discovery floor, not a key-parity rule: `problems` above owns parity and
+    // must stay empty, so a floor miss can only mean the sweep stopped finding
+    // shipped dictionaries, not that one side lost a key. The floor tracks the
+    // corpus and falls with it when a package that shipped its own zh/en pair
+    // leaves the workspace: this fork's Learn More, Plugins,
+    // plugin-inventory, message-feedback and `settings.locale` removals took
+    // the shipped count from 30 to 25, each with its UI and its namespace.
+    // Raise it when pairs are added; lower it only with the deletions that
+    // removed them.
+    const SHIPPED_PAIR_FLOOR = 25
+    expect(comparedPairs).toBeGreaterThanOrEqual(SHIPPED_PAIR_FLOOR)
     expect(problems).toEqual([])
   })
 })

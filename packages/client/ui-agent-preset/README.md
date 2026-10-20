@@ -24,7 +24,7 @@ The registration targets `conversation.session.header.mode`, a seat declared by 
 
 ## Model Experience
 
-None. The label reads a roster and renders text; [`dsh-agent-presets`](../../preset/agent-presets/README.md) owns what the session's composition puts in front of the model.
+Indirectly, through the preset this session runs: the label reads a roster and renders text, while [`dsh-agent-presets`](../../preset/agent-presets/README.md) owns every model-facing effect that preset registers.
 
 #### KV Cache effect
 
