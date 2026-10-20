@@ -444,7 +444,10 @@ describe('web e2e: settings modal and General preferences', () => {
       await enPage.getByRole('button', { name: 'Settings', exact: true }).click()
       const dialog = enPage.getByRole('dialog', { name: 'Settings' })
       await dialog.waitFor({ timeout: 10_000 })
-      await dialog.getByRole('button', { name: 'General' }).waitFor({ timeout: 10_000 })
+      // The panel renders its one section with no nav to anchor on: the
+      // Appearance row is the stable English anchor.
+      await dialog.getByText('Appearance', { exact: true }).waitFor({ timeout: 10_000 })
+      expect(await dialog.locator('nav').count()).toBe(0)
       expect(await dialog.getByText('Language', { exact: true }).count()).toBe(0)
       // This page has no closing inventory spec to sweep its console, so the
       // scenario clears both tripwire channels itself.
@@ -471,7 +474,10 @@ describe('web e2e: settings modal and General preferences', () => {
       await frPage.getByRole('button', { name: 'Settings', exact: true }).click()
       const dialog = frPage.getByRole('dialog', { name: 'Settings' })
       await dialog.waitFor({ timeout: 10_000 })
-      await dialog.getByRole('button', { name: 'General' }).waitFor({ timeout: 10_000 })
+      // The panel renders its one section with no nav to anchor on: the
+      // Appearance row is the stable English anchor.
+      await dialog.getByText('Appearance', { exact: true }).waitFor({ timeout: 10_000 })
+      expect(await dialog.locator('nav').count()).toBe(0)
       expect(await dialog.getByText('Language', { exact: true }).count()).toBe(0)
       // The markup already ships `en`, so this alone cannot prove the sync ran
       // — the zh scenario above is the discriminating half. Asserted here too

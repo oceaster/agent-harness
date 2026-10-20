@@ -935,6 +935,89 @@ re-applied on every upstream pull:
      and the dialog goldens (`dialog.expected.md`, `dialog-en.expected.md`) are
      refreshed without the row.
 
+20. **The Settings panel is its section: no nav rail, no document action**
+    (`ui-settings-general`, `ui-settings`) — the other half of Owen's words above:
+    "Just remove the settings menu side bar ... also remove the 'open configuration
+    file' button in the top right." Entry 19 deleted the two tabs; this deleted the
+    machinery that existed to switch between tabs and the action that sat beside
+    Close.
+
+    - **The rail is gone, and the panel is one column.** `SettingsRoot` renders a
+      title row (the `settings.header` seat text plus the shell-owned Close) over
+      the section, which now takes the panel's whole inner width. Measured in
+      Chromium over the assembled web scaffold, on the tree that also has the
+      Language row removed, at 1280x800: panel 800x752 at x=240, the options box
+      the full panel width and the section row 752 wide at x=264 — the whole
+      content box (`800 - 2*24`), where the old layout began the content column at
+      `188 + 24` and had 564px to draw in. At 390x844: panel 342x796 at x=24, row
+      294 wide at x=48. No `<nav>`, no tablist, one header button, no horizontal
+      overflow, and `.options` does not scroll at either shape (696/696 and
+      740/740 px). The rendered copy is the title, Close, Appearance (three cubes)
+      and the busy-Enter row.
+    - **No section id is hardcoded.** The shell renders the first ordered
+      `settings.section` registration, passed through the scoped slot's `only`
+      filter. With one section there is nothing to navigate; a second
+      registration renders nowhere rather than appearing as a tab, and the
+      package README says so. Section `label`s are no longer projected (nothing
+      renders them), so General registers none and `resolveSlotLabel` left the
+      shell.
+    - **`settings.action` is deleted, not hidden.** The slot type and its
+      `SettingsHeaderOwnerProps` render site, `SettingsDocumentAction`, its module
+      CSS, `SettingsDocumentStore` and its spec are gone; the dialog's header
+      renders no slot at all and holds exactly one button (Close). `inject`
+      shrank to `['slots', 'locale']`, and the `openDocument` /
+      `openDocument.error` copy plus `general.nav` left `locales.ts`. The host RPC
+      `settings.openDocument` still exists in `api-*`/`apiproxy` — only the client
+      control that called it is gone, and a replay run asserts no such request is
+      ever made.
+    - **`dsh.settings.shell` keeps only `{ open }`.** `sectionId`, `select()` and
+      `openSection()` are deleted from the store, and `persist` now declares the
+      `open` subset, so a legacy `{open, sectionId}` entry rehydrates with its
+      section half ignored and is rewritten without it on the reader's next open
+      or close. The reload rule entry 16 established still holds, measured through
+      the assembled app: open stays open, closed stays closed (`{"open":true}` →
+      open dialog after reload; `{"open":false}` → 0 dialogs, no console warning).
+    - **The onboarding seat names no section.** `openSection(id)` became
+      `openSettings()`; the two `ui-settings-models` specs that construct those
+      props were updated rather than deleted.
+    - **The e2e lane.** `apps/web/tests/settings-chrome.e2e.ts` now asserts the
+      absent nav/tabs/section buttons, the single header button, and the absent
+      `settings.openDocument` request, and its two dialog goldens were refreshed
+      from the live panel (`plugins.expected.md` left with the Plugins section).
+      Four assertions that anchored on removed surfaces are re-pointed rather than
+      left red: the `Workspace Write` row (entry 12), the `语言`/`中文` Language row
+      (the Language-row removal), a trigger click after a reload that happened
+      with the panel open (now asserts the panel came back open instead), and the
+      two English/French browser scenarios that waited on the `General` nav button
+      and now anchor on the `Appearance` row. `npx vitest run --config
+      vitest.web.config.ts apps/web/tests/settings-chrome.e2e.ts` (replay) is 8/9;
+      the remaining failure, `stores Permission as the default for future
+      sessions`, is red identically at the base commit (the fork pins
+      `defaultPreset: danger-full-access` and the scenario still expects
+      `workspace-write`) and drives a Permission control that no longer exists, so
+      it belongs to entry 12, not here.
+
+    **What an upstream pull must not resurrect:** the `<nav>` rail and its
+    per-section glyph map, the `settings.action` slot and any
+    open-configuration-file control, `sectionId`/`select`/`openSection` in the
+    shell store, and `openSection(id)` on the onboarding seat. Upstream's own
+    tests for the removed surfaces are deleted here rather than skipped; an
+    upstream re-add will have to delete them again deliberately.
+
+    **Layers run:** `pnpm run build:lib:host` 0, `npx tsc -b tsconfig.client.json`
+    0, `pnpm build` 0 in a warm worktree (202 client artifacts), vitest over
+    `ui-settings-general`, `ui-settings`, `ui-settings-models`, `locale`,
+    `ui-theme`, `ui-conversation` and `cordis-client-runner` green apart from the
+    pre-existing `ui-theme` remote-browser case that is red on master too,
+    `gen-client-catalog` regenerated (not hand-edited) with `verify-client-catalog`
+    / `verify-module-graph` / `verify-config-catalog` / `verify-client-packages`
+    green and `verify-md-links` / `verify-export-jsdoc` green, one mutation check
+    (a `<nav>` put back makes the two new shell assertions fail: the button list
+    becomes `['General','Close']`), and a Chromium pass over the keyless web
+    scaffold at 1280x800 and 390x844 for geometry, screenshots, console tripwire
+    and the reload rule. Not run here: the composed e-server origin (the
+    coordinator's own gate) and any deploy. No merge, no deploy.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

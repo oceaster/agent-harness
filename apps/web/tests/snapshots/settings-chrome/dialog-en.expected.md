@@ -1,16 +1,5 @@
 - dialog "Settings":
-  - navigation:
-    - text: Settings
-    - button "General":
-      - img
-      - text: General
-    - button "Learn More":
-      - img
-      - text: Learn More
-    - button "Plugins":
-      - img
-      - text: Plugins
-  - button "Open configuration file"
+  - text: Settings
   - button "Close":
     - img
     - text: Close
