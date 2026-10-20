@@ -2,12 +2,11 @@
 /** Conversation assembly acceptance independent of Tool presentation. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
-import { useState } from 'react'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { ISession, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, usePinnedBrowserLanguages, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
-import { apply, inject, type EmptyWorkspaceOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { apply, inject } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -39,15 +38,6 @@ const LAYOUT_CHILDREN = {
   'details': { kind: 'single', scope: 'session' },
 } as const
 
-function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {
-  const [count, setCount] = useState(0)
-  return (
-    <button data-testid="workspace-probe" onClick={() => { setCount(value => value + 1) }}>
-      {String(open)}:{count}
-    </button>
-  )
-}
-
 async function bench(opts?: { blank?: boolean }) {
   const runtime = await SlotTestRuntime.create()
   runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
@@ -76,7 +66,7 @@ async function bench(opts?: { blank?: boolean }) {
 }
 
 describe('resident composer', () => {
-  it('renders the locked view state while no session exists at all', async () => {
+  it('renders the locked view state while no session exists at all, with no workspace affordance', async () => {
     const runtime = await SlotTestRuntime.create()
     runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
     // The plugin injects both; these specs exercise no settings path.
@@ -88,25 +78,27 @@ describe('resident composer', () => {
     runtime.slots.installLocale(locale)
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
     await runtime.mount({ inject: [...inject], apply })
-    runtime.slots.register({ name: 'conversation.hero.workspace' }, WorkspaceProbe)
     const view = runtime.renderRoot()
     const textarea = view.container.querySelector('textarea')
     expect(textarea).not.toBeNull()
-    expect(textarea!.disabled).toBe(false)
-    expect(textarea!.readOnly).toBe(true)
-    expect(textarea!.getAttribute('aria-haspopup')).toBe('menu')
-    expect(view.getByTestId('workspace-probe').textContent).toBe('false:0')
-    fireEvent.click(textarea!)
-    expect(view.getByTestId('workspace-probe').textContent).toBe('true:0')
-    expect(textarea!.getAttribute('aria-expanded')).toBe('true')
-    fireEvent.click(view.getByRole('button', { name: '选择工作区' }))
-    fireEvent.keyDown(textarea!, { key: 'Enter' })
-    expect(view.getByTestId('workspace-probe').textContent).toBe('true:0')
-    expect(view.getByRole('button', { name: '选择工作区' })).toBeTruthy()
+    // Session-less composer: locked outright. It is no longer a workspace-picker
+    // trigger, so it carries no menu semantics and no chip exists beside it.
+    expect(textarea!.disabled).toBe(true)
+    expect(textarea!.getAttribute('aria-haspopup')).toBeNull()
+    expect(view.queryByRole('button', { name: '选择工作区' })).toBeNull()
+    expect(view.queryByRole('button', { name: 'Choose workspace' })).toBeNull()
+    // The workspace-picker seat is gone from the ledger: a stray registrant
+    // fails loud instead of quietly re-introducing the mint-a-session control.
+    const registerStray = (): void => {
+      (runtime.slots.register as (options: unknown, component: unknown) => void)(
+        { name: 'conversation.hero.workspace' }, () => null,
+      )
+    }
+    expect(registerStray).toThrow(/not declared/)
     await runtime.dispose()
   })
 
-  it('keeps the complete Hero tree mounted when the first Workspace session appears', async () => {
+  it('keeps the complete Hero tree mounted when the first session appears', async () => {
     const runtime = await SlotTestRuntime.create()
     runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
     // The plugin injects both; these specs exercise no settings path.
@@ -121,21 +113,13 @@ describe('resident composer', () => {
     })
     await runtime.root.declare(LAYOUT_CHILDREN, AppRoot)
     await runtime.mount({ inject: [...inject], apply })
-    runtime.slots.register({ name: 'conversation.hero.workspace' }, WorkspaceProbe)
     const view = runtime.renderRoot()
 
     const root = view.container.querySelector('[data-phase="hero"]')!
     const scrollBody = view.container.querySelector('[data-conversation-scroll]')!
     const composerSeat = view.container.querySelector('[data-composer-seat]')!
     const textarea = view.container.querySelector('textarea')!
-    const workspaceChip = view.getByRole('button', { name: '选择工作区' })
-    const workspaceProbe = view.getByTestId('workspace-probe')
-    expect(textarea.disabled).toBe(false)
-    expect(textarea.readOnly).toBe(true)
-
-    fireEvent.click(workspaceChip)
-    fireEvent.click(workspaceProbe)
-    expect(workspaceProbe.textContent).toBe('true:1')
+    expect(textarea.disabled).toBe(true)
 
     await runtime.sessions.add({
       id: SID,
@@ -143,13 +127,12 @@ describe('resident composer', () => {
       snapshot: { blank: true, composerPhase: 'blank' },
     })
 
+    // Same tree, same nodes: the hero chrome and the composer simply unlock in
+    // place once a conversation is current (no workspace click in between).
     expect(view.container.querySelector('[data-phase="hero"]')).toBe(root)
     expect(view.container.querySelector('[data-conversation-scroll]')).toBe(scrollBody)
     expect(view.container.querySelector('[data-composer-seat]')).toBe(composerSeat)
     expect(view.container.querySelector('textarea')).toBe(textarea)
-    expect(view.getByRole('button', { name: '选择工作区' })).toBe(workspaceChip)
-    expect(view.getByTestId('workspace-probe')).toBe(workspaceProbe)
-    expect(workspaceProbe.textContent).toBe('true:1')
     expect(textarea.disabled).toBe(false)
     expect(textarea.readOnly).toBe(false)
     await runtime.dispose()

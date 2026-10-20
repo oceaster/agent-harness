@@ -1,5 +1,5 @@
 /** Conversation slot declarations and their composed component props. */
-import type { ReactNode, RefObject } from 'react'
+import type { ReactNode } from 'react'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {
   InjectFace, MaybeSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
@@ -8,7 +8,7 @@ import type {
 import type {
   CommandNode, CompactionSummaryNode, ConversationSnapshot, ConversationTurnDataMap,
   ObservableSnapshot, PendingInteraction, PendingWait, SessionId, ToolCallBlock,
-  TurnLocation, WorkspaceId,
+  TurnLocation,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
@@ -164,13 +164,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * zero owner changes.
      */
     'conversation.composer': { kind: 'chain'; scope: 'session'; owner: ComposerChainProps }
-    /**
-     * The hero-phase Workspace picker hole: rendered by ConversationRoot
-     * while the session is blank (picking another workspace switches to that
-     * workspace's blank session, draft carried). Root scope: the picker
-     * reads the global workspace list.
-     */
-    'conversation.hero.workspace': { kind: 'single'; scope: 'root'; owner: EmptyWorkspaceOwnerProps }
     /**
      * The agent-preset chip beside the workspace picker on the new-session
      * screen. Root scope: no session exists yet, so the choice is staged for
@@ -452,11 +445,6 @@ export type ChatStore = ReturnType<typeof createChatStore>
 /** Business callbacks injected into the conversation slot. */
 export interface ConversationInjected {
   /**
-   * Connect the selected Workspace and open its reusable/new blank session.
-   * When a blank session is already current, carry its draft to the target.
-   */
-  selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
-  /**
    * Framework-bound sources. `composerBlock` is this session's block when a
    * plugin raised one; the reason is the blocker's own localized copy, which
    * the root renders as the inert composer's placeholder.
@@ -508,14 +496,10 @@ export interface ComposerBarOwnerProps {
    */
   blocked?: { readonly reason: string }
   /**
-   * Inert no-workspace state: the bar locks message actions while preserving
-   * its normal DOM so the Workspace pick transitions in place.
+   * Inert session-less state: the bar locks message actions while preserving
+   * its normal DOM so the pane transitions in place when a conversation opens.
    */
   disabled?: boolean
-  /** Whether the shared Workspace picker menu is expanded, regardless of which trigger opened it. */
-  workspacePickerOpen?: boolean
-  /** Open the existing Workspace picker from the inert textarea. */
-  onRequestWorkspace?: () => void
   placeholder?: string
   /** Optional content rendered above the textarea. */
   accessory?: ReactNode
@@ -605,8 +589,9 @@ export interface ComposerChainProps {
 
 /**
  * Full conversation-slot component props: runtime & child-render (view ring
- * + composer chain/bar + input-region + hero picker slots) & store & injected
- * shares & the locale seat.
+ * + composer chain/bar + input-region + the hero agent-preset slot) & store &
+ * injected shares & the locale seat. The hero WORKSPACE picker seat no longer
+ * exists — the chip that opened it is gone (FORK-NOTES "Inbox sidebar").
  */
 export type ConversationSlotProps =
   PropsRuntime<'conversation'> & PropsRenderSlots<
@@ -615,7 +600,6 @@ export type ConversationSlotProps =
     | 'conversation.input.overlay'
     | 'conversation.input.dock' | 'conversation.composer.dock'
     | 'conversation.input.left' | 'conversation.input.right'
-    | 'conversation.hero.workspace'
     | 'conversation.hero.agentPreset'
   >
   & InjectFace<ConversationInjected>
@@ -776,13 +760,3 @@ export interface DetailsInjected {
 /** Full details-slot props: selection store, Tool output seat, injected close callback, and locale. */
 export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool'>
   & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
-
-/** Owner share common to the hero / New-Session Workspace pickers. */
-export interface EmptyWorkspaceOwnerProps {
-  open: boolean
-  anchorRef?: RefObject<HTMLElement>
-  /** Currently active workspace (renders a trailing check in the picker list). */
-  selectedId?: WorkspaceId | undefined
-  onPick: (workspaceId: WorkspaceId) => void
-  onClose: () => void
-}

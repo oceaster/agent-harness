@@ -90,9 +90,12 @@
     - id: session-stats
       name: '@deepseek-ai/dsh-session-stats'
 
-    # Resolve bind host, SSH launch, and display once at boot, then mount the
-    # matching dual-face directory picker. Mount -native or -browse directly in
-    # an overlay to pin the interaction.
+    # The directory picker STAYS: `host-apiproxy` injects the `directoryPicker`
+    # service this row provides, and disabling it leaves the gateway entry
+    # pending ("1 entry did not activate") — measured, not assumed. Its client
+    # half fills ui-workspace's `sidebar.workspaces.directoryFlow` hole, which no
+    # longer exists now that the ui-workspace row below is disabled, so the
+    # occupant simply never registers (a pending slot injection, not an error).
     - id: directory-picker
       name: '@deepseek-ai/dsh-host-directory-picker-auto'
 
@@ -233,14 +236,21 @@
     - id: ui-deliverables
       name: '@deepseek-ai/dsh-client-ui-deliverables'
 
-
+    # DISABLED BY THE INBOX: ui-workspace owned all three surfaces the inbox
+    # replaced — the sidebar's workspace browser + session list, the hero
+    # workspace chip's picker, and the two directory-flow holes the dual-face
+    # picker fills. Its hero pick was what minted a stray blank session with
+    # the deployment default preset. Disabled rather than deleted because this
+    # file's convention is to disable a row the surface no longer wants: an
+    # absent row would silently return the day someone reorders the layer.
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
+      disabled: true
 
-    # SPIKE ROW (branch spike/inbox-ui, never merged): the inbox panel that
-    # occupies `sidebar.workspaces` in place of the workspace browser. Both
-    # rows are present here on purpose so the spike can compose either side
-    # with a --patch overlay instead of rebuilding per experiment.
+    # The inbox: the sidebar's whole browsing region, one persistent row per
+    # agent the signed-in person may use. It is the ONLY occupant of
+    # `sidebar.workspaces`, and it starts no session — every conversation it
+    # shows was resolved by the inbox API for (person, agent).
     - id: ui-inbox
       name: '@deepseek-ai/dsh-client-ui-inbox'
 

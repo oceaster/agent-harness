@@ -1,5 +1,6 @@
-/* Inbox region (spike prototype): fills the sidebar shell's browsing hole.
-   Wide renders the header plus one row per agent; the rail renders glyphs. */
+/* Inbox region: fills the sidebar shell's browsing hole. Wide renders the
+   section header plus one row per agent; the rail renders one glyph per agent.
+   Tokens only (docs/web-styling.md) — no literal colours anywhere. */
 
 .panel {
   position: relative;
@@ -9,6 +10,7 @@
   flex-direction: column;
   box-sizing: border-box;
   padding: 0 8px;
+  color: var(--dsw-alias-label-primary);
 }
 
 .header {
@@ -23,14 +25,26 @@
 
 .title {
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-.marker {
-  padding: 1px 6px;
-  border-radius: 999px;
+.refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.refresh:hover {
   background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
-  font-size: 11px;
+  color: var(--dsw-alias-label-primary);
 }
 
 .list {
@@ -40,10 +54,24 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  /* Elevated sheet: the rows paint above the base surface, so the bar follows
+     the l2 pair (ui-theme's scrollbar indirection), not the base l1 pair. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .row {
-  position: relative;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.rowActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowLine {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -52,87 +80,230 @@
 .rowButton {
   flex: 1;
   min-width: 0;
-  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border: none;
-  background: transparent;
   border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-  color: var(--dsw-alias-label-primary);
+  padding: 6px 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .rowButton:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.menuButton {
+.rowButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-border-l4);
+  outline-offset: -2px;
+}
+
+.avatar {
   flex: none;
-  width: 24px;
-  height: 24px;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary-bluish);
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
 }
 
-.menuButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+.rowText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.menu {
-  position: absolute;
-  top: 28px;
-  right: 0;
-  z-index: 10;
-  min-width: 96px;
-  padding: 4px;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-elevated, #fff);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 16%);
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
 }
 
-.menuItem {
-  display: block;
-  width: 100%;
-  text-align: left;
+.state {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.stateDot {
+  flex: none;
+}
+
+.menuButton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border: none;
-  background: transparent;
   border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 13px;
-  color: var(--dsw-alias-label-primary);
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
 
-.menuItem:hover {
+.menuButton:hover,
+.menuButton[aria-expanded='true'] {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
+.menuButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-border-l4);
+  outline-offset: -2px;
+}
+
+.notice {
+  margin: 0;
+  padding: 2px 8px 6px 42px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-state-warn-label);
+}
+
+/* Whole-panel states: loading, refused, empty, failed. Real screens, each with
+   its own copy, rather than an empty list. */
+.phase {
+  margin: 0;
+  padding: 12px 4px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.phaseBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 4px;
+}
+
+.phaseTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.phaseBody {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.retry {
+  align-self: flex-start;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: var(--dsw-alias-button-floating-fill);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}
+
+/* A failed refresh with rows still on screen: the rows stay usable and the
+   failure is stated above them. */
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.bannerAction {
+  flex: none;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-brand-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Rail (56px column): one glyph per agent so the collapsed sidebar still has
+   a body. Clicking a glyph expands the column and opens that conversation. */
 .rail {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding-top: 4px;
+  gap: 4px;
+  padding: 4px 0;
+  overflow-y: auto;
+  min-height: 0;
+  /* Same elevated-sheet rebind as the wide list. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .railGlyph {
-  width: 36px;
-  height: 36px;
-  border: none;
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 50%;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font-size: 14px;
+  padding: 0;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary-bluish);
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .railGlyph:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.railGlyphActive {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.railDot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
 }

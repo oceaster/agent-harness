@@ -73,8 +73,6 @@ interface BenchOptions {
   subagent?: Exclude<ConversationSnapshot['subagent'], null>
   disabled?: boolean
   inert?: boolean
-  workspacePickerOpen?: boolean
-  onRequestWorkspace?: () => void
   promptError?: ConversationSnapshot['promptError']
   /** Authoritative queue rows served to the machine overlay (empty = none). */
   queue?: ConversationSnapshot['queue']
@@ -192,8 +190,6 @@ function bench(over?: BenchOptions) {
     renderSlot,
     variant: over?.variant ?? 'composer',
     ...(over?.inert === true ? { disabled: true } : {}),
-    ...(over?.workspacePickerOpen !== undefined ? { workspacePickerOpen: over.workspacePickerOpen } : {}),
-    ...(over?.onRequestWorkspace !== undefined ? { onRequestWorkspace: over.onRequestWorkspace } : {}),
     ...(over?.placeholder !== undefined ? { placeholder: over.placeholder } : {}),
     ...(over?.accessory !== undefined ? { accessory: over.accessory } : {}),
     ...(over?.overlay !== undefined ? { overlay: over.overlay } : {}),
@@ -1058,38 +1054,26 @@ describe('running and lock semantics', () => {
     expect(custom.textarea.placeholder).toBe('Custom placeholder')
   })
 
-  it('the inert textarea opens the Workspace picker by pointer or keyboard', () => {
-    const onRequestWorkspace = vi.fn()
-    const { view, textarea } = bench({
-      inert: true,
-      workspacePickerOpen: false,
-      onRequestWorkspace,
-      placeholder: '选择一个工作区开始',
-    })
-    expect(textarea.disabled).toBe(false)
-    expect(textarea.readOnly).toBe(true)
-    expect(textarea.getAttribute('aria-haspopup')).toBe('menu')
-    expect(textarea.getAttribute('aria-expanded')).toBe('false')
-    expect((view.getByLabelText('命令') as HTMLButtonElement).disabled).toBe(true)
-
-    fireEvent.click(textarea)
-    fireEvent.keyDown(textarea, { key: 'Enter' })
-    fireEvent.keyDown(textarea, { key: ' ' })
-    expect(onRequestWorkspace).toHaveBeenCalledTimes(3)
-
-    // The WHOLE capsule is the pick target, and its pointerdown never reaches
-    // the document — the open picker's outside-close must not race the reopen.
+  it('an inert bar is disabled outright: no workspace-picker trigger survives', () => {
+    const { view, textarea } = bench({ inert: true, placeholder: '左侧还没有打开的对话' })
+    // The removed workspace picker used to turn the inert textarea into a
+    // card-wide trigger. Now inert means disabled, with no menu semantics.
+    expect(textarea.disabled).toBe(true)
+    expect(textarea.readOnly).toBe(false)
+    expect(textarea.getAttribute('aria-haspopup')).toBeNull()
+    expect(textarea.getAttribute('aria-expanded')).toBeNull()
+    expect(textarea.placeholder).toBe('左侧还没有打开的对话')
     const card = view.container.querySelector('[data-composer-card]') as HTMLElement
-    fireEvent.click(card)
-    expect(onRequestWorkspace).toHaveBeenCalledTimes(4)
     const onDocumentPointerDown = vi.fn()
     document.addEventListener('pointerdown', onDocumentPointerDown)
     try {
+      fireEvent.click(card)
       fireEvent.pointerDown(card)
     } finally {
       document.removeEventListener('pointerdown', onDocumentPointerDown)
     }
-    expect(onDocumentPointerDown).not.toHaveBeenCalled()
+    // No card-wide click handler and no pointerdown veto left behind.
+    expect(onDocumentPointerDown).toHaveBeenCalledTimes(1)
   })
 
   it('the plan projection swaps the placeholder while its effective target is plan mode', () => {

@@ -17,7 +17,9 @@ usePinnedBrowserLanguages('zh-CN')
 
 afterEach(cleanup)
 
-const HOLES = ['conversation.hero.workspace.directoryFlow', 'sidebar.workspaces.directoryFlow'] as const
+// One hole remains: the sidebar browser's. The conversation hero's hole went
+// with the hero workspace chip (FORK-NOTES "Inbox sidebar").
+const HOLES = ['sidebar.workspaces.directoryFlow'] as const
 
 const HOME = '/home/u'
 const homeListing: DirectoryListing = {
@@ -56,7 +58,7 @@ describe('directory-picker-browse client half', () => {
     expect(inject).toEqual(['slots', 'workspaces', 'locale'])
   })
 
-  it('fills both directory-flow holes for declarations before or after apply, and leaves with its fiber', async () => {
+  it('fills the directory-flow hole for declarations before or after apply, and leaves with its fiber', async () => {
     const before = await bench()
     before.declare()
     const fiber = before.ctx.plugin({ inject: [...inject], apply })
@@ -74,69 +76,6 @@ describe('directory-picker-browse client half', () => {
     for (const hole of HOLES) expect(after.slots.entries(hole)).toHaveLength(1)
   })
 
-  it('rolls back the outer injection when the second hole is already occupied', async () => {
-    const b = await bench()
-    b.declare()
-    // Foreign occupant in the SECOND registered hole: the pair construction
-    // throws after the outer injection installed its subscription.
-    b.slots.register({ name: HOLES[1] } as never, () => null)
-    const rejections: unknown[] = []
-    const onUnhandled = (reason: unknown): void => { rejections.push(reason) }
-    process.on('unhandledRejection', onUnhandled)
-    try {
-      const fiber = b.ctx.plugin({ inject: [...inject], apply })
-      await expect(fiber.await()).rejects.toThrow(/already has a registration/)
-      // A leaked first deferral would now race this probe registration and
-      // throw from its orphaned subscription against the HERO hole; the
-      // rollback leaves only the activation failure itself (cordis re-raises
-      // the apply throw as a late rejection — installFailLoud's contract).
-      const disposeProbe = b.slots.register({ name: HOLES[0] } as never, () => null)
-      await new Promise(resolve => setTimeout(resolve, 20))
-      expect(rejections.map(String).filter(text => text.includes(HOLES[0]))).toEqual([])
-      disposeProbe()
-    } finally {
-      process.off('unhandledRejection', onUnhandled)
-    }
-  })
-
-  it('rolls back wholesale and reports loudly when a rival injection wins declaration activation', async () => {
-    const b = await bench()
-    const rejections: unknown[] = []
-    const onUnhandled = (reason: unknown): void => { rejections.push(reason) }
-    process.on('unhandledRejection', onUnhandled)
-    process.on('uncaughtException', onUnhandled)
-    try {
-      // The rival subscribes first, so synchronous declaration notifications
-      // let it occupy the pair before this provider's waiting injection runs.
-      b.slots.inject(HOLES[0], () => b.slots.inject(HOLES[1], function* () {
-        yield b.slots.register({ name: HOLES[0] } as never, () => null)
-        yield b.slots.register({ name: HOLES[1] } as never, () => null)
-      }))
-      await b.ctx.plugin({ inject: [...inject], apply }).await()
-      b.declare()
-      await new Promise(resolve => setTimeout(resolve, 20))
-      // The rival keeps both holes; this provider rolled back wholesale and
-      // surfaced the conflict on the fail-loud channel — no partial mix.
-      for (const hole of HOLES) expect(b.slots.entries(hole)).toHaveLength(1)
-      expect(rejections.map(String).join('\n')).toContain('already has a registration')
-
-      // Non-Error conflicts wrap before the loud rethrow (same channel).
-      const c = await bench()
-      await c.ctx.plugin({ inject: [...inject], apply }).await()
-      const original = c.slots.register.bind(c.slots)
-      const slotsAny = c.slots as { register: typeof original }
-      slotsAny.register = ((options: never, component: never) => {
-        if ((options as { name?: string }).name === HOLES[0]) throw 'string conflict'
-        return original(options, component)
-      }) as typeof original
-      c.declare()
-      await new Promise(resolve => setTimeout(resolve, 20))
-      expect(rejections.map(String).join('\n')).toContain('string conflict')
-    } finally {
-      process.off('unhandledRejection', onUnhandled)
-      process.off('uncaughtException', onUnhandled)
-    }
-  })
 
   it('rolls back the zh dictionary when a rival already owns the namespace en slot', async () => {
     const b = await bench()
@@ -177,7 +116,7 @@ describe('directory-picker-browse client half', () => {
     const b = await bench()
     b.declare()
     await b.ctx.plugin({ inject: [...inject], apply }).await()
-    const entry = b.slots.entries(HOLES[1])[0]!
+    const entry = b.slots.entries(HOLES[0])[0]!
     const injected = (entry.inject as () => {
       listDirectory: (path?: string) => Promise<DirectoryListing>
       createDirectory: (path: string, name: string) => Promise<string>

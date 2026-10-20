@@ -44,7 +44,6 @@ describe('SidebarRoot.module.css', () => {
     const animation = 'rail-in 150ms var(--ds-ease-in-out) backwards'
     for (const selector of [
       '.railIn .iconButton',
-      '.railIn .newSession',
       '.railIn .regionArea',
     ]) {
       expect(declarations(selector)?.get('animation')).toBe(animation)
@@ -58,9 +57,9 @@ describe('SidebarRoot.module.css', () => {
     expect(css).toMatch(/@keyframes rail-fade-in\s*\{\s*from\s*\{\s*opacity: 0;\s*}\s*}/)
   })
 
-  it('gives shell rail controls the same base anchor for their shared translation', () => {
+  it('gives the remaining rail control the shared base anchor for its translation', () => {
     expect(declarations('.collapsed .topRow')?.get('flex-direction')).toBe('column')
-    expect(declarations('.collapsed .newSession')?.get('align-self')).toBe('flex-start')
-    expect(declarations('.collapsed .newSession')?.get('width')).toBe('36px')
+    expect(declarations('.collapsed .iconButton')?.get('width')).toBe('36px')
+    expect(declarations('.collapsed .iconButton')?.get('height')).toBe('36px')
   })
 })

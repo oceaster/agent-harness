@@ -155,6 +155,54 @@ re-applied on every upstream pull:
    PR: the capability is generic, and the only household-specific part is who
    calls it.
 
+8. **Inbox sidebar** (`packages/client/ui-inbox`, new package; plus removals in
+   `ui-sidebar`, `ui-conversation` and the web-app composition) — the sidebar is
+   an inbox: ONE persistent row per agent the signed-in person may use, from
+   `GET /v1/browser/inbox` on the e-server origin (same-origin absolute paths at
+   the origin root, the profile cookie as the whole authentication, no identity
+   in the plugin). No session list, no New Session button, no workspace browser,
+   no hero workspace chip. A per-row three-dot menu holds one action, Clear,
+   which confirms and then `POST /v1/browser/inbox/clear`; a `cleared: false`
+   answer is rendered as a refusal that keeps the row populated.
+
+   Why the surfaces went rather than being hidden: the hero workspace chip stays
+   alive under slot shadowing, and picking a workspace from it minted a STRAY
+   blank session with the deployment default preset that landed unowned in
+   Owen's inbox. Removal means removal — the `conversation.hero.workspace` hole
+   is gone from ui-conversation's ledger, so a stray registrant fails loud.
+
+   **Re-apply on every upstream pull.** The embedded diffs are: ui-sidebar loses
+   its New Session button (and the `startSession` inject member, the copy, and
+   the `sessions`/`workspaces` service injections it needed); ui-conversation
+   loses `EmptyHero`'s `WorkspaceChip`/`workspaceLabel`, the hero workspace row,
+   the `conversation.hero.workspace` declaration + `selectWorkspace` inject
+   member, and the inert composer's workspace-trigger mode (an inert bar is now
+   simply disabled, with its own placeholder); `packages/bundle/web-app`'s
+   `cordis.patch.yml` disables the `ui-workspace` row and inserts `ui-inbox`. Upstream will keep trying to bring the session list back —
+   that is the conflict to resolve toward the inbox, not away from it. The
+   `directory-picker` row STAYS: `host-apiproxy` injects the `directoryPicker`
+   service it provides, and disabling it fails the boot ("1 entry did not
+   activate", measured in the browser fixture). Its client half fills
+   `sidebar.workspaces.directoryFlow`, a hole only the disabled ui-workspace row
+   declares, so it never registers — a pending slot injection, not an error.
+
+   The navigation seam is worth rediscovering if upstream rewrites the client
+   runtime: `ctx.sessions.open(sessionId)` throws for an id the client's own list
+   mirror does not carry, and a conversation e-server created server-to-server is
+   exactly that, so the row click pulls the list once (`sessions.refresh()`, a
+   wire-pump verb on the concrete `SessionRuntime`, not on the typed `ISessions`
+   face, so the plugin resolves that member once at registration and throws a NAMED
+   error if it is missing rather than failing with a TypeError under the first row
+   click) and only then selects. Clear is `POST` first, `sessions.clear()` only on
+   `cleared: true`. The clean follow-up is widening `ISessions` with
+   `refresh(): Promise<void>` and every test fake that implements it. The package README (`packages/client/ui-inbox/README.md`)
+   carries the full reasoning, the state screens and the API assumptions.
+
+   The cluster runs this through `scripts/sync_dsh.py` like every other fork
+   surface, and the deployment needs an e-server origin serving
+   `/v1/browser/inbox{,/open,/clear}`; without it the sidebar degrades to a
+   visible retryable error row, never a blank panel.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

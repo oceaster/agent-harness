@@ -64,7 +64,6 @@
    horizontally fixed. Only a live collapse gets .railIn; a cold collapsed
    render stays static. */
 .railIn .iconButton,
-.railIn .newSession,
 .railIn .regionArea {
   animation: rail-in 150ms var(--ds-ease-in-out) backwards;
 }
@@ -84,9 +83,8 @@
   from { opacity: 0; }
 }
 
-/* Top row: collapse toggle inline with New Session, no brand header. Wide
-   lays them side by side; the rail stacks them (toggle resting as the whale
-   mark on top). */
+/* Top row: the collapse toggle alone (no brand header, and no New Session
+   control since the inbox replaced the session list). */
 .topRow {
   flex: none;
   display: flex;
@@ -130,58 +128,6 @@
    secondary icon-button ink. */
 .collapsed .iconButton {
   color: var(--dsw-alias-label-primary);
-}
-
-/* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
-   corners); collapsed it renders as the rail's plain icon control. */
-.newSession {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 38px;
-  padding: 8px 16px;
-  box-sizing: border-box;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  background: var(--dsw-alias-button-elevated-fill);
-  color: var(--dsw-alias-label-primary);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 22px;
-  cursor: pointer;
-  overflow: hidden;
-}
-
-.newSession:hover {
-  background: var(--dsw-alias-button-floating-hover);
-}
-
-.collapsed .newSession {
-  flex: none;
-  align-self: flex-start;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  gap: 0;
-  border-color: transparent;
-  background: transparent;
-}
-
-.collapsed .newSession:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.newSessionLabel {
-  max-width: 200px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.collapsed .newSessionLabel {
-  max-width: 0;
 }
 
 /* Region seat: always mounted so the foot never moves. Its trailing margin
@@ -238,7 +184,6 @@
   .wide,
   .fading > *,
   .railIn .iconButton,
-  .railIn .newSession,
   .railIn .footArea,
   .railIn .regionArea {
     transition: none;

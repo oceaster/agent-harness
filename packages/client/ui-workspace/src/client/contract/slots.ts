@@ -5,7 +5,8 @@
  *   the whole browsing region (section header, search, grouped/flat session
  *   list, workspace dialogs). It registers this package's viewing store and
  *   consumes the shell's two-fact owner share (wide / expandSidebar).
- * - WorkspacePicker fills the conversation empty-state hole (menu + error
+ * - (the conversation empty-state picker was REMOVED with the hero chip — see
+ *   FORK-NOTES "Inbox sidebar") (menu + error
  *   dialog shared with the browser).
  *
  * Each registration also declares one **directory-flow hole** (`single`
@@ -53,17 +54,13 @@ export interface DirectoryFlowOwnerProps {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
-    'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
   }
 }
 
-/** The two directory-flow holes; a flow package's client half registers its one component into both. */
-export type DirectoryFlowSlotName =
-  | 'conversation.hero.workspace.directoryFlow'
-  | 'sidebar.workspaces.directoryFlow'
+/** The one directory-flow hole left; a flow package's client half registers its component into it. */
+export type DirectoryFlowSlotName = 'sidebar.workspaces.directoryFlow'
 
 /**
  * Directory-picking share both trigger surfaces consume. Occupancy rides the
@@ -146,26 +143,4 @@ export type WorkspaceBrowserProps =
   & PropsStore<ReturnType<typeof createWorkspaceViewStore>>
   & Omit<WorkspaceBrowserInjected, 'hooks'>
   & PropsHooks<WorkspaceBrowserInjected['hooks']>
-  & PropsLocale<'workspace'>
-
-/**
- * Picker-private injected share. Pick semantics remain in the owner's onPick
- * callback; this callback creates only the real Host Workspace. A type alias
- * supplies the implicit index signature required by the registry.
- */
-export type WorkspacePickerInjected = DirectoryPickingInjected & {
-  /** Adopt a picked host directory as a real Workspace before targeting a Session. */
-  createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
-}
-
-/**
- * Full picker props: the owner share plus the creation callback and the
- * locale seat. The two picker holes (blank-session hero / New-Session view)
- * share one owner currency, so one composed type serves both registrations.
- */
-export type WorkspacePickerProps =
-  PropsRuntime<'conversation.hero.workspace'>
-  & PropsRenderSlots<'conversation.hero.workspace.directoryFlow'>
-  & Omit<WorkspacePickerInjected, 'hooks'>
-  & DirectoryPickingHooks
   & PropsLocale<'workspace'>

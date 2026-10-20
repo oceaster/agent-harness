@@ -88,10 +88,12 @@ describe('apply wiring', () => {
     expect(conversationHeader?.store).toBe(conversationSession?.store)
     expect(details?.store).toBe(conversationSession?.store)
     expect(chatView?.store).toBe(conversationSession?.store)
-    // The hero holes ride the conversation entry's children declaration (the
-    // empty-state occupant is gone). Both are root-scoped: the new-session
-    // screen precedes the session either would belong to.
-    expect(b.slots.spec('conversation.hero.workspace')).toEqual({ kind: 'single', scope: 'root' })
+    // The hero agent-preset hole rides the conversation entry's children
+    // declaration (root-scoped: the new-session screen precedes the session it
+    // would belong to). The hero WORKSPACE hole is gone with the chip that
+    // opened it — choosing a workspace minted a stray session, so the inbox owns
+    // conversation choice now and the seat no longer exists.
+    expect((b.slots.spec as (name: string) => unknown)('conversation.hero.workspace')).toBeUndefined()
     expect(b.slots.spec('conversation.hero.agentPreset')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.entries('settings.general.item').map(entry => entry.options.id)).toEqual(['composer-enter'])
     await b.runtime.dispose()

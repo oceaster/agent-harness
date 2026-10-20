@@ -3,9 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type { WorkspaceBrowserInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { WorkspaceBrowser } from '../src/client/WorkspaceBrowser.tsx'
-import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
 
 async function bench() {
   const ctx = new Context()
@@ -46,7 +45,7 @@ async function bench() {
   }
 }
 
-type HoleName = 'sidebar.workspaces' | 'conversation.hero.workspace' | 'conversation.empty.workspace'
+type HoleName = 'sidebar.workspaces'
 
 /** Declare any subset of the holes with a single root registration ('root' is a single slot). */
 function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
@@ -59,7 +58,7 @@ describe('ui-workspace apply', () => {
     expect(inject).toEqual(['slots', 'sessions', 'workspaces', 'locale', 'connection'])
   })
 
-  it('registers browser and pickers for declarations arriving before or after apply', async () => {
+  it('registers the browser for declarations arriving before or after apply', async () => {
     const before = await bench()
     declare(before.slots, 'sidebar.workspaces')
     await before.ctx.plugin({ inject: [...inject], apply }).await()
@@ -69,17 +68,17 @@ describe('ui-workspace apply', () => {
     expect(before.slots.entries('sidebar.workspaces')[0]!.locale).toBe('workspace')
     expect(before.locale.bind('workspace')('session.new')).toBe('新会话')
 
+    // A declaration arriving after apply installs the same browser entry.
     const after = await bench()
     await after.ctx.plugin({ inject: [...inject], apply }).await()
-    declare(after.slots, 'conversation.hero.workspace', 'conversation.empty.workspace')
+    declare(after.slots, 'sidebar.workspaces')
     await Promise.resolve()
-    expect(after.slots.entries('conversation.hero.workspace')[0]!.component).toBe(WorkspacePicker)
-    // expect(after.slots.entries('conversation.empty.workspace')[0]!.component).toBe(WorkspacePicker)
+    expect(after.slots.entries('sidebar.workspaces')[0]!.component).toBe(WorkspaceBrowser)
   })
 
-  it('routes browser actions and picker creation to the services', async () => {
+  it('routes browser actions to the services', async () => {
     const b = await bench()
-    declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace')
+    declare(b.slots, 'sidebar.workspaces')
     await b.ctx.plugin({ inject: [...inject], apply }).await()
 
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
@@ -111,31 +110,26 @@ describe('ui-workspace apply', () => {
     expect(b.insertSessionBefore).toHaveBeenCalledWith('ws', 's1', 's2')
     await browser.createWorkspace({ path: '/tmp/browser-project' })
     expect(b.create).toHaveBeenCalledWith({ path: '/tmp/browser-project' })
-
-    const picker = (b.slots.entries('conversation.hero.workspace')[0]!.inject as () => WorkspacePickerInjected)()
-    await picker.createWorkspace({ path: '/tmp/project' })
-    expect(b.create).toHaveBeenCalledWith({ path: '/tmp/project' })
   })
 
-  it('declares the two directory-flow holes and reports their occupancy per surface', async () => {
+  it('declares its one directory-flow hole and reports its occupancy', async () => {
     const b = await bench()
-    declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace')
+    declare(b.slots, 'sidebar.workspaces')
     await b.ctx.plugin({ inject: [...inject], apply }).await()
-    // Registration declared the child holes (declaration = render authorization).
+    // Registration declared the child hole (declaration = render authorization).
     expect(b.slots.spec('sidebar.workspaces.directoryFlow')).toMatchObject({ kind: 'single' })
-    expect(b.slots.spec('conversation.hero.workspace.directoryFlow')).toMatchObject({ kind: 'single' })
+    // The conversation hero's hole is GONE: only the sidebar surface declares one.
+    expect((b.slots.spec as (name: string) => unknown)('conversation.hero.workspace.directoryFlow'))
+      .toBeUndefined()
 
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
-    const picker = (b.slots.entries('conversation.hero.workspace')[0]!.inject as () => WorkspacePickerInjected)()
     expect(browser.hooks.directoryFlow.getSnapshot()).toBe(false)
     expect(browser.hooks.hostDescription.getSnapshot()).toBeUndefined()
-    expect(picker.hooks.directoryFlow.getSnapshot()).toBe(false)
-    // A flow occupant flips exactly its own surface, and the source notifies.
+    // A flow occupant flips the surface, and the source notifies.
     const notified = vi.fn()
     const unsubscribe = browser.hooks.directoryFlow.subscribe(notified)
     const dispose = b.slots.register({ name: 'sidebar.workspaces.directoryFlow' } as never, () => null)
     expect(browser.hooks.directoryFlow.getSnapshot()).toBe(true)
-    expect(picker.hooks.directoryFlow.getSnapshot()).toBe(false)
     await Promise.resolve()
     expect(notified).toHaveBeenCalled()
     dispose()
@@ -156,14 +150,12 @@ describe('ui-workspace apply', () => {
       .rejects.toThrow('index unavailable')
   })
 
-  it('unregisters every entry on teardown', async () => {
+  it('unregisters its entry on teardown', async () => {
     const b = await bench()
-    declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace', 'conversation.empty.workspace')
+    declare(b.slots, 'sidebar.workspaces')
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     await fiber.dispose()
     expect(b.slots.entries('sidebar.workspaces')).toHaveLength(0)
-    expect(b.slots.entries('conversation.hero.workspace')).toHaveLength(0)
-    // expect(b.slots.entries('conversation.empty.workspace')).toHaveLength(0)
   })
 })

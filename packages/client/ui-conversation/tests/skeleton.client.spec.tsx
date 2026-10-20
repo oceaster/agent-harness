@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // ConversationRoot skeleton behavior: the ONE resident composer across the
 // hero (blank session) and active phases — same textarea DOM node, machine-
-// owned draft, and the hero workspace picker (switching = retargetWorkspace).
+// owned draft.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
@@ -85,7 +85,6 @@ function conversationSnapshot(overrides: Partial<ConversationSnapshot> = {}): Co
 function mount(
   snapshot: ConversationSnapshot,
   workspaceRows: WorkspaceView[] = [{ ...workspace('one'), sessionIds: [SID] }],
-  retargetWorkspace = vi.fn(async (_workspaceId: WorkspaceId) => {}),
   options: {
     /** When true, mimic overlay:true chain siblings (hidden fallback + takeover). */
     overlayTakeover?: boolean
@@ -137,13 +136,11 @@ function mount(
   }
   /** Owner share handed to the two composer tool-row seats, per render. */
   const seatOwners: { key: string; owner: unknown }[] = []
-  let pickerOwner: unknown
   const renderSlot = ((key: string, owner: object, opts?: { only?: string }) => {
     slotCalls.push(key)
     if (key === 'conversation.input.model' || key === 'conversation.input.plan') {
       seatOwners.push({ key, owner })
     }
-    if (key === 'conversation.hero.workspace') { pickerOwner = owner; return null }
     if (key === 'conversation.session.header') {
       return (
         <ConversationSessionHeader
@@ -246,13 +243,11 @@ function mount(
     inputActions,
     renderSlot,
     renderSlotChain,
-    selectWorkspace: retargetWorkspace,
     t,
   }
   const view = render(<ConversationRoot {...props} />)
   return {
-    view, chat, sink, retargetWorkspace, session, slotCalls, seatOwners, open,
-    pickerOwner: () => pickerOwner,
+    view, chat, sink, session, slotCalls, seatOwners, open,
     rerender: () => { view.rerender(<ConversationRoot {...props} />) },
   }
 }
@@ -267,7 +262,7 @@ describe('Hero chrome', () => {
 
 describe('ConversationRoot resident composer', () => {
   it('renders the composer inert with the blocker\u2019s own reason', () => {
-    const b = mount(conversationSnapshot(), undefined, undefined, {
+    const b = mount(conversationSnapshot(), undefined, {
       composerBlock: { reason: 'select a model first' },
     })
     const box = b.view.getByRole('textbox') as HTMLTextAreaElement
@@ -286,20 +281,21 @@ describe('ConversationRoot resident composer', () => {
     expect(seat('conversation.input.plan')).toEqual({ locked: true })
   })
 
-  it('lets the no-workspace posture win over a block', () => {
-    // Picking a workspace is the earlier prerequisite; naming a model first
-    // would send the user somewhere they cannot act yet.
-    const b = mount(conversationSnapshot({ composerPhase: 'blank' }), [], undefined, {
+  it('a raised block owns the placeholder once a session exists, and keeps the model seat live', () => {
+    // With a conversation open, the block's own reason IS the next step (the
+    // model seat clears it). Only a session-less pane outranks it, and that
+    // posture is covered where the pane actually has no session.
+    const b = mount(conversationSnapshot({ composerPhase: 'blank' }), [], {
       summaryBlank: true,
       composerBlock: { reason: 'select a model first' },
     })
     const box = b.view.getByRole('textbox') as HTMLTextAreaElement
-    expect(box.disabled).toBe(false)
-    expect(box.readOnly).toBe(true)
-    expect(box.getAttribute('aria-haspopup')).toBe('menu')
-    expect(box.placeholder).not.toBe('select a model first')
+    expect(box.disabled).toBe(true)
+    expect(box.placeholder).toBe('select a model first')
+    // Blocked, not a workspace trigger: no menu semantics on the bar.
+    expect(box.getAttribute('aria-haspopup')).toBeNull()
     const modelSeat = b.seatOwners.filter(call => call.key === 'conversation.input.model').at(-1)?.owner
-    expect(modelSeat).toEqual({ locked: true })
+    expect(modelSeat).toEqual({ locked: false })
   })
 
   it('keeps composer text in the machine, mirrors to the chat store, and submits through the sink', () => {
@@ -315,7 +311,7 @@ describe('ConversationRoot resident composer', () => {
   })
 
   it('shows hierarchy only for subagents and opens their ordinary owner', () => {
-    const b = mount(conversationSnapshot(), undefined, undefined, { summaryOrigin: 'subagent' })
+    const b = mount(conversationSnapshot(), undefined, { summaryOrigin: 'subagent' })
     const root = b.view.getByRole('button', { name: 'Root' })
     expect((b.view.getByRole('button', { name: 'Child' }) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(root)
@@ -340,7 +336,7 @@ describe('ConversationRoot resident composer', () => {
   })
 
   it('sticky composer seat wraps the whole overlay chain, not only the fallback stack', () => {
-    const b = mount(conversationSnapshot(), undefined, undefined, { overlayTakeover: true })
+    const b = mount(conversationSnapshot(), undefined, { overlayTakeover: true })
     const seat = b.view.container.querySelector('[data-composer-seat]')
     const takeover = b.view.getByTestId('composer-takeover')
     const fallback = b.view.container.querySelector('[data-chain-overlay-fallback="conversation.composer"]')
@@ -348,7 +344,7 @@ describe('ConversationRoot resident composer', () => {
     expect(seat?.contains(fallback)).toBe(true)
   })
 
-  it('hero phase: same textarea, hero chrome, no header, picker switches the workspace', () => {
+  it('hero phase: same textarea, hero chrome, no header, no workspace chip', () => {
     const b = mount(
       conversationSnapshot({ composerPhase: 'blank', blank: true }),
       [
@@ -372,14 +368,11 @@ describe('ConversationRoot resident composer', () => {
     expect(host?.contains(box)).toBe(true)
     fireEvent.change(box, { target: { value: 'draft in hero' } })
     expect(b.chat.store.getSnapshot().draft).toBe('draft in hero')
-    // Picker: open through the chip; a pick switches to the other
-    // workspace's blank session (draft carry is apply-layer wiring).
-    fireEvent.click(b.view.getByRole('button', { name: '选择工作区' }))
-    const owner = b.pickerOwner() as { open: boolean; onPick(id: WorkspaceId): void }
-    expect(owner.open).toBe(true)
-    act(() => { owner.onPick(wid('second')) })
-    expect(b.retargetWorkspace).toHaveBeenCalledWith(wid('second'))
-    expect(b.view.getByText('Selected Folder')).toBeTruthy()
+    // The hero workspace chip is gone with the workspace picker it opened:
+    // nothing in the pane can switch (and thereby mint) a session any more.
+    expect(b.view.queryByRole('button', { name: '选择工作区' })).toBeNull()
+    expect(b.view.queryByRole('button', { name: 'Choose workspace' })).toBeNull()
+    expect(b.slotCalls).not.toContain('conversation.hero.workspace')
   })
 
   it('settling phase: a summary that does not prove the session blank hides the composer while it opens', () => {
@@ -393,7 +386,6 @@ describe('ConversationRoot resident composer', () => {
     const b = mount(
       conversationSnapshot({ composerPhase: 'blank', blank: true, openState: 'loading' }),
       undefined,
-      undefined,
       { omitSummaryRow: true },
     )
     const root = b.view.container.querySelector('[data-phase]')
@@ -403,7 +395,6 @@ describe('ConversationRoot resident composer', () => {
   it('startup auto-selection: a summary-proven blank session opens straight into the hero', () => {
     const b = mount(
       conversationSnapshot({ composerPhase: 'blank', blank: true, openState: 'loading' }),
-      undefined,
       undefined,
       { summaryBlank: true },
     )
@@ -445,7 +436,7 @@ describe('ConversationRoot resident composer', () => {
       { id: 'chat', label: 'Chat' },
       { id: 'trajectory', label: 'Trajectory' },
     ]
-    const b = mount(conversationSnapshot(), undefined, undefined, { viewTabs })
+    const b = mount(conversationSnapshot(), undefined, { viewTabs })
     // A removed dynamic view leaves its persisted id behind. The visible
     // fallback is Chat and must stay Chat when another lower-order view lands.
     act(() => { b.chat.actions.setView('removed-view') })
@@ -458,34 +449,6 @@ describe('ConversationRoot resident composer', () => {
     expect(b.view.queryByTestId('view-new-view')).toBeNull()
     expect(b.view.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected')).toBe('true')
     expect(b.view.getByRole('tab', { name: 'New view' }).getAttribute('aria-selected')).toBe('false')
-  })
-
-  it('rolls the pending workspace label back when switching fails', async () => {
-    const selectWorkspace = vi.fn(async () => { throw new Error('connect failed') })
-    const b = mount(
-      conversationSnapshot({ composerPhase: 'blank', blank: true }),
-      [
-        { ...workspace('one'), sessionIds: [SID] },
-        { ...workspace('second'), title: 'Selected Folder' },
-      ],
-      selectWorkspace,
-    )
-    fireEvent.click(b.view.getByRole('button', { name: '选择工作区' }))
-    const owner = b.pickerOwner() as { onPick(id: WorkspaceId): void }
-    await act(async () => { owner.onPick(wid('second')); await Promise.resolve() })
-    expect(selectWorkspace).toHaveBeenCalledWith(wid('second'))
-    expect(b.view.queryByText('Selected Folder')).toBeNull()
-    expect(b.view.getByText('one')).toBeTruthy()
-  })
-
-  it('blank session keeps the interactive picker chip (workspace switchable until the first message)', () => {
-    const b = mount(conversationSnapshot({ composerPhase: 'blank', blank: true }))
-    const chip = b.view.getByRole('button', { name: '选择工作区' })
-    expect((chip as HTMLButtonElement).disabled).toBe(false)
-    expect(b.slotCalls).toContain('conversation.hero.workspace')
-    // The agent-preset chip sits in the same row, for the same reason: both
-    // choices are only open before the first message.
-    expect(b.slotCalls).toContain('conversation.hero.agentPreset')
   })
 
   it('prompt failure renders the promptError strip (ordinary failure, no transaction UI)', () => {

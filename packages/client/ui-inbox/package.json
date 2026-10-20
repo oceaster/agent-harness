@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-inbox",
-  "description": "Inbox plugin (spike prototype): one row per agent occupying the sidebar's browsing hole",
+  "description": "Inbox plugin: one persistent row per agent the signed-in person may use, with Clear as the row menu's only action",
   "version": "0.1.0-rc.8",
   "publishConfig": {
     "access": "public"
@@ -39,6 +39,9 @@
     "watch": "tsdown --watch"
   },
   "license": "MIT",
+  "dependencies": {
+    "clsx": "^2.0.0"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-client-locale": "workspace:^",
@@ -50,11 +53,15 @@
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-client-locale": "workspace:^",
     "@deepseek-ai/dsh-client-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-test-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar": "workspace:^",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",
-    "react": "^18.2.0"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "files": [
     "lib/index.js",

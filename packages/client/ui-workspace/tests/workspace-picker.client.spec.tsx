@@ -1,21 +1,20 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type {
-  SessionListState, WorkspaceId, WorkspaceListState, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import type { WorkspaceId, WorkspaceListState, WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from '../src/client/contract/slots.ts'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { DirectoryFlowOwnerProps } from '../src/client/contract/slots.ts'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
-import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
+import { WorkspacePickFlow } from '../src/client/WorkspacePicker.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
 
 // The seat's key domain is workspace ∪ common; the stub mirrors the real
 // lookup chain (namespace, then common vocabulary, then the key).
-const t: WorkspacePickerProps['t'] = makeTranslate(zh, commonZh)
+const t: PropsLocale<'workspace'>['t'] = makeTranslate(zh, commonZh)
 
 const wid = (id: string) => id as WorkspaceId
 function workspace(id: string, title = id): WorkspaceView {
@@ -26,9 +25,6 @@ function workspace(id: string, title = id): WorkspaceView {
 }
 function hook<T>(snapshot: T) {
   return function select<S>(selector: (state: T) => S): S { return selector(snapshot) }
-}
-const sessions: SessionListState = {
-  ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
 }
 const workspaceState = (items: readonly WorkspaceView[]): WorkspaceListState => ({
   items, archivedSessionIds: [], state: 'idle', phase: 'ready', error: null, baselinesReady: true,
@@ -50,11 +46,13 @@ function anchor(): { current: HTMLElement } {
  */
 function flowProbe() {
   const probe: { owner: DirectoryFlowOwnerProps | undefined } = { owner: undefined }
-  const renderSlot = ((_name: string, owner: DirectoryFlowOwnerProps) => {
+  // The flow hands the owner conversation straight to the surface it belongs
+  // to (the browser's directory-flow hole), so the probe is the render callback.
+  const renderDirectoryFlow = (owner: DirectoryFlowOwnerProps) => {
     probe.owner = owner
     return owner.open ? <div data-testid="directory-flow" data-busy={owner.busy} /> : null
-  }) as never
-  return { probe, renderSlot }
+  }
+  return { probe, renderDirectoryFlow }
 }
 
 /** Manual occupancy source bound like the renderer would: flip() drives the hook like a real registration change. */
@@ -85,18 +83,17 @@ function mount(
   const onPick = vi.fn()
   const onClose = vi.fn()
   const anchorRef = anchor()
-  const { probe, renderSlot } = flowProbe()
+  const { probe, renderDirectoryFlow } = flowProbe()
   const renderPicker = (nextItems: readonly WorkspaceView[]) => (
-    <WorkspacePicker
+    <WorkspacePickFlow
       open
       anchorRef={anchorRef}
-      useSessions={hook(sessions)}
       useWorkspaces={hook(workspaceState(nextItems))}
       onPick={onPick}
       onClose={onClose}
       createWorkspace={createWorkspace}
       useDirectoryFlow={occupancy.useDirectoryFlow}
-      renderSlot={renderSlot}
+      renderDirectoryFlow={renderDirectoryFlow}
       t={t}
     />
   )
@@ -113,7 +110,9 @@ function chooseAdd(): void {
   fireEvent.click(screen.getByRole('menuitem', { name: '添加工作区…' }))
 }
 
-describe('WorkspacePicker', () => {
+// The flow component, not a slot registration: the hero WORKSPACE registration
+// is gone (FORK-NOTES "Inbox sidebar") and the flow now serves the browser alone.
+describe('WorkspacePickFlow', () => {
   it('lists same-title Workspaces separately and forwards the selected id', () => {
     const b = mount([workspace('alpha', 'Shared'), workspace('beta', 'Shared')])
     const entries = screen.getAllByRole('menuitem', { name: 'Shared' })
@@ -207,12 +206,13 @@ describe('WorkspacePicker', () => {
   })
 
   it('waits to show its menu until an optional anchor is available', () => {
-    const { renderSlot } = flowProbe()
+    const { renderDirectoryFlow } = flowProbe()
     render(
-      <WorkspacePicker
-        open useSessions={hook(sessions)} useWorkspaces={hook(workspaceState([workspace('alpha', 'Alpha')]))}
+      <WorkspacePickFlow
+        open useWorkspaces={hook(workspaceState([workspace('alpha', 'Alpha')]))}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
-        useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
+        useDirectoryFlow={occupancySource().useDirectoryFlow}
+        renderDirectoryFlow={renderDirectoryFlow} t={t}
       />,
     )
     expect(screen.queryByRole('menu')).toBeNull()
@@ -222,12 +222,13 @@ describe('WorkspacePicker', () => {
     const state: WorkspaceListState = {
       ...workspaceState([]), phase: 'pending', state: 'loading', baselinesReady: false,
     }
-    const { renderSlot } = flowProbe()
+    const { renderDirectoryFlow } = flowProbe()
     render(
-      <WorkspacePicker
-        open anchorRef={anchor()} useSessions={hook(sessions)} useWorkspaces={hook(state)}
+      <WorkspacePickFlow
+        open anchorRef={anchor()} useWorkspaces={hook(state)}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
-        useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
+        useDirectoryFlow={occupancySource().useDirectoryFlow}
+        renderDirectoryFlow={renderDirectoryFlow} t={t}
       />,
     )
     // An empty list is not final yet: jumping into the directory flow here

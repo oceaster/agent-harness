@@ -1,6 +1,6 @@
 /**
  * Browser half of the browse directory-picker backend: fills ui-workspace's
- * two directory-flow holes with the in-app Select Workspace Directory dialog
+ * sidebar directory-flow hole with the in-app Select Workspace Directory dialog
  * (figma `Harness` 813-23126 family), driving the node half's
  * `host.listDirectory`/`host.createDirectory` primitives. Mounting this
  * package therefore composes both sides of the browse interaction with one
@@ -77,16 +77,10 @@ export function apply(ctx: ClientContext): void {
     createDirectory: (path, name) => ctx.workspaces.createDirectory(path, name),
     t: ctx.locale.bind(LOCALE_NS),
   })
-  // Both declaration lifetimes must be live before the pair installs; the
-  // generator makes the two registrations one transactional effect. The
-  // outer/inner nesting order is arbitrary; neither hole has precedence.
-  ctx.slots.inject('conversation.hero.workspace.directoryFlow', () =>
-    ctx.slots.inject('sidebar.workspaces.directoryFlow', function* () {
-      yield ctx.slots.register({
-        name: 'conversation.hero.workspace.directoryFlow', inject: injected,
-      }, BrowseDirectoryFlow)
-      yield ctx.slots.register({
-        name: 'sidebar.workspaces.directoryFlow', inject: injected,
-      }, BrowseDirectoryFlow)
-    }))
+  // ONE hole left: the sidebar browser's. The conversation hero's picker hole
+  // went with the hero workspace chip (FORK-NOTES "Inbox sidebar"), so this
+  // occupant no longer pairs two registrations into a transactional effect.
+  ctx.slots.inject('sidebar.workspaces.directoryFlow', () => ctx.slots.register({
+    name: 'sidebar.workspaces.directoryFlow', inject: injected,
+  }, BrowseDirectoryFlow))
 }

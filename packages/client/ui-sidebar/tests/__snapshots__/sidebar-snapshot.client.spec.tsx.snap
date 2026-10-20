@@ -27,25 +27,6 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
           xmlns="http://www.w3.org/2000/svg"
         />
       </button>
-      <button
-        aria-label="New session"
-        class="newSession"
-        type="button"
-      >
-        <svg
-          data-content="c0ce4dcc"
-          fill="none"
-          height="14"
-          viewBox="0 0 16 16"
-          width="14"
-          xmlns="http://www.w3.org/2000/svg"
-        />
-        <span
-          class="newSessionLabel wide"
-        >
-          New Session
-        </span>
-      </button>
     </div>
     <div
       class="regionArea"
@@ -106,25 +87,6 @@ exports[`sidebar shell snapshots > renders the expanded column (capsule, empty h
           xmlns="http://www.w3.org/2000/svg"
         />
       </button>
-      <button
-        aria-label="New session"
-        class="newSession"
-        type="button"
-      >
-        <svg
-          data-content="c0ce4dcc"
-          fill="none"
-          height="14"
-          viewBox="0 0 16 16"
-          width="14"
-          xmlns="http://www.w3.org/2000/svg"
-        />
-        <span
-          class="newSessionLabel wide"
-        >
-          New Session
-        </span>
-      </button>
     </div>
     <div
       class="regionArea"
@@ -184,25 +146,6 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
           width="16"
           xmlns="http://www.w3.org/2000/svg"
         />
-      </button>
-      <button
-        aria-label="新建会话"
-        class="newSession"
-        type="button"
-      >
-        <svg
-          data-content="c0ce4dcc"
-          fill="none"
-          height="14"
-          viewBox="0 0 16 16"
-          width="14"
-          xmlns="http://www.w3.org/2000/svg"
-        />
-        <span
-          class="newSessionLabel wide"
-        >
-          新会话
-        </span>
       </button>
     </div>
     <div

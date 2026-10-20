@@ -23,7 +23,6 @@ afterEach(() => {
 const neverHook = (() => { throw new Error('shell must not read global hooks') }) as never
 
 function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; width?: number } = {}) {
-  const startSession = vi.fn()
   const toggleSidebar = vi.fn()
   let regionOwner: SidebarSectionOwnerProps | undefined
   let settingsOwner: SidebarSettingsOwnerProps | undefined
@@ -33,7 +32,7 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
     <SidebarRoot
       collapsed={current.collapsed} width={current.width}
       useSessions={neverHook} useWorkspaces={neverHook}
-      startSession={startSession} toggleSidebar={toggleSidebar} t={t}
+      toggleSidebar={toggleSidebar} t={t}
       renderSlot={((
         key: string,
         owner: SidebarFooterActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
@@ -53,7 +52,6 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
   )
   const view = render(root())
   return {
-    startSession,
     toggleSidebar,
     regionOwner: () => {
       if (regionOwner === undefined) throw new Error('region owner not rendered')
@@ -75,13 +73,13 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
 }
 
 describe('SidebarRoot shell', () => {
-  it('routes New Session and the column toggle', () => {
+  it('routes the column toggle and offers no New Session control', () => {
     const b = mountShell()
-    // The brand header is gone; the capsule alone starts a session.
-    const starters = screen.getAllByRole('button', { name: 'New session' })
-    expect(starters).toHaveLength(1)
-    fireEvent.click(starters[0]!)
-    expect(b.startSession).toHaveBeenCalledOnce()
+    // The inbox replaced the session list, so the shell starts no session at
+    // all: the only control in the top row is the fold toggle.
+    expect(screen.queryAllByRole('button', { name: 'New Session' })).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: 'New session' })).toHaveLength(0)
+    expect(screen.queryByText('New Session')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
     expect(b.toggleSidebar).toHaveBeenCalledOnce()
   })

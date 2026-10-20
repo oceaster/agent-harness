@@ -1,0 +1,504 @@
+/**
+ * The inbox controller: the state machine behind every screen and the one
+ * place a row click becomes the open conversation.
+ *
+ * What these tests hold down, in the order the ticket states them:
+ * - rows come from the API payload, in its order, and are never invented,
+ *   merged or hidden;
+ * - a row click issues exactly ONE open call for that agent, and nothing names
+ *   a session id before that call answered;
+ * - the conversation shown is the session id the server returned, selected
+ *   through the sessions port once the client's list carries it;
+ * - a refusal is rendered as a refusal: `cleared: false` or a failed call
+ *   leaves the row populated, and a 403 on the list read is the profile
+ *   refusal screen rather than a retryable error.
+ */
+import { describe, expect, it } from 'vitest'
+import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  InboxApi, InboxClearPayload, InboxListPayload, InboxOpenPayload, InboxOutcome,
+} from '../src/client/inbox-api.ts'
+import { InboxController, type InboxSessionPort } from '../src/client/inbox-controller.ts'
+
+const sid = (id: string): SessionId => id as SessionId
+
+const listPayload: InboxListPayload = {
+  person: { id: 'p-1', name: 'Person One' },
+  agents: [
+    {
+      agent: 'agent-a', name: 'Alpha', hasConversation: true,
+      sessionId: 's-a', blank: false, lastActivityAt: 100, running: false,
+    },
+    {
+      agent: 'agent-b', name: 'Beta', hasConversation: true,
+      sessionId: 's-b', blank: true, lastActivityAt: null, running: true,
+    },
+    {
+      agent: 'agent-c', name: 'Gamma', hasConversation: false,
+      sessionId: null, blank: true, lastActivityAt: null, running: false,
+    },
+  ],
+}
+
+/** A session list that behaves like the runtime's snapshot source. */
+function sessionList(ids: readonly string[] = []): {
+  store: ReturnType<typeof createSnapshotStore<SessionListState>>
+  add: (id: string, overrides?: Partial<SessionSummary>) => void
+  remove: (id: string) => void
+} {
+  const summary = (id: string, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
+    id: sid(id), displayTitle: id, running: false, blank: true, updatedAt: 0, ...overrides,
+  })
+  const items = ids.map(id => summary(id))
+  const store = createSnapshotStore<SessionListState>({
+    ids: items.map(item => item.id),
+    byId: Object.fromEntries(items.map(item => [item.id, item])),
+    current: undefined,
+    phase: 'ready',
+    subagentsByParent: {},
+    jobsBySession: {},
+    currentAddress: undefined,
+  })
+  return {
+    store,
+    add: (id, overrides) => {
+      const snapshot = store.getSnapshot()
+      const row = summary(id, overrides)
+      if (snapshot.ids.includes(sid(id))) {
+        store.set({ ...snapshot, byId: { ...snapshot.byId, [sid(id)]: row } })
+        return
+      }
+      store.set({
+        ...snapshot,
+        ids: [...snapshot.ids, sid(id)],
+        byId: { ...snapshot.byId, [sid(id)]: row },
+      })
+    },
+    remove: (id) => {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        ids: snapshot.ids.filter(candidate => candidate !== sid(id)),
+        byId: Object.fromEntries(Object.entries(snapshot.byId).filter(([key]) => key !== id)),
+      })
+    },
+  }
+}
+
+/** A manual clock so the "wait for the session list" path never sleeps. */
+function clock(): {
+  setTimer: (callback: () => void, ms: number) => unknown
+  clearTimer: (handle: unknown) => void
+  flush: () => void
+  pending: () => number
+} {
+  const timers = new Map<number, () => void>()
+  let next = 0
+  return {
+    setTimer: (callback) => { next += 1; timers.set(next, callback); return next },
+    clearTimer: (handle) => { timers.delete(handle as number) },
+    flush: () => {
+      const callbacks = [...timers.values()]
+      timers.clear()
+      for (const callback of callbacks) callback()
+    },
+    pending: () => timers.size,
+  }
+}
+
+interface BenchOptions {
+  list?: InboxOutcome<InboxListPayload>
+  open?: InboxOutcome<InboxOpenPayload>
+  clear?: InboxOutcome<InboxClearPayload>
+  /** Runs after the open answer resolves — the fake's way of delivering `host/session-added`. */
+  onOpen?: (agent: string) => void
+  /** Runs when the controller pulls the host list (`sessions.refresh()`). */
+  onRefresh?: () => void
+  /** Make the pull itself fail (a restarting harness). */
+  refreshFails?: boolean
+  /** Omit the pull entirely, as a runtime without the verb would. */
+  withoutRefresh?: boolean
+  sessions?: ReturnType<typeof sessionList>
+}
+
+/** Boot a controller over fake wire + session ports and record every call. */
+function bench(options: BenchOptions = {}) {
+  const calls: { api: string; agent?: string }[] = []
+  let refreshes = 0
+  const opened: string[] = []
+  let cleared = false
+  let list = options.list
+  let open = options.open
+  let clear = options.clear
+  const sessions = options.sessions ?? sessionList()
+  const api: InboxApi = {
+    list: () => {
+      calls.push({ api: 'list' })
+      return Promise.resolve(list ?? { ok: true, value: listPayload })
+    },
+    open: (agent) => {
+      calls.push({ api: 'open', agent })
+      const answer = open ?? {
+        ok: true as const,
+        value: { agent, sessionId: 's-new', created: true, blank: true, lastActivityAt: null },
+      }
+      options.onOpen?.(agent)
+      return Promise.resolve(answer)
+    },
+    clear: (agent) => {
+      calls.push({ api: 'clear', agent })
+      return Promise.resolve(clear ?? {
+        ok: true as const,
+        value: {
+          agent, hasConversation: false, sessionId: null, blank: true, lastActivityAt: null, cleared: true,
+        },
+      })
+    },
+  }
+  const hand = clock()
+  const port: InboxSessionPort = {
+    list: sessions.store,
+    open: (id) => { opened.push(id) },
+    clear: () => { cleared = true },
+    ...options.withoutRefresh === true ? {} : {
+      refresh: () => {
+        refreshes += 1
+        if (options.refreshFails === true) return Promise.reject(new Error('harness restarting'))
+        options.onRefresh?.()
+        return Promise.resolve()
+      },
+    },
+  }
+  const controller = new InboxController({
+    api,
+    sessions: port,
+    setTimer: hand.setTimer,
+    clearTimer: hand.clearTimer,
+  })
+  return {
+    controller,
+    sessions,
+    calls,
+    opened,
+    clearedFlag: () => cleared,
+    refreshCount: () => refreshes,
+    hand,
+    state: () => controller.store.getSnapshot(),
+    /** Swap the canned answer for the next call of that kind. */
+    setList: (next: InboxOutcome<InboxListPayload>) => { list = next },
+    setOpen: (next: InboxOutcome<InboxOpenPayload>) => { open = next },
+    setClear: (next: InboxOutcome<InboxClearPayload>) => { clear = next },
+  }
+}
+
+/** Let queued promise callbacks run. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve()
+}
+
+describe('inbox controller: the list read', () => {
+  it('renders the payload rows in the server order and nothing else', async () => {
+    const b = bench()
+    await b.controller.load()
+    const state = b.state()
+    expect(state.status).toBe('ready')
+    expect(state.person).toEqual({ id: 'p-1', name: 'Person One' })
+    expect(state.rows.map(row => row.agent)).toEqual(['agent-a', 'agent-b', 'agent-c'])
+    expect(state.rows.map(row => row.name)).toEqual(['Alpha', 'Beta', 'Gamma'])
+    expect(state.loadError).toBeNull()
+  })
+
+  it('treats an empty agent list as a valid answer, not a failure', async () => {
+    const b = bench({ list: { ok: true, value: { person: { id: 'p', name: 'P' }, agents: [] } } })
+    await b.controller.load()
+    expect(b.state().status).toBe('ready')
+    expect(b.state().rows).toEqual([])
+    expect(b.state().loadError).toBeNull()
+  })
+
+  it('makes a 403 on the list read the profile refusal, not a retryable error', async () => {
+    const b = bench({ list: { ok: false, status: 403, code: 'forbidden' } })
+    await b.controller.load()
+    expect(b.state().status).toBe('refused')
+    expect(b.state().rows).toEqual([])
+    expect(b.state().loadError).toBeNull()
+  })
+
+  it('keeps a failed read visible with its code so the panel can retry', async () => {
+    const b = bench({ list: { ok: false, status: 503, code: 'unavailable' } })
+    await b.controller.load()
+    expect(b.state().status).toBe('error')
+    expect(b.state().loadError).toBe('unavailable')
+  })
+
+  it('keeps rows from an earlier read and says the refresh failed', async () => {
+    const b = bench()
+    await b.controller.load()
+    b.setList({ ok: false, status: 0, code: 'transport' })
+    await b.controller.load()
+    expect(b.state().rows).toHaveLength(3)
+    expect(b.state().loadError).toBe('transport')
+    expect(b.state().status).toBe('error')
+  })
+
+  it('drops the in-flight read instead of stacking a second request', async () => {
+    const b = bench()
+    const first = b.controller.load()
+    const second = b.controller.load()
+    await Promise.all([first, second])
+    expect(b.calls.filter(call => call.api === 'list')).toHaveLength(1)
+  })
+})
+
+describe('inbox controller: opening a row', () => {
+  it('issues exactly one open call and shows the session the server returned', async () => {
+    const sessions = sessionList()
+    const b = bench({
+      sessions,
+      onOpen: () => { sessions.add('s-new') },
+    })
+    await b.controller.load()
+    await b.controller.open('agent-c')
+    expect(b.calls.filter(call => call.api === 'open')).toEqual([{ api: 'open', agent: 'agent-c' }])
+    expect(b.opened).toEqual(['s-new'])
+    expect(b.state().openAgent).toBe('agent-c')
+    const row = b.state().rows.find(candidate => candidate.agent === 'agent-c')
+    expect(row?.hasConversation).toBe(true)
+    expect(row?.sessionId).toBe('s-new')
+    expect(row?.blank).toBe(true)
+  })
+
+  it('names no session before the open answer carries one', async () => {
+    const sessions = sessionList()
+    const seen: string[][] = []
+    sessions.store.subscribe(() => { seen.push([...sessions.store.getSnapshot().ids]) })
+    const b = bench({ sessions, onOpen: () => { sessions.add('s-new') } })
+    await b.controller.load()
+    await b.controller.open('agent-c')
+    // The only id the list ever learned is the one the answer named.
+    expect(seen.flat()).toEqual(['s-new'])
+    expect(b.opened).toEqual(['s-new'])
+  })
+
+  it('pulls the host list once when the returned session is not in the mirror yet', async () => {
+    const sessions = sessionList()
+    const b = bench({ sessions, onRefresh: () => { sessions.add('s-new') } })
+    await b.controller.load()
+    await b.controller.open('agent-c')
+    // One pull for the click, then the select becomes legal.
+    expect(b.refreshCount()).toBe(1)
+    expect(b.opened).toEqual(['s-new'])
+    expect(b.state().notices).toEqual({})
+  })
+
+  it('does not pull the host list when the mirror already carries the session', async () => {
+    const sessions = sessionList(['s-new'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    await b.controller.open('agent-c')
+    expect(b.refreshCount()).toBe(0)
+    expect(b.opened).toEqual(['s-new'])
+  })
+
+  it('reports a failed pull as an open failure, never as a selection', async () => {
+    const b = bench({ refreshFails: true })
+    await b.controller.load()
+    await b.controller.open('agent-c')
+    expect(b.opened).toEqual([])
+    expect(b.state().notices['agent-c']).toBe('session-not-listed')
+    expect(b.state().busy).toEqual([])
+  })
+
+  it('waits for the session-added frame instead of polling the list', async () => {
+    const sessions = sessionList()
+    const b = bench({ sessions })
+    await b.controller.load()
+    const pending = b.controller.open('agent-c')
+    await settle()
+    // The answer landed, the list has not been told yet: no selection, no failure.
+    expect(b.opened).toEqual([])
+    expect(b.state().busy).toEqual(['agent-c'])
+    expect(b.hand.pending()).toBe(1)
+    sessions.add('s-new')
+    await settle()
+    await pending
+    expect(b.opened).toEqual(['s-new'])
+    expect(b.state().busy).toEqual([])
+    expect(b.state().notices).toEqual({})
+  })
+
+  it('reports a session that never reaches the client list', async () => {
+    // No pull verb at all, and no frame: the row must say so rather than throw.
+    const b = bench({ withoutRefresh: true })
+    await b.controller.load()
+    const pending = b.controller.open('agent-c')
+    await settle()
+    b.hand.flush()
+    await pending
+    expect(b.opened).toEqual([])
+    expect(b.state().notices['agent-c']).toBe('session-not-listed')
+    expect(b.state().busy).toEqual([])
+  })
+
+  it('renders a 409 as a real error on the row', async () => {
+    const b = bench({ open: { ok: false, status: 409, code: 'conflict' } })
+    await b.controller.load()
+    await b.controller.open('agent-a')
+    expect(b.state().notices['agent-a']).toBe('conflict')
+    expect(b.opened).toEqual([])
+    const row = b.state().rows.find(candidate => candidate.agent === 'agent-a')
+    // The row keeps the conversation the server still reports.
+    expect(row?.hasConversation).toBe(true)
+    expect(row?.sessionId).toBe('s-a')
+  })
+
+  it('renders a 502 as an open failure, never as an opened conversation', async () => {
+    const sessions = sessionList(['s-seeded'])
+    const b = bench({ sessions, open: { ok: false, status: 502, code: 'hostUnavailable' } })
+    await b.controller.load()
+    await b.controller.open('agent-c')
+    expect(b.state().notices['agent-c']).toBe('hostUnavailable')
+    expect(b.state().openAgent).toBeNull()
+    expect(b.opened).toEqual([])
+    expect(b.state().rows.find(row => row.agent === 'agent-c')?.hasConversation).toBe(false)
+  })
+
+  it('ignores a second click while the first open call is in flight', async () => {
+    const sessions = sessionList()
+    const b = bench({ sessions, onOpen: () => { sessions.add('s-new') } })
+    await b.controller.load()
+    await Promise.all([b.controller.open('agent-c'), b.controller.open('agent-c')])
+    expect(b.calls.filter(call => call.api === 'open')).toHaveLength(1)
+  })
+
+  it('clears a row notice when the next attempt starts', async () => {
+    const sessions = sessionList()
+    const b = bench({ sessions, open: { ok: false, status: 403, code: 'forbidden' } })
+    await b.controller.load()
+    await b.controller.open('agent-a')
+    expect(b.state().notices['agent-a']).toBe('forbidden')
+    const retry = b.controller.open('agent-a')
+    // The previous failure stops describing the row the moment a new attempt
+    // starts (before its answer lands).
+    expect(b.state().notices).toEqual({})
+    await retry
+    // This answer failed too, so the notice comes back with it.
+    expect(b.state().notices['agent-a']).toBe('forbidden')
+  })
+
+  it('forgets a notice for a row the server no longer returns', async () => {
+    const b = bench({ open: { ok: false, status: 403, code: 'forbidden' } })
+    await b.controller.load()
+    await b.controller.open('agent-a')
+    b.setList({
+      ok: true,
+      value: { person: { id: 'p-1', name: 'Person One' }, agents: [listPayload.agents[2]!] },
+    })
+    await b.controller.load()
+    expect(b.state().notices).toEqual({})
+    expect(b.state().rows.map(row => row.agent)).toEqual(['agent-c'])
+  })
+})
+
+describe('inbox controller: clearing a row', () => {
+  it('returns the row to the fresh state and resets the pane', async () => {
+    const sessions = sessionList(['s-a'])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    const b = bench({ sessions })
+    await b.controller.load()
+    await b.controller.clear('agent-a')
+    expect(b.calls.filter(call => call.api === 'clear')).toEqual([{ api: 'clear', agent: 'agent-a' }])
+    const row = b.state().rows.find(candidate => candidate.agent === 'agent-a')
+    expect(row).toEqual({
+      agent: 'agent-a', name: 'Alpha', hasConversation: false,
+      sessionId: null, blank: true, lastActivityAt: null, running: false,
+    })
+    expect(b.clearedFlag()).toBe(true)
+  })
+
+  it('never renders a refused clear as cleared', async () => {
+    const b = bench({
+      clear: {
+        ok: true,
+        value: {
+          agent: 'agent-a', hasConversation: true, sessionId: 's-a', blank: false, lastActivityAt: 100, cleared: false,
+        },
+      },
+    })
+    await b.controller.load()
+    await b.controller.clear('agent-a')
+    const row = b.state().rows.find(candidate => candidate.agent === 'agent-a')
+    expect(row?.hasConversation).toBe(true)
+    expect(row?.sessionId).toBe('s-a')
+    expect(row?.lastActivityAt).toBe(100)
+    expect(b.state().notices['agent-a']).toBe('clear-refused')
+    expect(b.clearedFlag()).toBe(false)
+  })
+
+  it('keeps the row populated when the clear call fails', async () => {
+    const b = bench({ clear: { ok: false, status: 503, code: 'unavailable' } })
+    await b.controller.load()
+    await b.controller.clear('agent-b')
+    const row = b.state().rows.find(candidate => candidate.agent === 'agent-b')
+    expect(row?.hasConversation).toBe(true)
+    expect(row?.sessionId).toBe('s-b')
+    expect(b.state().notices['agent-b']).toBe('unavailable')
+  })
+
+  it('leaves the pane alone when the cleared conversation was not the open one', async () => {
+    const sessions = sessionList(['s-a', 's-b'])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-b') })
+    const b = bench({ sessions })
+    await b.controller.load()
+    await b.controller.clear('agent-a')
+    expect(b.clearedFlag()).toBe(false)
+  })
+
+  it('clears the open row marker when the open conversation is cleared', async () => {
+    const sessions = sessionList()
+    const b = bench({ sessions, onOpen: () => { sessions.add('s-new') } })
+    await b.controller.load()
+    await b.controller.open('agent-c')
+    expect(b.state().openAgent).toBe('agent-c')
+    await b.controller.clear('agent-c')
+    expect(b.state().openAgent).toBeNull()
+    expect(b.clearedFlag()).toBe(true)
+  })
+
+  it('treats clearing an empty row as a no-op success', async () => {
+    const b = bench({
+      clear: {
+        ok: true,
+        value: {
+          agent: 'agent-c', hasConversation: false, sessionId: null, blank: true, lastActivityAt: null, cleared: true,
+        },
+      },
+    })
+    await b.controller.load()
+    await b.controller.clear('agent-c')
+    expect(b.state().notices).toEqual({})
+    expect(b.state().rows.find(row => row.agent === 'agent-c')?.hasConversation).toBe(false)
+  })
+})
+
+describe('inbox controller: live badges without polling', () => {
+  it('folds running and blank from the session list into the matching row', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    const stop = b.controller.followSessions()
+    const requestsBefore = b.calls.length
+    sessions.add('s-a', { running: true, blank: false })
+    await settle()
+    const row = b.state().rows.find(candidate => candidate.agent === 'agent-a')
+    expect(row?.running).toBe(true)
+    expect(row?.blank).toBe(false)
+    // A frame is not a request: the badge costs nothing on the wire.
+    expect(b.calls).toHaveLength(requestsBefore)
+    stop()
+    sessions.add('s-a', { running: false })
+    await settle()
+    expect(b.state().rows.find(candidate => candidate.agent === 'agent-a')?.running).toBe(true)
+  })
+})
