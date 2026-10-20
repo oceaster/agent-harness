@@ -416,10 +416,16 @@ export class SessionRuntime implements ISessions {
    * Clear the current selection so the layout shows the no-session empty
    * state (new-session affordance and the workspace preselection flow).
    * Wipes the persisted selection too — a reload stays on empty until the
-   * user opens or starts a session. The staged scope keeps its frozen view
-   * per the masked-gap contract until the next open() moves the stage.
+   * user opens or starts a session. This is the durable write: the projection
+   * deliberately keeps a selection it simply cannot show yet (see
+   * {@link projectList}), so an explicit clear is the only eraser. The staged
+   * scope keeps its frozen view per the masked-gap contract until the next
+   * open() moves the stage.
    */
   clear(): void {
+    // Write the cell before the selection drops so nothing observes a cleared
+    // current alongside a still-durable entry.
+    this.selection.set({})
     this.manager.clearSelection()
   }
 
@@ -715,11 +721,15 @@ export class SessionRuntime implements ISessions {
       }
     }
     const persisted = this.selection.getSnapshot().sessionId
-    // No current (cleared, or masked gap) wipes the persisted cell — a reload
-    // stays on empty; the in-memory selection still resurfaces a masked id.
-    if (current === undefined) {
-      if (persisted !== undefined) this.selection.set({})
-    } else if (byId[current] !== undefined
+    // Rule: the durable cell is written by an explicit open() or clear(), never
+    // by a projection that merely has nothing to show yet. `current ===
+    // undefined` is an ordinary transient state — the boot frame before the
+    // host list arrives, a list read that failed outright, a masked gap while
+    // the session is off the list — so it must not touch the selection. Erasing
+    // it here cost the selection on a single empty read, hidden until the next
+    // reload because the in-memory restore from the constructor kept the page
+    // working. A genuine clear writes the wipe itself (see clear()).
+    if (current !== undefined && byId[current] !== undefined
       && (persisted !== current
         || this.selection.getSnapshot().subagentAddress?.childSessionId !== currentAddress?.childSessionId
         || this.selection.getSnapshot().subagentAddress?.parentSessionId !== currentAddress?.parentSessionId

@@ -200,7 +200,10 @@ describe('current selection (migrated from ui-layout, arbitrated into the list s
     expect(storage.get('dsh.sessions.current')).toContain('s1')
     b.svc.clear()
     expect(b.svc.list.getSnapshot().current).toBeUndefined()
-    // Persisted wipe: a fresh service with the same storage stays on empty.
+    // The explicit clear is the durable write: the cell no longer names it.
+    expect(storage.get('dsh.sessions.current') ?? '').not.toContain('s1')
+    // Persisted wipe: a fresh service with the same storage stays on empty even
+    // once the list holds the session again (no resurrection on reload).
     const again = bench()
     await feedList(again, [{ id: 's1' }])
     expect(again.svc.list.getSnapshot().current).toBeUndefined()
@@ -349,6 +352,73 @@ describe('cell (render-layer session kit)', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('durable selection: a projection with nothing to show is not a clear', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  /** In-memory localStorage stand-in that keeps the durable cell readable per case. */
+  function stubStorage(seed: Record<string, string> = {}): Map<string, string> {
+    const storage = new Map<string, string>(Object.entries(seed))
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => { storage.set(k, v) },
+      removeItem: (k: string) => { storage.delete(k) },
+      clear: () => { storage.clear() },
+    })
+    return storage
+  }
+
+  /** The durable cell's content, flattened — the assertion reads the raw entry, not the store. */
+  const cell = (storage: Map<string, string>): string => storage.get('dsh.sessions.current') ?? ''
+
+  /** Select s1 in one boot and return the storage that now names it. */
+  async function selectedS1(): Promise<Map<string, string>> {
+    const storage = stubStorage()
+    const first = bench()
+    await feedList(first, [{ id: 's1' }])
+    first.svc.open(sid('s1'))
+    expect(cell(storage)).toContain('s1')
+    return storage
+  }
+
+  it('the boot frame before the host list arrives leaves the durable selection intact', async () => {
+    const storage = await selectedS1()
+    // A reload: the runtime restores the cell and the manager holds it, but the
+    // host list has not arrived yet — the projection runs with current undefined.
+    const reloaded = bench()
+    await reloaded.svc.refresh()
+    await Promise.resolve() // manager notifier flush
+    expect(reloaded.svc.list.getSnapshot().current).toBeUndefined() // nothing to show yet
+    expect(cell(storage)).toContain('s1') // …and the durable entry is not destroyed
+    // The list arriving restores the selection with no click behind it.
+    await feedList(reloaded, [{ id: 's1' }])
+    expect(reloaded.svc.list.getSnapshot().current).toBe('s1')
+  })
+
+  it('a failed list read cannot cost the selection', async () => {
+    const storage = await selectedS1()
+    const reloaded = bench()
+    reloaded.api.onList = () => Promise.resolve(err({ code: 'internal', message: 'list read failed', details: {} }))
+    await reloaded.svc.refresh()
+    await Promise.resolve()
+    expect(cell(storage)).toContain('s1')
+    // The retry succeeds and the selection comes back.
+    await feedList(reloaded, [{ id: 's1' }])
+    expect(reloaded.svc.list.getSnapshot().current).toBe('s1')
+  })
+
+  it('an empty or masked list read mid-session keeps the durable entry', async () => {
+    const storage = stubStorage()
+    const b = bench()
+    await feedList(b, [{ id: 's1' }])
+    b.svc.open(sid('s1'))
+    await feedList(b, []) // masked: the session is not on the list right now
+    expect(b.svc.list.getSnapshot().current).toBeUndefined()
+    expect(cell(storage)).toContain('s1')
+    await feedList(b, [{ id: 's1' }]) // back on the list: the selection resurfaces
+    expect(b.svc.list.getSnapshot().current).toBe('s1')
   })
 })
 
