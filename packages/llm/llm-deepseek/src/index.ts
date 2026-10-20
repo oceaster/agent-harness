@@ -48,9 +48,24 @@ const DEFAULT_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 /** The single provider route this plugin owns. */
 const PROVIDER = 'deepseek-official'
 
+/**
+ * Advisory catalog for discovery consumers. V4.1 Flash carries `inputModalities`
+ * because an omitted value defaults to `['text']`, which gates image input off.
+ */
 const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
-  { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', contextWindow: DEFAULT_CONTEXT_WINDOW },
-  { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro', contextWindow: DEFAULT_CONTEXT_WINDOW },
+  {
+    id: 'deepseek-flash',
+    name: 'DeepSeek-V4.1-Flash',
+    contextWindow: 1_048_576,
+    maxTokens: 393_216,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'deepseek-v4-pro',
+    name: 'DeepSeek-V4-Pro',
+    contextWindow: 1_048_576,
+    maxTokens: 393_216,
+  },
 ]
 
 const MODEL_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModality[]
