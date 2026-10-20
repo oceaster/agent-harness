@@ -436,7 +436,8 @@ export interface SessionsApi {
 
   /**
    * Edits, removes, or strictly steers one pending queued occurrence on an ordinary session.
-   * Session-backed subagents reject with `agent-busy`.
+   * Resident subagents support removing next-turn occurrences only; edit, steer,
+   * and next-step removal reject with `agent-busy`. Cold sessions are never resumed.
    */
   updateQueue(request: RpcRequest<{ sessionId: SessionId; itemId: MessageId; action: QueueAction }>):
   Promise<RpcResponse<{ accepted: true }>>

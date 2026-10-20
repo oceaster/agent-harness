@@ -2819,7 +2819,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           }))
         }
         const agent = ctx.agents.get(sessionId)
-        if (agent !== undefined && hasSubagentOwner(agent.session, agent)) {
+        const subagentOwned = agent !== undefined && hasSubagentOwner(agent.session, agent)
+        if (subagentOwned && action.kind !== 'remove') {
           return Promise.resolve(err(request, subagentOwnershipError(sessionId)))
         }
         if (agent === undefined) {
@@ -2842,6 +2843,9 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             message: 'queued item is no longer pending',
             details: { itemId },
           }))
+        }
+        if (subagentOwned && target !== 'next-turn') {
+          return Promise.resolve(err(request, subagentOwnershipError(sessionId)))
         }
         if (action.kind === 'steer' && (target !== 'next-turn' || agent.status !== 'running')) {
           return Promise.resolve(err(request, {

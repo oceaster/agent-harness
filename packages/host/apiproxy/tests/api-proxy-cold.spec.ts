@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore from '@deepseek-ai/dsh-session'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
 import { TypertLookupFailure } from '@deepseek-ai/dsh-typert-protocol'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { createUserMessage, MessageId } from '@deepseek-ai/dsh-llm'
@@ -526,6 +526,111 @@ describe('subagent ownership fence', () => {
     if (!prompt.result.ok) expect(prompt.result.error.code).toBe('internal')
   })
 
+  it('removes exact pending child occurrences durably without interrupting or waking an Agent', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(UserQuestionService)
+    const session = ctx.sessions.create(sid('queued-child'), {
+      meta: { cwd: '/proj', parentSession: sid('cold-parent'), origin: 'subagent' },
+    })
+    const notifications = { inserted: vi.fn(), discarded: vi.fn(), claimed: vi.fn() }
+    const inbox = new Inbox(session, notifications)
+    const first = createUserMessage({ content: [{ type: 'text', text: 'same' }], source: { kind: 'user' } })
+    const second = createUserMessage({ content: [{ type: 'text', text: 'same' }], source: { kind: 'user' } })
+    const step = createUserMessage({ content: [{ type: 'text', text: 'active steering' }], source: { kind: 'user' } })
+    inbox.append('next-turn', first)
+    inbox.append('next-turn', second)
+    inbox.append('next-step', step)
+    const cancel = vi.fn()
+    const steer = vi.fn()
+    const child = { id: session.id, session, ctx, status: 'running', inbox, cancel, steer } as unknown as Agent
+    ctx.agents.register(child)
+    const resume = vi.spyOn(ctx.agents, 'resume')
+    const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+    const remove = (itemId: MessageId) => api.sessions.updateQueue(request({
+      sessionId: child.id, itemId, action: { kind: 'remove' as const },
+    }))
+    expect((await remove(first.id)).result.ok).toBe(true)
+    expect(inbox.nextTurn.map(message => message.id)).toEqual([second.id])
+    const edited = await api.sessions.updateQueue(request({
+      sessionId: child.id,
+      itemId: second.id,
+      action: { kind: 'edit', content: [{ type: 'text', text: 'rewritten' }] },
+    }))
+    expect(edited.result.ok).toBe(false)
+    if (!edited.result.ok) expect(edited.result.error.code).toBe('agent-busy')
+    expect(inbox.nextTurn).toEqual([second])
+    const claimed = await remove(first.id)
+    expect(claimed.result.ok).toBe(false)
+    if (!claimed.result.ok) expect(claimed.result.error.code).toBe('queue-item-not-found')
+    const protectedStep = await remove(step.id)
+    expect(protectedStep.result.ok).toBe(false)
+    if (!protectedStep.result.ok) expect(protectedStep.result.error.code).toBe('agent-busy')
+    expect((await remove(second.id)).result.ok).toBe(true)
+    expect(inbox.nextTurn).toEqual([])
+    expect(new Inbox(session, notifications).nextTurn).toEqual([])
+    expect(inbox.nextStep).toEqual([step])
+    expect(child.status).toBe('running')
+    expect(cancel).not.toHaveBeenCalled()
+    expect(steer).not.toHaveBeenCalled()
+    expect(resume).not.toHaveBeenCalled()
+    expect(notifications.discarded).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves an ordinary session fully mutable beside a pruned resident child', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(UserQuestionService)
+    const childSession = ctx.sessions.create(sid('prune-child'), {
+      meta: { cwd: '/proj', parentSession: sid('cold-parent'), origin: 'subagent' },
+    })
+    const humanSession = ctx.sessions.create(sid('ordinary'), { meta: { cwd: '/proj' } })
+    const childInbox = new Inbox(childSession, { inserted: vi.fn(), discarded: vi.fn(), claimed: vi.fn() })
+    const humanInbox = new Inbox(humanSession, { inserted: vi.fn(), discarded: vi.fn(), claimed: vi.fn() })
+    const childQueued = createUserMessage({ content: [{ type: 'text', text: 'child follow-up' }], source: { kind: 'user' } })
+    const humanFirst = createUserMessage({ content: [{ type: 'text', text: 'human first' }], source: { kind: 'user' } })
+    const humanSecond = createUserMessage({ content: [{ type: 'text', text: 'human second' }], source: { kind: 'user' } })
+    childInbox.append('next-turn', childQueued)
+    humanInbox.append('next-turn', humanFirst)
+    humanInbox.append('next-turn', humanSecond)
+    ctx.agents.register({
+      id: childSession.id, session: childSession, ctx, status: 'running', inbox: childInbox, cancel: vi.fn(), steer: vi.fn(),
+    } as unknown as Agent)
+    const human = {
+      id: humanSession.id, session: humanSession, ctx, status: 'running', inbox: humanInbox, cancel: vi.fn(), steer: vi.fn(),
+    } as unknown as Agent
+    ctx.agents.register(human)
+    const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+
+    const prune = await api.sessions.updateQueue(request({
+      sessionId: childSession.id, itemId: childQueued.id, action: { kind: 'remove' },
+    }))
+    expect(prune.result.ok).toBe(true)
+    // The child's allowance is scoped to that child: the ordinary session keeps
+    // every action, and none of them read the child's inbox.
+    expect(humanInbox.nextTurn.map(message => message.id)).toEqual([humanFirst.id, humanSecond.id])
+    const edited = await api.sessions.updateQueue(request({
+      sessionId: humanSession.id,
+      itemId: humanFirst.id,
+      action: { kind: 'edit', content: [{ type: 'text', text: 'edited first' }] },
+    }))
+    expect(edited.result.ok).toBe(true)
+    expect(humanInbox.nextTurn[0]?.content).toEqual([{ type: 'text', text: 'edited first' }])
+    const steered = await api.sessions.updateQueue(request({
+      sessionId: humanSession.id, itemId: humanFirst.id, action: { kind: 'steer' },
+    }))
+    expect(steered.result.ok).toBe(true)
+    expect(human.steer).toHaveBeenCalledTimes(1)
+    const removed = await api.sessions.updateQueue(request({
+      sessionId: humanSession.id, itemId: humanSecond.id, action: { kind: 'remove' },
+    }))
+    expect(removed.result.ok).toBe(true)
+    expect(humanInbox.nextTurn).toEqual([])
+    expect(childInbox.nextTurn).toEqual([])
+  })
+
   it('rejects origin-marked and runtime-owned live children from generic controls', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
@@ -565,7 +670,7 @@ describe('subagent ownership fence', () => {
     const queued = await api.sessions.updateQueue(request({
       sessionId: originChild.id,
       itemId: MessageId('queued-item'),
-      action: { kind: 'remove' },
+      action: { kind: 'steer' },
     }))
     expect(queued.result.ok).toBe(false)
     if (!queued.result.ok) expect(queued.result.error.code).toBe('agent-busy')
