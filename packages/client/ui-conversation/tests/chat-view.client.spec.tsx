@@ -615,6 +615,30 @@ describe('ChatView', () => {
     ])
   })
 
+  it('replaces an unavailable agent diagnostic with one sentence to act on', () => {
+    // The provider's own text carries a gateway cooldown countdown that reads as
+    // a hard deadline ("recovers in 86227s"), and credit in practice returns in
+    // minutes. The transcript says that plainly instead of quoting it.
+    const h = makeHarness({
+      nodes: [
+        user(1, 'try'),
+        { ...turnError(2, 'QUOTA'), message: 'DeepSeek unavailable — direct: no_credit, recovers in 86227s' },
+        { ...turnError(3, 'SERVER'), message: 'DeepSeek upstream failure after 2 attempt(s): HTTP 502' },
+      ],
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.getAllByRole('status').map(status => status.textContent)).toEqual([
+      zh['message.turnError.unavailable'],
+      zh['message.turnError.unavailable'],
+    ])
+    // Neither the raw provider text nor its machine code reaches the transcript.
+    expect(view.queryByText(/no_credit/)).toBeNull()
+    expect(view.queryByText(/recovers in/)).toBeNull()
+    expect(view.queryByText('QUOTA')).toBeNull()
+    expect(view.queryByText('SERVER')).toBeNull()
+    expect(view.queryByText(zh['message.turnError'])).toBeNull()
+  })
+
   it('renders the max-tokens notice with localized guidance, distinct from turn errors', () => {
     const h = makeHarness({ nodes: [user(1, 'try'), assistant(2, 'truncated'), turnMaxTokens(3)] })
     const view = render(<h.ChatView {...h.props} />)

@@ -9,6 +9,7 @@ import type {
   ModelRetryNode, TurnErrorNode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { JsonBlock, MessageText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import { isUnavailableFailureCode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import { ReferenceIcon } from '../reference/ReferenceIcon.tsx'
 import { CompactionItem } from './CompactionItem.tsx'
@@ -117,6 +118,20 @@ function TurnErrorItem({ node, t }: {
   node: TurnErrorNode
   t: ChatViewSlotProps['t']
 }) {
+  // An unavailable agent gets one plain sentence instead of the provider's own
+  // diagnostic. The raw text carries a gateway cooldown countdown ("recovers in
+  // 86227s") that reads as a hard deadline, and the code chip beside it is
+  // jargon: the only useful advice is to try again in a few minutes.
+  if (isUnavailableFailureCode(node.code)) {
+    return (
+      <div className={css.turnErrorRow} role="status">
+        <StateDot state="error" className={css.turnErrorDot} />
+        <div className={css.turnErrorCopy}>
+          <span className={css.turnErrorMessage}>{t('message.turnError.unavailable')}</span>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className={css.turnErrorRow} role="status">
       <StateDot state="error" className={css.turnErrorDot} />
