@@ -1,5 +1,7 @@
 # Reaction-note probe fixture (spike, ticket 5ef4e080)
 
+English | [中文](README.zh.md)
+
 Keyless, throwaway measurement rig for "can a background note reach the agent's
 next run without starting a turn?". **Not product source, not a test suite, not
 wired into any gate.** Findings and the recommendation live in

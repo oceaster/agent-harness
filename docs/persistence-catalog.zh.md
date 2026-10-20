@@ -535,6 +535,26 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 来源：[`packages/plan/plan-mode/src/index.ts:54`](../packages/plan/plan-mode/src/index.ts)
 
+### `reaction/*`
+
+<a id="reactionnote--log-only"></a>
+
+#### `reaction/note` — log-only
+
+```ts persistence-catalog
+/**
+ * A human reaction to an earlier message. Log-only and prose-free: it never
+ * enters the ordered surface, so it is invisible in the transcript and
+ * excluded from compaction, and it is always written with the envelope's
+ * `ignorable: true` marker. It reaches the model only through
+ * `deriveEventMessage`, which appends one user-role line per note to the next
+ * request.
+ */
+'reaction/note': ReactionNoteEventData
+```
+
+来源：[`packages/core/session/src/types.ts:339`](../packages/core/session/src/types.ts)
+
 ### `request/*`
 
 <a id="requestcontext--log-only"></a>

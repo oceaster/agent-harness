@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-conversation/tests/fixture/react-note/README.md
+README.md: 0c101aa1ad0b0e264444de1c9128bdc387d22f4f
+README.zh.md: 2d4158595c9530c17b41016227990215a5595ab5

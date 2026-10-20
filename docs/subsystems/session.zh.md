@@ -93,6 +93,15 @@ interface SessionEventMap {
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }
   /**
+   * A human reaction to an earlier message. Log-only and prose-free: it never
+   * enters the ordered surface, so it is invisible in the transcript and
+   * excluded from compaction, and it is always written with the envelope's
+   * `ignorable: true` marker. It reaches the model only through
+   * `deriveEventMessage`, which appends one user-role line per note to the next
+   * request.
+   */
+  'reaction/note': ReactionNoteEventData
+  /**
    * Full header for the next request, appended inside its step before dispatch.
    * It is log-only; the latest snapshot reconstructs the request header.
    */
@@ -455,7 +464,10 @@ declare class Session {
    *   declare how it joins the surface, the sole source of derived model
    *   history) and
    *   rejected by the compiler for non-surface types like `turn/start` or
-   *   `assistant/chunk`.
+   *   `assistant/chunk`. On a log-only event the same position instead accepts
+   *   {@link EnvelopeIntent}: `ignorable: true` writes the envelope's skip
+   *   marker, which is what makes a new event kind readable by a build that
+   *   does not know it.
    * @returns the logged event — its assigned `seq`/`time` plus the SNAPSHOT of
    *   `data` that entered the log, so reading `event.data` back sees the logged
    *   value, never the caller's still-mutable input.
@@ -476,7 +488,7 @@ declare class Session {
   append<T extends SessionEventType>(
     type: T,
     data: SessionEventMap[T],
-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : []
+    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : [opts?: EnvelopeIntent]
   ): SessionEvent<T>;
   /**
    * The {@link EpochHeader} in force after the log's last header event — the
@@ -501,6 +513,17 @@ declare class Session {
    * turn boundary) is correctly absent, and a compaction `replace` deletes the
    * shadowed nodes from the derivation. The projection rules are
    * {@link deriveEventMessage}, folded per node.
+   *
+   * Model notes ({@link isModelNoteEvent}) are the one exception, and it is
+   * one-directional: they are log-only — absent from {@link Session.surface},
+   * so absent from the client transcript and from every compaction span — but
+   * they do reach the model as a second segment appended AFTER the surface
+   * segment, in log order. Keeping the two segments apart (rather than
+   * interleaving each note at its log position) is what makes the result a pure
+   * function of the log: a later surface append never reorders, and replay, a
+   * resume, and a post-compaction rebuild produce the identical array. The
+   * practical effect is that an unreacted-to note sits immediately before
+   * whatever the human types next.
    *
    * CACHED: each surface node is projected exactly once, when first seen — a
    * call costs O(new nodes), and a surface rewrite (a `replace`;

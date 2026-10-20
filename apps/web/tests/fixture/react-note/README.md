@@ -1,5 +1,7 @@
 # Reaction-note fixture (ticket `f1bdaed3`)
 
+English | [中文](README.zh.md)
+
 Measures the host half of the reaction feature against the **real built
 harness**: an isolated `DSH_HOME`, a recording mock provider, and the same HTTP
 client-request carrier the browser uses. No product file is patched, no API
