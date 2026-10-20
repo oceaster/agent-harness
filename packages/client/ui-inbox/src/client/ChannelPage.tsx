@@ -36,7 +36,7 @@ export function ChannelPage({ useChannels, refreshChannel, t }: ChannelPageProps
         {state.loading && <p>{t('channel.loading')}</p>}
         {!state.loading && state.messages.length === 0 && state.error === null && <p>{t('channel.empty')}</p>}
         {state.messages.map(message => <article className={css.channelMessage} key={message.id}
-          data-testid="agent-channel-message" data-side={message.sender === state.selected?.agents[1] ? 'right' : 'left'}>
+          data-testid="agent-channel-message" data-agent={message.sender} data-side={message.sender === state.selected?.agents[1] ? 'right' : 'left'}>
           <div className={css.channelMessageStack}>
             <header><strong>{message.sender}</strong>
               {message.priority === 'high' && <span>{t('channel.high')}</span>}
