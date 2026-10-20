@@ -81,8 +81,13 @@ export function apply(ctx: ClientContext): void {
     },
   })
 
+  // `priority: -1` is the shadowing rank: the single-kind cell renders the
+  // lowest priority, so this panel takes the region over while ui-workspace
+  // keeps its own registration (and everything else it provides: the hero
+  // WorkspaceChip, the picker dialog, the composer unlock). Two registrations
+  // at the SAME priority throw, which is why the rank is explicit.
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
-    { name: 'sidebar.workspaces', inject: injected, locale: NS },
+    { name: 'sidebar.workspaces', priority: -1, inject: injected, locale: NS },
     InboxPanel,
   ))
 }
