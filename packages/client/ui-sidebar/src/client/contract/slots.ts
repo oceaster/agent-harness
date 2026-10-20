@@ -43,6 +43,8 @@ export interface SidebarSectionOwnerProps {
   wide: boolean
   /** Rail icons request expansion; the browser rides the wide flip for focus. */
   expandSidebar: () => void
+  /** The inbox header owns the expanded fold control. */
+  collapseSidebar: () => void
 }
 
 /**

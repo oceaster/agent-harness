@@ -22,6 +22,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { createInboxApi, type InboxApi } from './inbox-api.ts'
 import { InboxController } from './inbox-controller.ts'
+import { ChannelController } from './channel-controller.ts'
 import { InboxPanel } from './InboxPanel.tsx'
 import { en, zh, type InboxKey } from './locales.ts'
 
@@ -60,6 +61,15 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-inbox: dictionaries')
 
   const api: InboxApi = createInboxApi()
+  const channels = new ChannelController()
+  ctx.effect(() => {
+    void channels.load()
+    const timer = setInterval(() => {
+      if (channels.store.getSnapshot().error !== null && channels.store.getSnapshot().selected === null) void channels.load()
+      else void channels.refresh()
+    }, 2000)
+    return () => { clearInterval(timer) }
+  }, 'ui-inbox: agent channels')
   // The navigation seam, assembled explicitly. `list`, `open` and `clear` are
   // the typed ISessions face; `refresh` is not — the runtime keeps the
   // wire-pump verbs on the concrete SessionRuntime it provides as
@@ -101,8 +111,12 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-inbox: inbox reads')
 
   const injected = () => ({
-    hooks: { inbox: controller.store },
-    load: () => { void controller.load() },
+    hooks: { inbox: controller.store, channels: channels.store },
+    load: () => { void controller.load(); void channels.load(); void channels.refresh() },
+    openChannel: (id: string) => { void channels.open(id) },
+    closeChannel: () => { channels.close() },
+    refreshChannel: () => { void channels.refresh() },
+    clearChannel: () => { void channels.clear() },
     open: (agent: string) => { void controller.open(agent) },
     clear: (agent: string) => { void controller.clear(agent) },
   })

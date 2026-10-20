@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import type {
   SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarSectionOwnerProps,
   SidebarSettingsOwnerProps,
@@ -75,12 +75,12 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
 describe('SidebarRoot shell', () => {
   it('routes the column toggle and offers no New Session control', () => {
     const b = mountShell()
-    // The inbox replaced the session list, so the shell starts no session at
-    // all: the only control in the top row is the fold toggle.
+    // The expanded inbox owns the fold control in its header.
     expect(screen.queryAllByRole('button', { name: 'New Session' })).toHaveLength(0)
     expect(screen.queryAllByRole('button', { name: 'New session' })).toHaveLength(0)
     expect(screen.queryByText('New Session')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull()
+    b.regionOwner().collapseSidebar()
     expect(b.toggleSidebar).toHaveBeenCalledOnce()
   })
 

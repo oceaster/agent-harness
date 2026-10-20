@@ -13,6 +13,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   node, openFile, forkAt, renderSlot, renderSlotChain, t, useSession,
 }: TurnTailNodeViewProps) {
   const data = node.data
+  const readOnly = useSession(snapshot => Boolean(snapshot.subagent))
   const hasLaterChatNode = useSession(snapshot =>
     snapshot.chat.locations.getTurn(data.turn).at(-1) !== node.key)
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
@@ -29,7 +30,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   // Interruption-frozen partials carry no messageId, so they address no
   // durable message and contribute no per-message actions.
   const messageId = closing.finalNode.messageId
-  const assistantActions = messageId === undefined
+  const assistantActions = readOnly || messageId === undefined
     ? null
     : renderSlot('conversation.chat.assistant-actions', { messageId })
   return (
@@ -42,7 +43,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         ttftMs={data.ttftMs}
         tokensPerSecond={data.tokensPerSecond}
         clock="end"
-        onBranch={() => { forkAt(closing.finalNode.seq) }}
+        onBranch={readOnly ? undefined : () => { forkAt(closing.finalNode.seq) }}
         branchUnavailable={data.branchUnavailable || hasLaterChatNode}
         className={css.actions}
         extraActions={assistantActions}

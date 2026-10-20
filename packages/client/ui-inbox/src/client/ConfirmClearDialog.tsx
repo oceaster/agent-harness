@@ -23,11 +23,13 @@ const CANCEL_SELECTOR = '[data-testid="ui-inbox-confirm-cancel"]'
 /**
  * Keep keyboard focus inside the open modal dialog.
  * @param open - whether the dialog is showing.
+ * @param selector - initial focus target inside the dialog.
  */
-function useFocusTrap(open: boolean): void {
+export function useFocusTrap(open: boolean, selector = CANCEL_SELECTOR): void {
   useEffect(() => {
     if (!open) return
-    document.querySelector<HTMLElement>(CANCEL_SELECTOR)?.focus()
+    const previous = document.activeElement
+    document.querySelector<HTMLElement>(selector)?.focus()
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Tab') return
       // The primitive renders the dialog element itself, so the trap resolves
@@ -56,8 +58,11 @@ function useFocusTrap(open: boolean): void {
       }
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => { document.removeEventListener('keydown', onKeyDown) }
-  }, [open])
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus()
+    }
+  }, [open, selector])
 }
 
 /** Props of the confirmation dialog. */

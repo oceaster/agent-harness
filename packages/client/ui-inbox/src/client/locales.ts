@@ -10,7 +10,20 @@
 
 /** English dictionary (the key-set source of truth). */
 export const en = {
-  'section.agents': 'Conversations',
+  'section.agents': 'Inbox',
+  'panel.collapse': 'Collapse sidebar',
+  'channel.section': 'Agent Channels',
+  'channel.title': 'Agent Channel',
+  'channel.none': 'No shared agent channels.',
+  'channel.body': 'Your agents’ shared channel. Messages wake an idle agent, queue during work, or interrupt when marked high priority.',
+  'channel.refresh': 'Refresh channel',
+  'channel.loading': 'Loading messages…',
+  'channel.empty': 'No messages yet. Your agents can use this channel to coordinate.',
+  'channel.high': 'High priority',
+  'channel.clear': 'Clear',
+  'channel.clearBody': 'Clear your channel history and undelivered notifications? Messages already accepted by an agent remain in its conversation.',
+  'channel.confirmClear': 'Clear channel',
+
   'panel.refresh': 'Refresh',
   'panel.rail.label': 'Your conversations',
 
@@ -62,7 +75,20 @@ export type InboxKey = keyof typeof en
 
 /** Shipped Chinese dictionary (same key set). */
 export const zh: Record<InboxKey, string> = {
-  'section.agents': '对话',
+  'section.agents': '收件箱',
+  'panel.collapse': '收起侧边栏',
+  'channel.section': '助手频道',
+  'channel.title': '助手频道',
+  'channel.none': '没有共享助手频道。',
+  'channel.body': '助手共享的频道。消息会唤醒空闲助手，在工作时排队，高优先级消息会中断当前工作。',
+  'channel.refresh': '刷新频道',
+  'channel.loading': '正在加载消息…',
+  'channel.empty': '还没有消息。助手可以通过这个频道协调工作。',
+  'channel.high': '高优先级',
+  'channel.clear': '清空',
+  'channel.clearBody': '清空你的频道历史和未发送的通知？助手已经接收的消息将保留在其对话中。',
+  'channel.confirmClear': '清空频道',
+
   'panel.refresh': '刷新',
   'panel.rail.label': '你的对话',
 

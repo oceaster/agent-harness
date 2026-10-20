@@ -17,6 +17,7 @@ import type { InboxAgentRow } from '../src/client/inbox-api.ts'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { InboxPanel } from '../src/client/InboxPanel.tsx'
 import type { InboxState } from '../src/client/inbox-controller.ts'
+import type { ChannelState } from '../src/client/channel-controller.ts'
 import { en } from '../src/client/locales.ts'
 import type { InboxPanelProps } from '../src/client/slots.ts'
 
@@ -67,12 +68,23 @@ function mount(overrides: {
   const clear = vi.fn()
   const load = vi.fn()
   const expandSidebar = vi.fn()
+  const collapseSidebar = vi.fn()
+  const channels = createSnapshotStore<ChannelState>({ rows:[{ id:'delta-darwin',name:'Delta-Darwin',agents:['delta','darwin'] }],selected:null,messages:[],error:null,loading:false })
+  const openChannel = vi.fn()
+  const closeChannel = vi.fn()
+  const refreshChannel = vi.fn()
   // The runtime share also carries the global session/workspace hooks; the
   // panel never reads them, so they are never-called stubs.
   const neverHook = (() => { throw new Error('the inbox panel must not read global hooks') }) as never
   const props: InboxPanelProps = {
     wide: overrides.wide ?? true,
     expandSidebar,
+    collapseSidebar,
+    useChannels: bindSnapshotSelector(channels),
+    openChannel,
+    closeChannel,
+    refreshChannel,
+    clearChannel: vi.fn(),
     useSessions: neverHook,
     useWorkspaces: neverHook,
     useInbox: bindSnapshotSelector(inbox),
@@ -82,7 +94,7 @@ function mount(overrides: {
     t,
   }
   const view = render(<InboxPanel {...props} />)
-  return { ...view, inbox, open, clear, load, expandSidebar }
+  return { ...view, inbox, channels, open, clear, load, expandSidebar, collapseSidebar, openChannel, closeChannel, refreshChannel }
 }
 
 describe('inbox panel: rows', () => {

@@ -126,22 +126,20 @@ export function SidebarRoot({
       }}
       onPointerLeave={() => { armLinger() }}
     >
-      {/* Top row: the collapse toggle alone. The brand header is intentionally
-          absent — the surrounding app chrome already carries the title — and the
-          New Session control is gone with the session list it belonged to. */}
-      <div className={css.topRow}>
-        <Tooltip label={collapsed ? t('toggle.open') : t('toggle.collapse')} delayMs={500}>
+      {/* The rail owns its expand control; the wide inbox owns its header control. */}
+      {!wide && <div className={css.topRow}>
+        <Tooltip label={t('toggle.open')} delayMs={500}>
           <button
             type="button"
             className={clsx(css.iconButton, css.toggle)}
-            aria-label={collapsed ? t('toggle.open') : t('toggle.collapse')}
+            aria-label={t('toggle.open')}
             onClick={() => { toggleSidebar() }}
           >
             {/* Rail icons render at 18 (figma rail spec); expanded keeps the glyph-native sizes. */}
-            <IconPanelLeftOutline16 className={css.panelIcon} size={wide ? 16 : 18} />
+            <IconPanelLeftOutline16 className={css.panelIcon} size={18} />
           </button>
         </Tooltip>
-      </div>
+      </div>}
 
       {/* The browsing region fills the column between the controls and the
           foot in both states; its rail icon column rides the same slot. */}
@@ -149,6 +147,7 @@ export function SidebarRoot({
         {renderSlot('sidebar.workspaces', {
           wide,
           expandSidebar: () => { if (collapsed) toggleSidebar() },
+          collapseSidebar: () => { toggleSidebar() },
         })}
       </div>
 

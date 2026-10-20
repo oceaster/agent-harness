@@ -17,6 +17,9 @@ export function ConversationRoot({
 }: ConversationRootProps) {
   const openState = useSession(s => s.openState)
   const composerPhase = useSession(s => s.composerPhase)
+  const child = useSession(s => Boolean(s.subagent))
+  const childSummary = useSessions(s => sessionId !== undefined && s.byId[sessionId]?.origin === 'subagent')
+  const readOnly = child || childSummary
   const pending = useSession(s => s.pending) ?? []
   const session = useSession(s => s)
   const inputState = useInput(s => s)
@@ -120,7 +123,7 @@ export function ConversationRoot({
       {renderSlot('conversation.session.header', {})}
       <div className={css.scrollBody} data-conversation-scroll="">
         {renderSlot('conversation.session', {})}
-        {composerSeat}
+        {!readOnly && composerSeat}
       </div>
     </div>
   )

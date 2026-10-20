@@ -307,3 +307,15 @@
   gap: 8px;
   width: 100%;
 }
+
+.header .title { flex: 1; color: var(--dsw-alias-label-primary); font-size: 14px; }
+.channels { margin-top: 18px; }
+.channelTitle { margin: 0 12px 8px; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+.channelDialog { width: min(760px, calc(100vw - 32px)); }
+.channelTranscript { max-height: 60vh; overflow-y: auto; }
+.channelMessage { padding: 12px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+.channelMessage header { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
+.channelMessage p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; }
+.channelMessage time, .channelMessage header span { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+.channelReload { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 0 0 12px; }
+.channelReload + .channelReload { margin-left: 16px; }

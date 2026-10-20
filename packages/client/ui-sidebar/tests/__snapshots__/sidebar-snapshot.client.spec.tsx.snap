@@ -6,8 +6,8 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
   style="display: contents;"
 >
   <div
-    class="root fading quietBars"
-    style="width: 300px;"
+    class="root collapsed railIn quietBars"
+    style=""
   >
     <div
       class="topRow"
@@ -21,9 +21,9 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
           class="panelIcon"
           data-content="35f95b0c"
           fill="none"
-          height="16"
+          height="18"
           viewBox="0 0 16 16"
-          width="16"
+          width="18"
           xmlns="http://www.w3.org/2000/svg"
         />
       </button>
@@ -70,25 +70,6 @@ exports[`sidebar shell snapshots > renders the expanded column (capsule, empty h
     style="width: 300px;"
   >
     <div
-      class="topRow"
-    >
-      <button
-        aria-label="Collapse sidebar"
-        class="iconButton toggle"
-        type="button"
-      >
-        <svg
-          class="panelIcon"
-          data-content="35f95b0c"
-          fill="none"
-          height="16"
-          viewBox="0 0 16 16"
-          width="16"
-          xmlns="http://www.w3.org/2000/svg"
-        />
-      </button>
-    </div>
-    <div
       class="regionArea"
     >
       <div
@@ -129,25 +110,6 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
     class="root quietBars"
     style="width: 300px;"
   >
-    <div
-      class="topRow"
-    >
-      <button
-        aria-label="收起侧边栏"
-        class="iconButton toggle"
-        type="button"
-      >
-        <svg
-          class="panelIcon"
-          data-content="35f95b0c"
-          fill="none"
-          height="16"
-          viewBox="0 0 16 16"
-          width="16"
-          xmlns="http://www.w3.org/2000/svg"
-        />
-      </button>
-    </div>
     <div
       class="regionArea"
     >

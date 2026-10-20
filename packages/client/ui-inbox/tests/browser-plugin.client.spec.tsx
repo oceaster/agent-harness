@@ -79,7 +79,7 @@ async function bench(listBody: unknown = {
   // list body answered for /open would parse as malformed.
   const fetchStub = vi.fn((input: string) => {
     fetches.push(input)
-    const body = input.endsWith('/open')
+    const body = input.endsWith('/channels') ? { channels: [] } : input.endsWith('/open')
       ? { agent: 'agent-a', sessionId: 's-a', created: false, blank: true, lastActivityAt: null }
       : input.endsWith('/clear')
         ? {
@@ -122,7 +122,7 @@ describe('ui-inbox registration', () => {
   it('reads the inbox from the origin root path on boot', async () => {
     const b = await bench()
     await b.fiber.await()
-    expect(b.fetches).toEqual(['/v1/browser/inbox'])
+    expect(b.fetches).toEqual(['/v1/browser/inbox/channels', '/v1/browser/inbox'])
   })
 
   it('degrades to a visible failure instead of throwing when the API is unreachable', async () => {
@@ -145,7 +145,7 @@ describe('ui-inbox registration', () => {
     const face = b.entry()?.inject?.() as unknown as InboxInjected
     face.open('agent-a')
     await vi.waitFor(() => { expect(b.opened).toEqual(['s-a']) })
-    expect(b.fetches).toEqual(['/v1/browser/inbox', '/v1/browser/inbox/open'])
+    expect(b.fetches).toEqual(['/v1/browser/inbox/channels', '/v1/browser/inbox', '/v1/browser/inbox/open'])
   })
 
   it('fails at registration, not on the first click, when the runtime lost sessions.refresh', async () => {

@@ -67,6 +67,9 @@ export function ConversationSessionHeader({
   const selectedId = useStore(s => s.view)
   const active = resolveActiveView(tabs, selectedId)
   const ancestry = useSessions(s => deriveAncestry(s, sessionId), equalBreadcrumbs)
+  const child = useSession(s => Boolean(s.subagent))
+  const childSummary = useSessions(s => s.byId[sessionId]?.origin === 'subagent')
+  const readOnly = child || childSummary
   const composerPhase = useSession(s => s.composerPhase)
   const blank = useSession(s => s.blank)
   const hideChrome = blank && composerPhase === 'blank'
@@ -100,7 +103,7 @@ export function ConversationSessionHeader({
                 {ancestry.length === 0 && <span className={css.crumbCurrent}>{sessionId}</span>}
               </nav>
               <div className={css.headerActions}>
-                {renderSlot('conversation.session.header.actions', {})}
+                {!readOnly && renderSlot('conversation.session.header.actions', {})}
               </div>
             </div>
             <div className={css.center}>
@@ -125,7 +128,7 @@ export function ConversationSessionHeader({
               </div>
             </div>
             <div className={css.headerMode}>
-              {renderSlot('conversation.session.header.mode', {})}
+              {!readOnly && renderSlot('conversation.session.header.mode', {})}
             </div>
           </div>
         </>

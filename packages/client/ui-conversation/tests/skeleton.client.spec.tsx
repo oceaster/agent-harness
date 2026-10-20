@@ -318,6 +318,17 @@ describe('ConversationRoot resident composer', () => {
     expect(b.open).toHaveBeenCalledWith(sid('root'))
   })
 
+  it('subagent views have no composer, interaction takeover, or header editing controls', () => {
+    const b = mount(conversationSnapshot(), undefined, { summaryOrigin: 'subagent', overlayTakeover: true })
+    expect(b.view.queryByRole('textbox')).toBeNull()
+    expect(b.view.container.querySelector('[data-composer-seat]')).toBeNull()
+    expect(b.view.queryByTestId('composer-takeover')).toBeNull()
+    expect(b.slotCalls).not.toContain('conversation.session.header.actions')
+    expect(b.slotCalls).not.toContain('conversation.session.header.mode')
+    expect(b.view.getByRole('button', { name: 'Root' })).toBeDefined()
+    expect(b.sink).not.toHaveBeenCalled()
+  })
+
   it('active phase: fixed header outside the scrollport; sticky composer seat inside it', () => {
     const b = mount(conversationSnapshot())
     const host = b.view.container.querySelector('[data-conversation-scroll]')

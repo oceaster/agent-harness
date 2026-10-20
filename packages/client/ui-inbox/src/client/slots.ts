@@ -12,12 +12,15 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls ui-sidebar's SlotMap merge (the 'sidebar.workspaces' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { InboxState } from './inbox-controller.ts'
+import type { ChannelState } from './channel-controller.ts'
 
 /** Registrant-private injected share (arrives via the register inject factory). */
 export interface InboxInjected {
   hooks: {
     /** The controller's whole snapshot: rows, phases, per-row busy and notices. */
     inbox: SnapshotStore<InboxState>
+    /** Permitted channels and the selected channel history. */
+    channels: SnapshotStore<ChannelState>
   }
   /** Read (or re-read) the caller's inbox. */
   load: () => void
@@ -25,6 +28,14 @@ export interface InboxInjected {
   open: (agent: string) => void
   /** Destroy one row's conversation through the inbox API. */
   clear: (agent: string) => void
+  /** Open the channel selected from the server's list. */
+  openChannel: (channel: string) => void
+  /** Close the channel transcript. */
+  closeChannel: () => void
+  /** Reload the selected channel. */
+  refreshChannel: () => void
+  /** Clear the selected channel after an explicit confirmation. */
+  clearChannel: () => void
 }
 
 /** Full component props: the slot's runtime share, the injected face, and the locale seat. */

@@ -16,12 +16,13 @@
 import { useState } from 'react'
 import clsx from 'clsx'
 import {
-  IconEllipsisOutline16, IconRefreshOutline16, IconTrashOutline16, Menu, StateDot,
+  IconEllipsisOutline16, IconRefreshOutline16, IconTrashOutline16, IconPanelLeftOutline16, Menu, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InboxAgentRow } from './inbox-api.ts'
 import type { InboxNoticeCode } from './inbox-controller.ts'
 import type { InboxPanelProps } from './slots.ts'
 import { ConfirmClearDialog } from './ConfirmClearDialog.tsx'
+import { ChannelDialog } from './ChannelDialog.tsx'
 import css from './InboxPanel.module.css'
 
 /** The locale seat of this namespace, passed to the pure helpers below. */
@@ -95,7 +96,11 @@ function noticeText(notice: InboxNoticeCode, t: Translate): string {
  * @param props - composed slot props (runtime share + injected face + locale seat).
  * @returns the inbox element tree.
  */
-export function InboxPanel({ wide, expandSidebar, useInbox, load, open, clear, t }: InboxPanelProps) {
+export function InboxPanel({
+  wide, expandSidebar, collapseSidebar, useInbox, useChannels, load, open, clear,
+  openChannel, closeChannel, refreshChannel, clearChannel, t,
+}: InboxPanelProps) {
+  const channelState = useChannels(snapshot => snapshot)
   const state = useInbox(snapshot => snapshot)
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [confirmFor, setConfirmFor] = useState<string | null>(null)
@@ -133,6 +138,7 @@ export function InboxPanel({ wide, expandSidebar, useInbox, load, open, clear, t
   return (
     <div className={css.panel} data-testid="ui-inbox-panel">
       <div className={css.header}>
+        <button type="button" className={css.refresh} aria-label={t('panel.collapse')} onClick={collapseSidebar}><IconPanelLeftOutline16 size={16} /></button>
         <span className={css.title}>{t('section.agents')}</span>
         <button
           type="button"
@@ -253,6 +259,16 @@ export function InboxPanel({ wide, expandSidebar, useInbox, load, open, clear, t
         </ul>
       )}
 
+      <section className={css.channels} aria-label={t('channel.section')}>
+        <h3 className={css.channelTitle}>{t('channel.section')}</h3>
+        {channelState.rows.map(channel => <button type="button" key={channel.id} className={css.rowButton}
+          data-testid={'agent-channel-open-' + channel.id} onClick={() => { openChannel(channel.id) }}>
+          <span className={css.avatar} aria-hidden="true">↔</span><span>{channel.name}</span>
+        </button>)}
+        {channelState.rows.length === 0 && channelState.error === null && <p className={css.phase}>{t('channel.none')}</p>}
+        {channelState.error !== null && channelState.selected === null && <p role="alert">{channelState.error}</p>}
+      </section>
+      <ChannelDialog state={channelState} close={closeChannel} refresh={refreshChannel} clear={clearChannel} t={t} />
       <ConfirmClearDialog
         open={confirmed !== undefined}
         agentName={confirmed?.name ?? ''}
