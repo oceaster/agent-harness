@@ -121,6 +121,14 @@ const COLD_SUMMARY_BATCH_SIZE = 16
 /** Default maximum artifact size eligible for one cold blankness read. */
 export const DEFAULT_COLD_BLANK_PROBE_MAX_BYTES = 1024
 
+/**
+ * How long `session.destroy` waits for a cancelled turn to settle before giving
+ * up. Cancellation requests an abort; it does not force one, so an adapter or
+ * tool that never observes the signal would otherwise leave the request
+ * outstanding with nothing to report.
+ */
+export const DEFAULT_DESTROY_CANCEL_SETTLE_MS = 10_000
+
 /** Conversation message event types (the pagination counting unit). */
 const MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
 
@@ -211,6 +219,24 @@ function canonicalClientTimeZone(value: string): string | undefined {
   } catch {
     // Intl rejects unsupported zone names; the RPC maps that parser rejection below.
     return undefined
+  }
+}
+
+/**
+ * Whether `settling` resolves within `limitMs`. The timer never decides an
+ * outcome: it only stops this call from waiting on work that may never finish,
+ * and it is always cleared on the winning branch.
+ * @param settling - the wait to observe.
+ * @param limitMs - the ceiling in milliseconds.
+ * @returns true when the wait settled in time, false when the ceiling was hit.
+ */
+async function settlesWithin(settling: Promise<void>, limitMs: number): Promise<boolean> {
+  const timeout = Promise.withResolvers<false>()
+  const timer = setTimeout(() => { timeout.resolve(false) }, limitMs)
+  try {
+    return await Promise.race([settling.then(() => true as const), timeout.promise])
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -604,6 +630,8 @@ export interface ApiProxyDefaults {
   sessionExportCompressionLevel?: SessionLogCompressionLevel
   /** Maximum artifact size eligible for one cold blankness read. */
   coldBlankProbeMaxBytes?: number
+  /** Ceiling on waiting for a destroyed session's cancelled turn to settle. */
+  destroyCancelSettleMs?: number
   /**
    * Whether handing a path to the native opener can work at all — the
    * `hasDocument` capability the preset roster reports, and the switch
@@ -1053,6 +1081,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     ?? DEFAULT_SESSION_LOG_COMPRESSION_LEVEL
   const coldBlankProbeMaxBytes = defaults.coldBlankProbeMaxBytes
     ?? DEFAULT_COLD_BLANK_PROBE_MAX_BYTES
+  const destroyCancelSettleMs = defaults.destroyCancelSettleMs
+    ?? DEFAULT_DESTROY_CANCEL_SETTLE_MS
   /** The seed model each create/resume declares; re-read so it never goes stale. */
   const agentOptions = (): AgentOptions => {
     const { provider, model } = defaults.defaultModelSelection()
@@ -2686,7 +2716,20 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           .map(id => ctx.agents.get(id))
           .filter((agent): agent is Agent => agent !== undefined)
         for (const target of liveTargets) target.cancel({ kind: 'user' })
-        for (const target of liveTargets) await target.whenIdle()
+        for (const target of liveTargets) {
+          // Cancellation requests an abort; it never forces one, and a provider
+          // stream or tool that ignores the signal would leave this request
+          // outstanding forever. The wait is therefore bounded, and timing out
+          // deletes nothing: the conversation still exists and the caller may
+          // retry once it is idle.
+          if (!await settlesWithin(target.whenIdle(), destroyCancelSettleMs)) {
+            return err(request, {
+              code: 'internal',
+              message: `cannot destroy session "${sessionId}": the running turn of "${target.id}" did not settle within ${String(destroyCancelSettleMs)} ms after cancellation; nothing was deleted and the session still exists`,
+              details: {},
+            })
+          }
+        }
         // Continuable subagents are Activations, not turn work: they outlive the
         // turn that started them, so their forest is drained explicitly rather
         // than left holding a runtime whose parent is going away.

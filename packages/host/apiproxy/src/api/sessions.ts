@@ -348,6 +348,13 @@ export interface SessionsApi {
    * afterwards: the persisted projection checkpoint and the workspace registry
    * accounting (including archive membership).
    *
+   * The wait for a cancelled turn is bounded by the deployment's
+   * `destroyCancelSettleMs` (default 10 s), because cancellation requests an
+   * abort rather than forcing one and an adapter or tool can be slow to observe
+   * it. Hitting that ceiling deletes nothing and fails with a message saying so,
+   * so a caller never has to guess whether a slow clear landed; the same
+   * conversation can be cleared once its turn has settled.
+   *
    * A live turn, a live Agent, and a cold session are all destroyable. A live
    * Agent whose lifecycle this host does not own cannot be disposed — this host
    * releases only the Agents it created or resumed — so that case fails rather

@@ -44,8 +44,12 @@ function request<P>(payload: P): RpcRequest<P> {
 
 const sid = (id: string): SessionId => id as SessionId
 
-/** One model reply, or a reply that streams one chunk and then hangs until aborted. */
-type ScriptEntry = StreamChunk[] | 'hang'
+/**
+ * One model reply, `hang` (streams one chunk then waits until aborted), or
+ * `deaf` (streams one chunk then takes 1.5 s to notice anything — a stand-in for
+ * a provider or tool that does not observe cancellation promptly).
+ */
+type ScriptEntry = StreamChunk[] | 'hang' | 'deaf'
 
 class ScriptedAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
@@ -60,6 +64,12 @@ class ScriptedAdapter extends LlmAdapter {
     this.requests.push(options)
     const entry = this.script.shift()
     if (entry === undefined) throw new Error('ScriptedAdapter: script exhausted')
+    if (entry === 'deaf') {
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text: 'partial' }
+      await new Promise<void>((resolve) => { setTimeout(resolve, 1500) })
+      return
+    }
     if (entry === 'hang') {
       yield { type: 'block-start', index: 0, blockType: 'text' }
       yield { type: 'text-delta', index: 0, text: 'partial' }
@@ -96,7 +106,7 @@ afterEach(async () => {
 })
 
 /** The composed host surface a Web deployment runs, rooted in one temporary home. */
-async function boot(script: ScriptEntry[]): Promise<{
+async function boot(script: ScriptEntry[], extraDefaults: { destroyCancelSettleMs?: number } = {}): Promise<{
   ctx: Context
   home: string
   api: ReturnType<typeof createApiProxy>
@@ -126,6 +136,7 @@ async function boot(script: ScriptEntry[]): Promise<{
   const api = createApiProxy(ctx, {
     defaultModelSelection: () => ({ provider: 'mock', model: 'mock-model' }),
     cwd: PROJECT,
+    ...extraDefaults,
   })
   return { ctx, home, api, persistence: ctx.sessionPersistence as JsonlSessionPersistence }
 }
@@ -312,6 +323,41 @@ describe('sessions.destroy', () => {
     expect(await exists(forkLog)).toBe(true)
     const forkHistory = await api.sessions.history(request({ sessionId: forkId }))
     expect(forkHistory.result.ok).toBe(true)
+  })
+
+  it('reports a turn that will not settle instead of waiting forever, and deletes nothing', async () => {
+    // A 50 ms ceiling against a stream that takes 1.5 s to notice: the destroy
+    // must come back and must not have deleted anything.
+    const { ctx, api, persistence } = await boot(['deaf'], { destroyCancelSettleMs: 50 })
+    const created = await api.sessions.create(request({ cwd: PROJECT }))
+    if (!created.result.ok) throw new Error('create failed')
+    const sessionId = created.result.value.sessionId
+    const prompted = await api.sessions.prompt(request({
+      sessionId,
+      mode: 'queue' as const,
+      content: [{ type: 'text' as const, text: 'slow task' }],
+    }))
+    if (!prompted.result.ok) throw new Error('prompt failed')
+    const session = ctx.sessions.get(sessionId) as Session
+    // Durability barrier for the events already committed in this open turn, so
+    // "the log survived" is a real observation rather than a buffered maybe.
+    await ctx.sessions.flush(session)
+    const logPath = logPathOf(persistence, session)
+    expect(await exists(logPath)).toBe(true)
+
+    const refused = await api.sessions.destroy(request({ sessionId }))
+    expect(refused.result).toMatchObject({ ok: false, error: { code: 'internal' } })
+    if (refused.result.ok) throw new Error('destroy must not report success')
+    expect(refused.result.error.message).toMatch(/did not settle within 50 ms/)
+    expect(refused.result.error.message).toMatch(/nothing was deleted and the session still exists/)
+    expect(await exists(logPath)).toBe(true)
+    expect(ctx.sessions.get(sessionId)).toBeDefined()
+    const stillListed = await api.sessions.list(request({}))
+    if (!stillListed.result.ok) throw new Error('list failed')
+    expect(stillListed.result.value.items.map(item => item.sessionId)).toContain(sessionId)
+    // The turn settles on its own afterwards, so teardown is not blocked by the
+    // conversation the test declined to destroy.
+    await ctx.agents.get(sessionId)?.whenIdle()
   })
 
   it('rejects an unknown id and a second destroy of the same id', async () => {

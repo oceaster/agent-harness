@@ -814,10 +814,18 @@ export interface Config {
    * @default 1024
    */
   coldBlankProbeMaxBytes?: number
+  /**
+   * How long `session.destroy` waits for a cancelled turn to settle before
+   * reporting that nothing was deleted. Cancellation requests an abort rather
+   * than forcing one, so this ceiling keeps a signal-ignoring adapter or tool
+   * from turning Clear into a request that never returns.
+   * @default 10000
+   */
+  destroyCancelSettleMs?: number
 }
 ```
 
-Source: [`packages/host/apiproxy/src/index.ts:41`](../packages/host/apiproxy/src/index.ts)
+Source: [`packages/host/apiproxy/src/index.ts:45`](../packages/host/apiproxy/src/index.ts)
 
 <a id="deepseek-aidsh-host-directory-picker-browse"></a>
 

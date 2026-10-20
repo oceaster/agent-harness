@@ -16,7 +16,11 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type { ApiProxy } from './api/index.ts'
-import { createApiProxy, DEFAULT_COLD_BLANK_PROBE_MAX_BYTES } from './api-proxy.ts'
+import {
+  createApiProxy,
+  DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
+  DEFAULT_DESTROY_CANCEL_SETTLE_MS,
+} from './api-proxy.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   type SessionLogCompressionLevel,
@@ -59,6 +63,14 @@ export interface Config {
    * @default 1024
    */
   coldBlankProbeMaxBytes?: number
+  /**
+   * How long `session.destroy` waits for a cancelled turn to settle before
+   * reporting that nothing was deleted. Cancellation requests an abort rather
+   * than forcing one, so this ceiling keeps a signal-ignoring adapter or tool
+   * from turning Clear into a request that never returns.
+   * @default 10000
+   */
+  destroyCancelSettleMs?: number
 }
 
 /**
@@ -77,6 +89,7 @@ export class ApiProxyService extends Service implements ApiProxy {
     sessionExportCompressionLevel: z.number().step(1).min(0).max(9)
       .default(DEFAULT_SESSION_LOG_COMPRESSION_LEVEL) as z<SessionLogCompressionLevel>,
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
+    destroyCancelSettleMs: z.natural().default(DEFAULT_DESTROY_CANCEL_SETTLE_MS),
   })
 
   readonly sessions: ApiProxy['sessions']
@@ -106,6 +119,9 @@ export class ApiProxyService extends Service implements ApiProxy {
       ...(config.coldBlankProbeMaxBytes === undefined
         ? {}
         : { coldBlankProbeMaxBytes: config.coldBlankProbeMaxBytes }),
+      ...(config.destroyCancelSettleMs === undefined
+        ? {}
+        : { destroyCancelSettleMs: config.destroyCancelSettleMs }),
     })
     this.sessions = api.sessions
     this.subagents = api.subagents
