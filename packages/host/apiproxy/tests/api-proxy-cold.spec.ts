@@ -632,6 +632,29 @@ describe('subagent ownership fence', () => {
     expect(childInbox.nextTurn).toEqual([])
   })
 
+  it('answers a cold child removal without resuming an Agent', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(UserQuestionService)
+    const session = ctx.sessions.create(sid('cold-queued-child'), {
+      meta: { cwd: '/proj', parentSession: sid('cold-parent'), origin: 'subagent' },
+    })
+    const resume = vi.spyOn(ctx.agents, 'resume')
+    const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+
+    const removal = await api.sessions.updateQueue(request({
+      sessionId: session.id, itemId: MessageId('already-gone-queued-item'), action: { kind: 'remove' },
+    }))
+
+    // A child with no Agent has nothing to splice: the removal reports the item
+    // as no longer pending rather than waking the session to find out.
+    expect(removal.result.ok).toBe(false)
+    if (!removal.result.ok) expect(removal.result.error.code).toBe('queue-item-not-found')
+    expect(resume).not.toHaveBeenCalled()
+    expect(ctx.agents.get(session.id)).toBeUndefined()
+  })
+
   it('rejects origin-marked and runtime-owned live children from generic controls', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
