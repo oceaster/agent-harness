@@ -121,7 +121,7 @@ export interface ApiRemoteAgentResolver {
    * @param sessionId - session identity to resolve.
    * @returns the live Agent or a caller-facing lookup error.
    */
-  agentFor(sessionId: SessionId): Promise<ApiRemoteAgentResult>
+  agentFor: (sessionId: SessionId) => Promise<ApiRemoteAgentResult>
 
   /**
    * Release the Agent this resolver resumed for `id`: its documented
@@ -133,7 +133,7 @@ export interface ApiRemoteAgentResolver {
    * @param id - the session whose lifecycle this resolver created.
    * @returns whether this resolver owned and released a live lifecycle.
    */
-  release(id: SessionId): Promise<boolean>
+  release: (id: SessionId) => Promise<boolean>
 }
 
 /**

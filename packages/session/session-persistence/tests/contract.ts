@@ -296,6 +296,41 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
       }
     })
 
+    it('destroy deletes one stored session and reports whether it existed', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        expect(persistence.supportsDestroy).toBe(true)
+        await persistence.create(meta('destroyed'))
+        await persistence.append(SessionId('destroyed'), oneTurnLog())
+        await persistence.create(meta('kept'))
+        await persistence.append(SessionId('kept'), oneTurnLog())
+
+        await expect(persistence.destroy(SessionId('destroyed'))).resolves.toBe(true)
+        expect((await persistence.list()).map(header => header.id)).not.toContain(SessionId('destroyed'))
+        await expect(persistence.inspect(SessionId('destroyed'))).rejects.toThrow(/not found/)
+        // The sibling is untouched: destroy names one identity, not a sweep.
+        await expect(persistence.inspect(SessionId('kept'))).resolves.toMatchObject({ meta: { id: SessionId('kept') } })
+        // Idempotent honesty: a second destroy reports absence instead of success.
+        await expect(persistence.destroy(SessionId('destroyed'))).resolves.toBe(false)
+        await expect(persistence.destroy(SessionId('never-stored'))).resolves.toBe(false)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it('destroy refuses a session whose identity is live', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        const id = SessionId('live-destroy')
+        const session = persistence.ctx.sessions.create(id, { meta: { cwd: '/proj' } })
+        session.append('turn/start', { turn: 1 })
+        await persistence.append(id, [{ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }])
+        await expect(persistence.destroy(id)).rejects.toThrow(/while it is live/)
+      } finally {
+        await dispose()
+      }
+    })
+
     it('readFrom returns exactly the stored suffix from the requested seq, without mutating the log', async () => {
       const { persistence, dispose } = await make()
       try {

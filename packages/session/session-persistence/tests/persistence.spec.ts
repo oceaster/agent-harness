@@ -70,6 +70,9 @@ interface CoordinatorInternals {
 class MemoryPersistence extends SessionPersistence implements PersistenceBackend<never> {
   override readonly supportsRawArtifacts = false
 
+  /** The reference in-memory backend supports deletion, so the contract holds here too. */
+  override readonly supportsDestroy = true
+
   static inject = ['sessions']
 
   override readonly name = 'session-persistence-memory'
@@ -116,6 +119,10 @@ class MemoryPersistence extends SessionPersistence implements PersistenceBackend
 
   readFrom(id: SessionId, fromSeq: number, signal?: AbortSignal): Promise<{ meta: SessionHeader; events: SessionEvent[] }> {
     return this.coordinator.readFrom(id, fromSeq, signal)
+  }
+
+  override destroy(id: SessionId): Promise<boolean> {
+    return this.coordinator.destroy(id)
   }
 
   // --- PersistenceBackend hooks (the Map storage primitives) ---

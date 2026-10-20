@@ -100,6 +100,61 @@ re-applied on every upstream pull:
    route degrades to the built-in catalog instead of emptying the selector.
    Bearer authentication is used when the harness has a key for the route.
 
+7. **Permanent session delete** (`session.destroy`, new host RPC) — upstream can
+   create, resume, fork, archive and cancel a session but cannot delete one:
+   `workspace.archiveSession` only hides a session from grouping surfaces, the
+   JSONL log survives, and the projection cache and workspace registry keep
+   their rows. This fork needed real deletion so the household inbox's **Clear**
+   action can return an agent to a brand-new conversation
+   (`/root/e-server/doc/INBOX_SPRINT.md`, decision 4). Packages touched:
+
+   - `packages/session/session-persistence` — the Service Definition grows
+     `supportsDestroy` plus `destroy(id)`; the default rejects, the way
+     `readRaw`/`supportsRawArtifacts` already fail loud for backends without the
+     capability. `PersistenceCoordinator.destroy()` refuses a live identity,
+     waits out a draining retirement before taking the id's chain slot, drops
+     cached preparations and write state, and calls the new required backend
+     hook `removeStored(id)` (returns whether a log existed).
+   - `packages/session/session-persistence-jsonl` — `removeStored` unlinks the
+     log and the session directory that owns it, then fsyncs the project
+     directory.
+   - `packages/session/session-persistence-sqlite` — `removeStored` deletes the
+     event rows and the metadata row in one transaction (two new SQL resources;
+     a first-party backend left without delete would be the half-changed shape).
+   - `packages/session/session-projection-cache` — `destroy(id)` drops the
+     session's checkpoint row.
+   - `packages/workspace/workspace` — `forgetSession(id)` drops archive
+     membership, the header/canonical-path index entry and any workspace
+     accounting for the id.
+   - `packages/api/remotes` — the shared Agent resolver now returns
+     `{ agentFor, release }` and keeps the `AgentHandle` of every Agent it
+     resumes, because an owner that can resume but not release can stop a
+     session but never destroy it.
+   - `packages/host/apiproxy` — `session.destroy` in the api contract, its zod
+     pair, the rpc-map row, the fetch carrier rows, and the implementation:
+     cancel the running turn and await quiescence, drain continuable subagents,
+     dispose the live Agent through the handle its creator holds, delete the
+     stored logs (the commit point), then drop derived state.
+
+   Behaviour worth preserving on an upstream pull: a destroyed id answers
+   `session-not-found` afterwards (never a stale fragment), a second destroy of
+   the same id is `session-not-found` rather than a second success, a failure
+   before the log deletion reports an error instead of claiming the conversation
+   is gone, `origin: 'subagent'` descendants are destroyed recursively with the
+   parent while ordinary forks survive (lineage is provenance, not ownership),
+   and image attachment objects are deliberately left alone — they are
+   content-addressed and shared, so no refcount is invented. A live Agent whose
+   handle this host does not hold cannot be disposed, so that case fails rather
+   than half-deleting.
+
+   **Authorisation is not part of this surface.** The RPC is loopback and
+   trusted-host behaviour like every other session method, and the harness has
+   no identity concept: whoever may clear a conversation (e-server's PIN/profile
+   proxy, which owns the `dsh_owners` ledger) decides that before calling. No
+   profile or ownership concept belongs in the fork. Candidate for an upstream
+   PR: the capability is generic, and the only household-specific part is who
+   calls it.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 
