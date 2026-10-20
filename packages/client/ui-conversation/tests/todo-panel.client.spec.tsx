@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 /**
  * Todo display acceptance: the TodoPanel plan strip (empty-hidden, status rows
- * including several `in_progress` at once, collapse), and its TodoDock
- * adapter (selects the plan off the session snapshot and follows changes).
+ * including several `in_progress` at once, collapse) and its TodoDock adapter
+ * (selects the plan off the session snapshot, follows changes, and owns the
+ * collapsed flag in the per-conversation disclosure store).
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createConversationDisclosureStore } from '../src/client/disclosure-store.ts'
 import type { TodoItem } from '@deepseek-ai/dsh-client-runtime/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -19,6 +22,9 @@ import { NS, zh } from '../src/client/locales.ts'
 const t: TodoDockProps['t'] = makeTranslate(zh, commonZh)
 
 afterEach(cleanup)
+
+/** One conversation id: the session-scope key the disclosure store is created under. */
+const SESSION = 'session-scope-todo-dock'
 
 const LIST: TodoItem[] = [
   { content: '搭骨架', status: 'completed' },
@@ -35,14 +41,24 @@ const PARALLEL: TodoItem[] = [
   { content: '补测试', status: 'pending' },
 ]
 
+/**
+ * Controlled harness: TodoPanel is presentational, so the collapsed flag is a
+ * prop. This wrapper stands in for the dock adapter (which feeds it from the
+ * disclosure store), keeping the panel's own rendering assertions unchanged.
+ */
+function CollapsiblePanel({ todos }: { todos: readonly TodoItem[] }) {
+  const [collapsed, setCollapsed] = useState(true)
+  return <TodoPanel todos={todos} collapsed={collapsed} onToggle={() => { setCollapsed(value => !value) }} t={t} />
+}
+
 describe('TodoPanel', () => {
   it('renders nothing while the list is empty', () => {
-    const { container } = render(<TodoPanel todos={[]} t={t} />)
+    const { container } = render(<TodoPanel todos={[]} collapsed onToggle={() => undefined} t={t} />)
     expect(container.innerHTML).toBe('')
   })
 
   it('starts collapsed with the per-status count summary visible', () => {
-    render(<TodoPanel todos={LIST} t={t} />)
+    render(<CollapsiblePanel todos={LIST} />)
     expect(screen.getByTestId('todo-panel')).toBeTruthy()
     expect(screen.getByText('任务')).toBeTruthy()
     expect(screen.getByText('1 已完成 · 1 进行中 · 1 待处理')).toBeTruthy()
@@ -51,16 +67,16 @@ describe('TodoPanel', () => {
   })
 
   it('omits the completed segment while nothing is done yet', () => {
-    render(<TodoPanel todos={[
+    render(<CollapsiblePanel todos={[
       { content: '写组件', status: 'in_progress' },
       { content: '补测试', status: 'pending' },
-    ]} t={t} />)
+    ]} />)
     expect(screen.getByText('1 进行中 · 1 待处理')).toBeTruthy()
     expect(screen.queryByText(/已完成/)).toBeNull()
   })
 
   it('expands to show one row per item with its status glyph', () => {
-    render(<TodoPanel todos={LIST} t={t} />)
+    render(<CollapsiblePanel todos={LIST} />)
     fireEvent.click(screen.getByRole('button', { expanded: false }))
     const items = screen.getAllByRole('listitem')
     expect(items.map(li => li.getAttribute('data-status'))).toEqual(['completed', 'in_progress', 'pending'])
@@ -71,7 +87,7 @@ describe('TodoPanel', () => {
   })
 
   it('collapse hides an expanded list; expand restores; header keeps the count summary', () => {
-    render(<TodoPanel todos={LIST} t={t} />)
+    render(<CollapsiblePanel todos={LIST} />)
     fireEvent.click(screen.getByRole('button', { expanded: false }))
     const header = screen.getByRole('button', { expanded: true })
     fireEvent.click(header)
@@ -84,7 +100,7 @@ describe('TodoPanel', () => {
   })
 
   it('marks every parallel active item, and counts them all in the header', () => {
-    render(<TodoPanel todos={PARALLEL} t={t} />)
+    render(<CollapsiblePanel todos={PARALLEL} />)
     fireEvent.click(screen.getByRole('button', { expanded: false }))
     // An unconditional in-progress cap would make this list unreachable: three
     // items carry the in-progress glyph at once, and the header counts all three.
@@ -96,7 +112,7 @@ describe('TodoPanel', () => {
   })
 
   it('an all-completed list collapses the summary to the done count alone', () => {
-    render(<TodoPanel todos={[{ content: '都完了', status: 'completed' }]} t={t} />)
+    render(<CollapsiblePanel todos={[{ content: '都完了', status: 'completed' }]} />)
     expect(screen.getByRole('button', { expanded: false })).toBeTruthy()
     expect(screen.queryByText('都完了')).toBeNull()
     expect(screen.getByText('1 已完成')).toBeTruthy()
@@ -104,11 +120,23 @@ describe('TodoPanel', () => {
   })
 })
 
-/** Dock props stub: the adapter reads the 'todos' projection only; the rest of the owner share is unused. */
-function dockProps(store: ReturnType<typeof createSnapshotStore<{ value: readonly TodoItem[] | null | undefined }>>): TodoDockProps {
+/**
+ * Dock props stub: the 'todos' projection source plus a real disclosure-store
+ * instance (the same one the registration creates per session scope), so the
+ * adapter's reads and writes go through the shipped store, not a stand-in.
+ */
+function dockProps(
+  projection: ReturnType<typeof createSnapshotStore<{ value: readonly TodoItem[] | null | undefined }>>,
+  disclosure = createConversationDisclosureStore().create(SESSION),
+): TodoDockProps {
   const useProjection = (_key: string, selector?: (v: unknown) => unknown) =>
-    bindSnapshotSelector(store)(s => (selector ?? (v => v))(s.value))
-  return { useProjection, t } as unknown as TodoDockProps
+    bindSnapshotSelector(projection)(s => (selector ?? (v => v))(s.value))
+  return {
+    useProjection,
+    useStore: bindSnapshotSelector(disclosure),
+    actions: disclosure.actions,
+    t,
+  } as unknown as TodoDockProps
 }
 
 describe('TodoDock', () => {
@@ -124,6 +152,29 @@ describe('TodoDock', () => {
     expect(screen.queryByTestId('todo-panel')).toBeNull()
   })
 
+  it('starts collapsed, then writes the expansion into the disclosure store', () => {
+    const projection = createSnapshotStore<{ value: readonly TodoItem[] | null | undefined }>({ value: LIST })
+    const disclosure = createConversationDisclosureStore().create(SESSION)
+    render(<TodoDock {...dockProps(projection, disclosure)} />)
+    expect(screen.getByRole('button', { expanded: false })).toBeTruthy()
+    expect(screen.queryByRole('list')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    // The adapter does not keep a private copy: the store is the only owner.
+    expect(disclosure.getSnapshot().planCollapsed).toBe(false)
+    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('renders expanded when the conversation scope already holds an expansion', () => {
+    // A restored conversation: the store rehydrates planCollapsed=false, and the
+    // strip comes back open without the reader touching it again.
+    const projection = createSnapshotStore<{ value: readonly TodoItem[] | null | undefined }>({ value: LIST })
+    const disclosure = createConversationDisclosureStore().create(SESSION)
+    act(() => { disclosure.actions.setPlanCollapsed(false) })
+    render(<TodoDock {...dockProps(projection, disclosure)} />)
+    expect(screen.getByRole('button', { expanded: true })).toBeTruthy()
+    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+  })
+
   it('registers before the goal and queue entries', () => {
     expect(todoDockEntry.name).toBe('conversation-todo-dock')
     expect(todoDockEntry.inject).toEqual(['slots'])
@@ -131,6 +182,14 @@ describe('TodoDock', () => {
     const inject = vi.fn((_name: string, callback: () => () => void) => callback())
     todoDockEntry.apply({ slots: { inject, register } } as never)
     expect(inject).toHaveBeenCalledWith('conversation.input.dock', expect.any(Function))
-    expect(register).toHaveBeenCalledWith({ name: 'conversation.input.dock', id: 'todo', order: 0, locale: NS }, TodoDock)
+    // The registration carries the disclosure store, and it is the exclusive
+    // factory form so the framework instantiates one per session scope.
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'conversation.input.dock',
+      id: 'todo',
+      order: 0,
+      locale: NS,
+      store: createConversationDisclosureStore,
+    }), TodoDock)
   })
 })

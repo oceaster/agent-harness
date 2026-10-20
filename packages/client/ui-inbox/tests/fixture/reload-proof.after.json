@@ -1,0 +1,569 @@
+{
+  "baseUrl": "http://127.0.0.1:3206",
+  "measurements": [
+    {
+      "surface": "baseline after a cold boot (no interaction)",
+      "before": {
+        "label": "boot",
+        "dom": {
+          "center": "conversation:composer",
+          "channelRows": [
+            "agent-channel-row-channel-alpha-beta"
+          ],
+          "channelMessages": 0,
+          "sidebarOccupant": {
+            "testid": "ui-inbox-panel",
+            "width": 268
+          },
+          "frame": {
+            "gridTemplateColumns": "280px minmax(0px, 1fr) 0px",
+            "sidebarCollapsed": null,
+            "detailsCollapsed": "true",
+            "portrait": null
+          },
+          "textarea": {
+            "value": "",
+            "editable": true
+          },
+          "dialog": null,
+          "effortTrigger": "Choose effort, current Default",
+          "inboxCurrent": [],
+          "channelCurrent": [],
+          "tabs": [],
+          "activeTab": null,
+          "durationToggle": null,
+          "shownSession": []
+        },
+        "keys": {
+          "dsh.sessions.current": "{\"sessionId\":\"session-161dee54-8385-426a-ba06-8be5244cb792\"}"
+        }
+      },
+      "after": null,
+      "verdict": "baseline"
+    },
+    {
+      "surface": "selected agent conversation",
+      "before": {
+        "center": "conversation:composer",
+        "storedCurrent": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}",
+        "markedCurrentRow": [
+          "ui-inbox-open-agent-alpha"
+        ]
+      },
+      "after": {
+        "center": "conversation:composer",
+        "storedCurrent": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}",
+        "markedCurrentRow": []
+      },
+      "verdict": "PRESERVED (same session id, same pane)"
+    },
+    {
+      "surface": "inbox current-agent highlight (InboxState.openAgent)",
+      "before": {
+        "markedCurrentRow": [
+          "ui-inbox-open-agent-alpha"
+        ]
+      },
+      "after": {
+        "markedCurrentRow": []
+      },
+      "verdict": "LOST"
+    },
+    {
+      "surface": "selected agent channel (inbox `selected` + layout `page`)",
+      "before": {
+        "center": "agent-channel-page:Alpha and Beta",
+        "messages": 1,
+        "markedChannelRow": [
+          "agent-channel-open-channel-alpha-beta"
+        ],
+        "keys": {
+          "dsh.sessions.current": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}"
+        }
+      },
+      "after": {
+        "center": "conversation:composer",
+        "messages": 0,
+        "markedChannelRow": [],
+        "keys": {
+          "dsh.sessions.current": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}"
+        }
+      },
+      "verdict": "LOST"
+    },
+    {
+      "surface": "non-session page (ui-layout store `page`)",
+      "before": {
+        "centerSlot": "agent-channel-page:Alpha and Beta",
+        "pageRegistrationRendered": true
+      },
+      "after": {
+        "centerSlot": "conversation:composer",
+        "pageRegistrationRendered": false
+      },
+      "verdict": "LOST"
+    },
+    {
+      "surface": "sidebar width / collapsed state (ui-layout store.sidebar)",
+      "before": {
+        "label": "sidebar-collapsed",
+        "dom": {
+          "center": "conversation:composer",
+          "channelRows": [],
+          "channelMessages": 0,
+          "sidebarOccupant": {
+            "testid": "ui-inbox-rail",
+            "width": 35
+          },
+          "frame": {
+            "gridTemplateColumns": "56px minmax(0px, 1fr) 0px",
+            "sidebarCollapsed": "true",
+            "detailsCollapsed": "true",
+            "portrait": null
+          },
+          "textarea": {
+            "value": "",
+            "editable": true
+          },
+          "dialog": null,
+          "effortTrigger": "Choose effort, current Default",
+          "inboxCurrent": [],
+          "channelCurrent": [],
+          "tabs": [],
+          "activeTab": null,
+          "durationToggle": null,
+          "shownSession": []
+        },
+        "keys": {
+          "dsh.sessions.current": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}"
+        }
+      },
+      "after": {
+        "label": "sidebar-after-reload",
+        "dom": {
+          "center": "conversation:composer",
+          "channelRows": [
+            "agent-channel-row-channel-alpha-beta"
+          ],
+          "channelMessages": 0,
+          "sidebarOccupant": {
+            "testid": "ui-inbox-panel",
+            "width": 268
+          },
+          "frame": {
+            "gridTemplateColumns": "280px minmax(0px, 1fr) 0px",
+            "sidebarCollapsed": null,
+            "detailsCollapsed": "true",
+            "portrait": null
+          },
+          "textarea": {
+            "value": "",
+            "editable": true
+          },
+          "dialog": null,
+          "effortTrigger": "Choose effort, current Default",
+          "inboxCurrent": [],
+          "channelCurrent": [],
+          "tabs": [],
+          "activeTab": null,
+          "durationToggle": null,
+          "shownSession": []
+        },
+        "keys": {
+          "dsh.sessions.current": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}"
+        }
+      },
+      "verdict": "LOST"
+    },
+    {
+      "surface": "composer draft text (chat store `draft`)",
+      "before": {
+        "draft": "spike-draft-1792495411966",
+        "stored": [
+          [
+            "dsh.conversation.chat.session-inbox-person-spike-agent-alpha",
+            "{\"selection\":null,\"draft\":\"spike-draft-1792495411966\",\"view\":null,\"inspect\":null}"
+          ]
+        ]
+      },
+      "after": {
+        "observed": "spike-draft-1792495411966",
+        "stored": [
+          [
+            "dsh.conversation.chat.session-inbox-person-spike-agent-alpha",
+            "{\"selection\":null,\"draft\":\"spike-draft-1792495411966\",\"view\":null,\"inspect\":null}"
+          ]
+        ]
+      },
+      "verdict": "PRESERVED"
+    },
+    {
+      "surface": "conversation view tab (chat store `view`)",
+      "before": {
+        "tabs": 0
+      },
+      "after": null,
+      "verdict": "UNMEASURED: no view tab ring is rendered, so the stored `view` has no UI to drive. ConversationSession.tsx:112 needs views.list().length > 1, and the header that hosts the ring returns null for a non-subagent session (ConversationSession.tsx:79)."
+    },
+    {
+      "surface": "trajectory duration preference (`dsh.trajectory.duration`)",
+      "before": {
+        "visible": false
+      },
+      "after": null,
+      "verdict": "UNMEASURED: the toggle lives in the trajectory toolbar, and no tab ring rendered (0 [role=tab] nodes in every snapshot) so the trajectory view was never mounted. Cause: ui-conversation/src/client/skeleton/ConversationSession.tsx:112 renders the ring only when views.list().length > 1, and the same file returns null from ConversationSessionHeader (:79, !readOnly) for a non-subagent session — the inbox conversation has no header at all."
+    },
+    {
+      "surface": "settings modal (open + active section)",
+      "before": {
+        "dialog": {
+          "label": null,
+          "activeNav": [
+            "Learn More"
+          ]
+        },
+        "keys": {
+          "dsh.conversation.chat.session-inbox-person-spike-agent-alpha": "{\"selection\":null,\"draft\":\"spike-draft-1792495411966\",\"view\":null,\"inspect\":null}",
+          "dsh.sessions.current": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}",
+          "dsh.settings.shell": "{\"open\":true,\"sectionId\":\"learn\"}"
+        }
+      },
+      "after": {
+        "dialog": {
+          "label": null,
+          "activeNav": [
+            "Learn More"
+          ]
+        },
+        "settingsKeys": [
+          [
+            "dsh.settings.shell",
+            "{\"open\":true,\"sectionId\":\"learn\"}"
+          ]
+        ]
+      },
+      "verdict": "PRESERVED"
+    },
+    {
+      "surface": "settings modal (CLOSED state remembered)",
+      "before": {
+        "dialog": null,
+        "settingsKeys": [
+          [
+            "dsh.settings.shell",
+            "{\"open\":false,\"sectionId\":\"learn\"}"
+          ]
+        ]
+      },
+      "after": {
+        "dialogAfterReload": null,
+        "settingsKeys": [
+          [
+            "dsh.settings.shell",
+            "{\"open\":false,\"sectionId\":\"learn\"}"
+          ]
+        ]
+      },
+      "verdict": "PRESERVED (stays closed)"
+    },
+    {
+      "surface": "settings modal (reopen lands on the last section, not the first row)",
+      "before": {
+        "sectionBeforeClose": [
+          "Learn More"
+        ]
+      },
+      "after": {
+        "sectionAfterReopen": [
+          "Learn More"
+        ]
+      },
+      "verdict": "PRESERVED"
+    },
+    {
+      "surface": "settings plugins tab (settings.plugins.tab)",
+      "before": {
+        "tabs": [],
+        "tablists": 0,
+        "tabpanels": []
+      },
+      "after": null,
+      "verdict": "UNREACHABLE — no tab control exists to persist: exactly one package registers a settings.plugins.tab entry (ui-settings-plugin-inventory, id \"all\"), and PluginsSettingsSection renders a lone page bare with no tablist when rows.length === 1 (PluginsSettingsSection.tsx:44-64). A persisted tab id here would be a key for a control no reader can press."
+    },
+    {
+      "surface": "effort selection (host setting)",
+      "before": {
+        "labelBefore": "Choose effort, current Default",
+        "menuOpen": true,
+        "levels": 0
+      },
+      "after": null,
+      "verdict": "UNMEASURED: the effort menu opened with no selectable level (keyless fixture composes no effort-capable model)"
+    },
+    {
+      "surface": "details column width (ui-layout store.details)",
+      "before": {
+        "openable": false,
+        "detailsCollapsed": "true"
+      },
+      "after": null,
+      "verdict": "UNMEASURED: nothing in this fixture can open the details column — `layout.openDetails()` has one UI caller, the tool-card Inspect path (ui-conversation/src/client/apply.ts:366), and a keyless fixture conversation holds no tool call."
+    },
+    {
+      "surface": "tool-card disclosure (ui-tool ToolRow)",
+      "before": {
+        "rendered": 0
+      },
+      "after": null,
+      "verdict": "REACHABLE in a conversation that holds a tool call; NOT PERSISTED — the expansion is `useState` in ui-tool/src/client/tool/components/ToolRow.tsx:149, a package outside this ticket's file scope. Flagged for the coordinator rather than silently dropped: it is the canonical case, and persisting it needs a ui-tool change (a session-scoped store read by ToolRow) following the same pattern as the plan strip."
+    },
+    {
+      "surface": "goal bar disclosure (ui-goal GoalBar)",
+      "before": {
+        "rendered": 0
+      },
+      "after": null,
+      "verdict": "UNMEASURED and not persisted: renders only when the session holds a goal snapshot, and its local state is an edit form (`editing` / `draft` / `pending` at GoalBar.tsx:35-39), not a disclosure a reader would expect a reload to restore. A half-typed goal objective is not viewing state."
+    },
+    {
+      "surface": "jobs popover (ui-jobs JobListAction)",
+      "before": {
+        "rendered": 0
+      },
+      "after": null,
+      "verdict": "UNMEASURED and not persisted: renders only when the session has a background job (JobListAction.tsx:118 returns null with no jobs), and its `open` flag is a transient popover — a reload reopening a job list the reader never asked for is a surprise, not a restoration."
+    },
+    {
+      "surface": "deliverables list (ui-deliverables ProducedFiles)",
+      "before": {
+        "rendered": 0
+      },
+      "after": null,
+      "verdict": "UNMEASURED and not persisted: renders only when a turn produced files; its `shownCount` (ProducedFiles.tsx:79) is a Show-more cursor, not a preference — restoring a cursor into a list whose contents changed is arbitrary."
+    },
+    {
+      "surface": "plan mode control (ui-plan PlanModeControl)",
+      "before": {
+        "rendered": 0
+      },
+      "after": null,
+      "verdict": "NOT PERSISTED: its local state is `leaving` (an in-flight transition) and `error` (a failure message) at PlanModeControl.tsx:21-22. Neither is a viewing position; persisting them would restore a stuck transition or a stale error banner."
+    },
+    {
+      "surface": "composer blocks (conversation input blockers)",
+      "before": {
+        "blocked": false
+      },
+      "after": null,
+      "verdict": "UNMEASURED / not user state: a block is transient derived state another plugin raises (ui-conversation/src/client/input/blocks.ts:68 createSnapshotStore with no persist), not a choice a person made. Measured observation: the composer was editable in every snapshot above, so no block was raised to re-observe."
+    },
+    {
+      "surface": "plan strip / todo dock disclosure (per conversation)",
+      "before": {
+        "expanded": "true",
+        "items": 3,
+        "disclosureKeys": {
+          "dsh.conversation.disclosure.session-inbox-person-probe-agent-alpha": "{\"planCollapsed\":false}"
+        }
+      },
+      "after": {
+        "expanded": "true",
+        "items": 3,
+        "disclosureKeys": {
+          "dsh.conversation.disclosure.session-inbox-person-probe-agent-alpha": "{\"planCollapsed\":false}"
+        }
+      },
+      "verdict": "PRESERVED"
+    },
+    {
+      "surface": "plan strip disclosure scoping (two conversations)",
+      "before": {
+        "alphaExpanded": "true",
+        "alphaDisclosureKeys": {
+          "dsh.conversation.disclosure.session-inbox-person-probe-agent-alpha": "{\"planCollapsed\":false}"
+        }
+      },
+      "after": {
+        "betaExpanded": "false",
+        "betaItems": 0,
+        "betaSummary": "To-dos1 completed · 1 in progress",
+        "betaDisclosureKeys": {
+          "dsh.conversation.disclosure.session-inbox-person-probe-agent-alpha": "{\"planCollapsed\":false}"
+        }
+      },
+      "verdict": "PRESERVED (beta keeps its own collapsed state; alpha's expansion did not travel)"
+    },
+    {
+      "surface": "plan strip disclosure: stale key from a cleared conversation",
+      "before": {
+        "orphanKeyStored": "{\"planCollapsed\":false}",
+        "orphanSessionId": "session-inbox-person-probe-agent-cleared"
+      },
+      "after": {
+        "alphaExpanded": "false",
+        "alphaDisclosureKeys": {
+          "dsh.conversation.disclosure.session-inbox-person-probe-agent-cleared": "{\"planCollapsed\":false}"
+        }
+      },
+      "verdict": "NO LEAK (only a cleared conversation's key was stored; the open conversation still started collapsed)"
+    },
+    {
+      "surface": "reasoning / context-injection / compaction row disclosure",
+      "before": {
+        "rendered": 0
+      },
+      "after": null,
+      "verdict": "NOT PERSISTED, by structure rather than by scope: these rows mount by transcript INDEX (ReasoningRow in AssistantMarkdown.tsx:66 is `key={i}`), so a persisted expansion stored against an index re-expands whichever row later occupies that slot — the wrong row after a compaction or a truncated replay. They stay component-local until a row carries a stable identity. The plan strip covers the same reader need with an identity that is stable by construction (one strip per conversation)."
+    },
+    {
+      "surface": "queue dock disclosure (collapsed queue strip)",
+      "before": {
+        "rendered": false
+      },
+      "after": null,
+      "verdict": "NOT PERSISTED: the strip renders nothing while the queue is empty (QueueDock.tsx:47), and reaching a queued item needs a running turn plus a submitted prompt. It is also not at-rest state in this deployment: with an empty queue there is no control to persist for."
+    },
+    {
+      "surface": "effort selection (reasoning effort)",
+      "before": {
+        "beforeLabel": "Choose effort, current High",
+        "chosenLabel": "Choose effort, current Max",
+        "levels": 3,
+        "clientKeysWritten": []
+      },
+      "after": {
+        "reloadedLabel": "Choose effort, current High"
+      },
+      "verdict": "NOT CLIENT-OWNED, so not this ticket's to persist: the choice is submitted to the host (select({ provider, model, reasoningEffort }) in ui-model-selection ModelSelect.tsx:57-60) and wrote no dsh.* key. It is a host-held per-session setting, not client state, so localStorage persistence would be a second mechanism beside the host's own. Limit: this measurement runs against the ?fixture in-memory host, which resets on reload, so the reloaded label here says nothing about host durability in the deployment."
+    },
+    {
+      "surface": "person namespacing of the persisted keys",
+      "before": {
+        "keys": [
+          "dsh.conversation.chat.session-inbox-person-spike-agent-alpha",
+          "dsh.conversation.disclosure.session-inbox-person-probe-agent-cleared",
+          "dsh.sessions.current",
+          "dsh.settings.shell"
+        ],
+        "identityTheClientWasTold": {
+          "personId": "person-spike",
+          "via": "GET /v1/browser/inbox response body"
+        }
+      },
+      "after": {
+        "keysWithPersonNamespacePrefix": [],
+        "keysCarryingPersonString": [
+          "dsh.conversation.chat.session-inbox-person-spike-agent-alpha"
+        ],
+        "anyValueCarryingPersonId": true,
+        "inboxRequests": [
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "POST /v1/browser/inbox/open {\"agent\":\"agent-alpha\"}",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels/channel-alpha-beta ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/channels ",
+          "GET /v1/browser/inbox ",
+          "GET /v1/browser/inbox/brand.svg ",
+          "GET /v1/browser/inbox/avatars/agent-alpha ",
+          "GET /v1/browser/inbox/avatars/agent-beta ",
+          "GET /v1/browser/inbox "
+        ]
+      },
+      "verdict": "NO PERSON NAMESPACE: neither key carries a person prefix; the conversation key embeds the session id, which is only person-separated because the deployment names sessions session-inbox-<profile>-<agent>. dsh.sessions.current carries no person field at all, and no request the client makes names a person."
+    }
+  ],
+  "notes": [
+    "channel: center after reload = conversation:composer",
+    "sidebar: wide=280px minmax(0px, 1fr) 0px collapsed=56px minmax(0px, 1fr) 0px afterReload=280px minmax(0px, 1fr) 0px",
+    "view tabs visible: []",
+    "details collapsed before the reload: true",
+    "effort: Choose effort, current High -> Choose effort, current Max -> Choose effort, current High after reload (fixture host is in-memory; reload resets it)"
+  ],
+  "failures": [],
+  "keysAtBoot": {
+    "dsh.sessions.current": "{\"sessionId\":\"session-161dee54-8385-426a-ba06-8be5244cb792\"}"
+  },
+  "keysAtEnd": {
+    "dsh.conversation.chat.session-inbox-person-spike-agent-alpha": "{\"selection\":null,\"draft\":\"spike-draft-1792495411966\",\"view\":null,\"inspect\":null}",
+    "dsh.conversation.disclosure.session-inbox-person-probe-agent-cleared": "{\"planCollapsed\":false}",
+    "dsh.sessions.current": "{\"sessionId\":\"session-inbox-person-spike-agent-alpha\"}",
+    "dsh.settings.shell": "{\"open\":false,\"sectionId\":\"plugins\"}"
+  },
+  "consoleErrors": []
+}
