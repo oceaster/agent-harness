@@ -28,7 +28,7 @@ import type { ProjectionsBaseline } from './projection-store.ts'
 import { resolvedClientTimeZone } from '../time-zone.ts'
 import { SessionQueueMirror } from './queue-mirror.ts'
 import { SessionReactionNotes } from './reaction-notes.ts'
-import type { SessionReaction, SessionReactionAction } from './reaction-notes.ts'
+import type { SessionReactionAction } from './reaction-notes.ts'
 
 /** Messages requested per history page. */
 export const PAGE_MESSAGES = 50

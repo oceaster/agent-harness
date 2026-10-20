@@ -8,8 +8,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { useEffect } from 'react'
 import type {
   AssistantMessageNode, CommandNode, CompactionSummaryNode, ConversationNode, ConversationSnapshot,
-  ModelRetryNode, RunningToolCall, SessionId, SessionListState, SessionReaction, ToolCallBlock, ToolResultNode,
-  TurnErrorNode, TurnMaxTokensNode, UserMessageNode, WorkspaceListState,
+  ModelRetryNode, RunningToolCall, SessionId, SessionListState, SessionReaction, SessionReactionAction,
+  ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UserMessageNode, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import {
@@ -18,7 +18,7 @@ import {
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type {
   ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps, SelectionTarget,
-  SessionReactionAction, UseChatNodeReaction, UseChatNodeTurnData,
+  UseChatNodeReaction, UseChatNodeTurnData,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'

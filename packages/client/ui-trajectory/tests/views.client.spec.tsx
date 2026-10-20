@@ -105,6 +105,7 @@ function historySnapshot(
     runningCalls: trajectory.runningCalls,
     pending: [],
     queue: [],
+    reactions: new Map(),
     running: false,
     subagent: null,
     composerPhase: 'active',

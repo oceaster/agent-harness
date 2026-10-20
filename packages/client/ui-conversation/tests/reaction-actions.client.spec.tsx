@@ -241,7 +241,7 @@ describe('the emoji table', () => {
   it('closes when an entry is chosen', () => {
     const onChoose = vi.fn<(emoji: string) => void>()
     const onDismiss = vi.fn()
-    const anchor = { current: null }
+    const anchor: { current: HTMLDivElement | null } = { current: null }
     render(
       <div ref={(element) => { anchor.current = element }}>
         <EmojiTable id="table" anchor={anchor} current={undefined} onChoose={onChoose} onDismiss={onDismiss} t={t} />

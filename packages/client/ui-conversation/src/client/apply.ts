@@ -138,7 +138,7 @@ export function apply(ctx: Context): void {
   // and a click never claims a success the log has not recorded.
   const reactionHook: ChatNodeInjected['hooks']['reaction'] = ({ useSession, sessionId }) =>
     function useReaction(targetSeq) {
-      const reaction = useSession((snapshot) =>
+      const reaction = useSession(snapshot =>
         targetSeq === undefined ? undefined : snapshot.reactions.get(targetSeq))
       return {
         reaction,
