@@ -126,7 +126,7 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => command.register({
       name: 'model',
       description: t('command.description'),
-      available: session => sessions.subagentAddress(session.sessionId) === undefined,
+      available: () => false,
       ui: {
         kind: 'popupSelect',
         options: async (session) => {

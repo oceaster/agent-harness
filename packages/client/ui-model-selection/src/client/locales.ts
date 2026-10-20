@@ -10,6 +10,11 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'effort.aria': '选择推理强度，当前 {effort}',
+  'effort.heading': '推理强度',
+  'effort.loading': '正在加载推理强度…',
+  'effort.error': '无法更新推理强度，请重试。',
+  'effort.unavailable': '此助手不提供推理强度设置。',
   'command.description': '选择本会话使用的模型',
   'option.loadError': '目录加载失败：{message}',
   'trigger.fallback': '选择模型',
@@ -34,6 +39,11 @@ export type ModelKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'effort.aria': 'Choose effort, current {effort}',
+  'effort.heading': 'Thinking effort',
+  'effort.loading': 'Loading effort levels…',
+  'effort.error': 'Could not update effort. Try again.',
+  'effort.unavailable': 'Effort is not configurable for this agent.',
   'command.description': 'Select the model for this conversation',
   'option.loadError': 'Catalog failed to load: {message}',
   'trigger.fallback': 'Select model',

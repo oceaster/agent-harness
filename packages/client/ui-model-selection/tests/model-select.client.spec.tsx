@@ -47,138 +47,77 @@ function state(overrides: Partial<ModelDirectoryState> = {}): ModelDirectoryStat
 
 afterEach(cleanup)
 
-describe('ModelSelect reasoning effort', () => {
-  it('renders adapter metadata and submits the effort as part of the session selection', async () => {
-    const directory = createSnapshotStore<ModelDirectoryState>(state())
+describe('effort-only slider', () => {
+  function bench(overrides: Partial<ModelDirectoryState> = {}, available = true, locked = false) {
+    const directory = createSnapshotStore(state(overrides))
     const select = vi.fn(async (selection: ModelSelection) => {
-      directory.set(state({ current: selection }))
+      directory.set({ ...directory.getSnapshot(), current: selection })
       return true
     })
-    render(<ModelSelect
-      locked={false}
-      available
-      directory={directory}
-      load={vi.fn()}
-      select={select}
-      t={t}
-    />)
-
-    const trigger = screen.getByRole('button', {
-      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
-    })
-    fireEvent.click(trigger)
-    fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
-    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Off', 'High', 'MaxLargest budget'])
-
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Max/ }))
-    await waitFor(() => {
-      expect(select).toHaveBeenCalledWith({
-        provider: 'deepseek-official',
-        model: 'deepseek-v4-flash',
-        reasoningEffort: 'max',
-      })
-      expect(trigger.getAttribute('aria-label')).toBe('选择模型，当前 DeepSeek-V4-Flash，推理等级 Max')
-    })
-  })
-
-  it('offers provider default only when the adapter does not configure a model default', () => {
-    const directory = createSnapshotStore(state({
-      groups: [{
-        id: 'provider',
-        name: 'Provider',
-        models: [{
-          id: 'model',
-          name: 'Model',
-          reasoning: { efforts: [{ id: 'standard', name: 'Standard' }] },
-        }],
-      }],
-      current: { provider: 'provider', model: 'model' },
-    }))
-    render(<ModelSelect
-      locked={false}
-      available
-      directory={directory}
-      load={vi.fn()}
-      select={vi.fn().mockResolvedValue(true)}
-      t={t}
-    />)
-
-    fireEvent.click(screen.getByRole('button', {
-      name: '选择模型，当前 Model，推理等级 Default',
-    }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
-    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Default', 'Standard'])
-  })
-
-  it('prompts for a selection when the current model is no longer advertised', () => {
-    const directory = createSnapshotStore(state({
-      current: { provider: 'deepseek-official', model: 'removed-model' },
-    }))
-    const select = vi.fn().mockResolvedValue(true)
-    render(<ModelSelect
-      locked={false}
-      available
-      directory={directory}
-      load={vi.fn()}
-      select={select}
-      t={t}
-    />)
-
-    const trigger = screen.getByRole('button', { name: '选择模型' })
-    expect(trigger.textContent).toContain('选择模型')
-    fireEvent.click(trigger)
-    expect(screen.queryByRole('menuitem', { name: /推理等级/ })).toBeNull()
-    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
-    expect(screen.queryByText('removed-model')).toBeNull()
-    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })).toBeTruthy()
-  })
-
-  it('announces a rejected selection as a transient toast and keeps the in-menu strip for loads', async () => {
-    const groups = [{
-      id: 'deepseek-official',
-      name: 'DeepSeek',
-      models: [
-        { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', reasoning },
-        { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
-      ],
-    }]
-    const directory = createSnapshotStore<ModelDirectoryState>(state({ groups }))
-    const select = vi.fn(async () => {
-      directory.set(state({ groups, status: 'error', error: 'model-unavailable: session already contains images' }))
-      return false
-    })
-    render(<ModelSelect
-      locked={false}
-      available
-      directory={directory}
-      load={vi.fn()}
-      select={select}
-      t={t}
-    />)
-
-    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/ }))
-    const toast = await screen.findByRole('alert')
-    expect(toast.textContent).toContain('模型操作失败：model-unavailable: session already contains images')
-    // The selection failure does not render the in-menu load strip (no Retry).
-    expect(screen.queryByRole('button', { name: '重试' })).toBeNull()
-  })
-
-  it('renders no Agent-bound control for an addressed subagent session', () => {
     const load = vi.fn()
-    render(<ModelSelect
-      locked={false}
-      available={false}
-      directory={createSnapshotStore(state())}
-      load={load}
-      select={vi.fn().mockResolvedValue(false)}
-      t={t}
-    />)
-
+    const view = render(<ModelSelect available={available} locked={locked} directory={directory} select={select} load={load} t={t} />)
+    return { directory, select, load, view }
+  }
+  it('previews discrete steps and commits on release without exposing or changing a model', async () => {
+    const b = bench()
+    const trigger = screen.getByTestId('agent-effort-trigger')
+    expect(screen.queryByText('DeepSeek-V4-Flash')).toBeNull()
+    fireEvent.click(trigger)
+    const slider = screen.getByRole('slider')
+    expect(slider.getAttribute('aria-valuetext')).toBe('High')
+    fireEvent.change(slider, { target: { value: '2' } })
+    expect(slider.getAttribute('aria-valuetext')).toBe('Max')
+    expect(b.select).not.toHaveBeenCalled()
+    fireEvent.pointerUp(slider)
+    await waitFor(() =>{  expect(b.select).toHaveBeenCalledWith({
+      provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'max',
+    }) })
+    await waitFor(() =>{  expect(screen.queryByRole('slider')).toBeNull() })
+    expect(trigger.getAttribute('aria-label')).toBe('选择推理强度，当前 Max')
+  })
+  it('allows keyboard commit and Escape cancellation', async () => {
+    const b = bench()
+    const trigger = screen.getByTestId('agent-effort-trigger')
+    fireEvent.click(trigger)
+    let slider = screen.getByRole('slider')
+    fireEvent.change(slider, { target: { value: '0' } })
+    fireEvent.keyDown(slider, { key: 'Escape' })
+    expect(b.select).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(trigger)
+    fireEvent.click(trigger)
+    slider = screen.getByRole('slider')
+    expect((slider as HTMLInputElement).value).toBe('1')
+    fireEvent.change(slider, { target: { value: '2' } })
+    fireEvent.keyDown(slider, { key: 'Enter' })
+    await waitFor(() =>{  expect(b.select).toHaveBeenCalledOnce() })
+  })
+  it('does not submit the same effort', () => {
+    const b = bench()
+    fireEvent.click(screen.getByTestId('agent-effort-trigger'))
+    fireEvent.pointerUp(screen.getByRole('slider'))
+    expect(b.select).not.toHaveBeenCalled()
+  })
+  it('does not offer another model when effort metadata is unavailable', () => {
+    bench({ current: { provider: 'deepseek-official', model: 'removed-model', reasoningEffort: 'high' } })
+    fireEvent.click(screen.getByTestId('agent-effort-trigger'))
+    expect(screen.queryByRole('slider')).toBeNull()
+    expect(screen.queryByText('DeepSeek-V4-Flash')).toBeNull()
+    expect(screen.getByText(zh['effort.unavailable'])).toBeTruthy()
+  })
+  it('includes provider default only when no configured effort default exists', () => {
+    bench({ groups: [{ id: 'deepseek-official', name: 'Secret provider', models: [{
+      id: 'deepseek-v4-flash', name: 'Secret model', reasoning: { efforts: [{ id: 'standard', name: 'Standard' }] },
+    }] }] })
+    fireEvent.click(screen.getByTestId('agent-effort-trigger'))
+    expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('Default')
+    expect(screen.queryByText('Secret model')).toBeNull()
+  })
+  it('hides subagent controls and disables locked controls', () => {
+    const b = bench({}, false)
     expect(screen.queryByRole('button')).toBeNull()
-    expect(load).not.toHaveBeenCalled()
+    expect(b.load).not.toHaveBeenCalled()
+    b.view.unmount()
+    bench({}, true, true)
+    expect((screen.getByTestId('agent-effort-trigger')).disabled).toBe(true)
   })
 })

@@ -144,6 +144,7 @@ const projection = (id: string) => ({ sessionId: sid(id) })
 describe('ui-model-selection dual entry', () => {
   it('registers the /model contribution and the composer model seat', async () => {
     const b = await bench()
+    expect(b.contribution().available(projection('s1'))).toBe(false)
     expect(b.contribution().name).toBe('model')
     expect(b.contribution().ui.kind).toBe('popupSelect')
     expect(b.seat().inject).toBeTypeOf('function')
