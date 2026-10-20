@@ -76,6 +76,8 @@ Upstream never deletes a session on its own. This fork adds exactly one lifecycl
 
 **Where the threshold lives.** The gateway plugin config section `subagentIdleReap: { idleMs, scanIntervalMs }` — defaults `21600000` (six hours) and `3600000` (one hour), shipped by the `host-apiproxy` row of the Web bundle and validated on load: `idleMs` below one hour and `scanIntervalMs` below one minute (including zero and negative values) are refused at boot with the offending field named, rather than silently applied. `createApiProxy` arms the timer only when its caller passes the section, so a bare embedding reaps nothing it was not told to.
 
+**Deliberate consequence, stated so nobody is surprised:** a continuable subagent is reaped like any other. A child that its parent left alone for longer than the threshold is destroyed, and a later follow-up from that parent is refused by the child catalog (the conversation no longer exists) instead of reviving it. The threshold is the only lever on that trade-off, and it is the trade the household asked for: an unbounded pile of dead children is worse than a follow-up that fails loudly.
+
 A pass reads each cold subagent log once to find its last event time (an attached session's live log is used instead, which is fresher and free), so the scan costs one artifact parse per candidate per interval; the [durable last-activity index](../../../.agents/notes/proposed/architecture/2026-07-29-durable-last-activity-index.md) would make that an index read once it lands.
 
 ## Carrier layer (`/client` + root)

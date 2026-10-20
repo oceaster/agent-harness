@@ -198,6 +198,8 @@ export async function reapIdleSubagentSessions(
     )
     return report
   }
+  const agents = ctx.get('agents')
+  const sessions = ctx.get('sessions')
   const now = options.now()
   // Sessions a previous iteration already destroyed as descendants: the shared
   // routine collects subagent descendants itself, so re-addressing one of them
@@ -208,8 +210,8 @@ export async function reapIdleSubagentSessions(
     if (destroyed.has(header.id)) continue
     if (!isSubagentSession(header)) continue
     report.scanned++
-    const live = ctx.sessions.get(header.id)
-    const agent = ctx.agents.get(header.id)
+    const live = sessions?.get(header.id)
+    const agent = agents?.get(header.id)
     // Rule 2: live work outranks the idle clock, whatever the log age says.
     if (agent?.status === 'running') {
       report.skipped.push({ sessionId: header.id, reason: 'running' })

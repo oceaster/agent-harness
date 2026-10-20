@@ -469,7 +469,7 @@ describe('subagent idle reaper — refusals and the boundary', () => {
         details: {},
       },
     }
-    const destroy = vi.fn(() => Promise.resolve(refusal))
+    const destroy = vi.fn((_sessionId: SessionId): Promise<DestroySessionOutcome> => Promise.resolve(refusal))
 
     const first = await reapIdleSubagentSessions(ctx, { destroy, now: () => now, idleMs: SIX_HOURS, logger: logger.logger })
     expect(first.reaped).toEqual([])
