@@ -935,7 +935,7 @@ re-applied on every upstream pull:
      and the dialog goldens (`dialog.expected.md`, `dialog-en.expected.md`) are
      refreshed without the row.
 
-20. **The Settings panel is its section: no nav rail, no document action**
+21. **The Settings panel is its section: no nav rail, no document action**
     (`ui-settings-general`, `ui-settings`) — the other half of Owen's words above:
     "Just remove the settings menu side bar ... also remove the 'open configuration
     file' button in the top right." Entry 19 deleted the two tabs; this deleted the
@@ -1017,6 +1017,65 @@ re-applied on every upstream pull:
     scaffold at 1280x800 and 390x844 for geometry, screenshots, console tripwire
     and the reload rule. Not run here: the composed e-server origin (the
     coordinator's own gate) and any deploy. No merge, no deploy.
+22. **No per-message branch and no good/bad response controls**
+   (`ui-conversation`, `ui-message-feedback` deleted; `24362c8cfe`) — Owen:
+   "remove the 'branch into new conversation' option from each message" and
+   "remove the 'good response bad response' options from each message". Both
+   are deleted, not hidden, and both went in one pass because they shared the
+   finalized assistant message's IconActions row.
+
+   - **Branch.** `MessageIconActions` is copy plus the clock. Gone with it:
+     the `onBranch`/`branchUnavailable` props and the `extraActions` strip,
+     the `IconBranchOutline16` import, the tooltip copy swap, the hidden
+     `aria-describedby` reason node, the `.action[data-unavailable]` and
+     `.visuallyHidden` rules in `MessageIconActions.module.css`, the
+     `data.branchUnavailable || hasLaterChatNode` computation in
+     `TurnTailNodeView`, the tail-eligibility scan in
+     `conversation-nodes/turn-tail.ts`, `TurnTailChatData.branchUnavailable`,
+     the `forkAt` owner-injected member (`ChatNodeOwnerProps`,
+     `ChatViewInjected`, `ChatNodeSeat`, `ChatView`) and the `forkAt` factory
+     in `apply.ts`, plus `message.branch` / `message.branchUnavailable` in
+     both dictionaries.
+   - **Feedback.** `packages/client/ui-message-feedback` is deleted whole:
+     its composition row in `packages/bundle/web-app/cordis.patch.yml`, the
+     web-app `package.json` dependency, the `tsconfig.client.json` project,
+     the `tsconfig.base.json` path mapping, its
+     `verify-package-readme-model-experience` entry and its regenerated
+     catalogue rows. The slot it occupied, `conversation.chat.assistant-actions`,
+     had exactly one registrant, so the slot declaration, its
+     `AssistantActionOwnerProps` and the `children` authorization on the
+     `turn-tail` renderer key are deleted too: the row keeps no empty wrapper,
+     no divider and no gap where the thumbs and the branch icon were, and
+     `TurnTailNodeView` skips the render site entirely.
+   - **Kept on purpose, pending a separate decision.** The
+     `message-feedback` host row, `packages/feedback/message-feedback` and its
+     generated `messageFeedback` Remote still load and are still driven end to
+     end by `apps/web/tests/message-feedback-protocol.snapshot.ts`; no browser
+     package calls `ctx.remote.messageFeedback`. The runtime's `sessions.fork`
+     is still called by the workspace session-row action
+     (`packages/client/ui-workspace/src/client/index.ts`) — only the message
+     row lost its caller.
+   - **Re-apply on an upstream pull.** Upstream still ships the branch action
+     and the feedback strip, so restoring this state means deleting the same
+     files and hunks again; `FORK-NOTES` entry 18's settings plane and this
+     entry do not interact.
+   - **Browser evidence (1280x800, one settled assistant message).** Row at
+     base: Copy → Good response → Bad response → Branch into a new
+     conversation → clock, 28px items, 10px gaps, `scrollWidth == clientWidth
+     == 754`, zero separators, clock `7/25 06:08 · Ran for 1s · TTFT 0.5s ·
+     131 tok/s`. After: Copy → clock, same 10px gap, same 754px row, one line,
+     zero separators, no thumbs, no branch, clock unchanged. Measured with
+     `playwright` + `apps/web/tests/scaffold.ts` (`launchWebScaffold`) in a
+     throwaway spec, twice: once at the base commit, once after the change.
+   - **Known pre-existing breakage this entry does not fix.** The household
+     `ui-inbox` replaced `ui-workspace` as the sidebar, and its conversation
+     list needs the e-server origin, so every `apps/web/tests` scenario that
+     opens a session through a `[role="treeitem"]` fails at base too (11 of 15
+     across `stats-paged-history` and `seeded-history`). For the row
+     measurement the sidebar was swapped back with a throwaway overlay
+     (`ui-inbox` disabled, `ui-workspace` enabled); the committed aria goldens
+     under `apps/web/tests/snapshots/` still name the two removed controls and
+     cannot be re-recorded until that composition question is answered.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
