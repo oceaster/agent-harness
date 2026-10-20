@@ -429,7 +429,7 @@ describe('built-in conversation node Definitions', () => {
     ])
   })
 
-  it('keeps branching unavailable when a tool result follows the closing Assistant', () => {
+  it('closes the footer on the last text Assistant even when a tool result follows it', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'step/start', { turn: 1, step: 1 }),
@@ -450,7 +450,6 @@ describe('built-in conversation node Definitions', () => {
 
     const tail = node(snapshot(value), 'turn-tail')?.data as TurnTailChatData
     expect(tail.closing?.finalNode.seq).toBe(3)
-    expect(tail.branchUnavailable).toBe(true)
   })
 
   it('replays inbox predecessors after prepend and reclassifies the dependent message as steering', () => {

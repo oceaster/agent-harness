@@ -44,7 +44,6 @@ function props(
     selectedCallId,
     openFile: vi.fn(),
     inspectCall: vi.fn(),
-    forkAt: vi.fn(),
     fileMentions: vi.fn(),
     useHostDescription: (selector => selector(description)) as ToolTreeProps['useHostDescription'],
     t,

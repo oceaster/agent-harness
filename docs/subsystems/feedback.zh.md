@@ -203,11 +203,7 @@ Plugin disposal 会先关闭变更接纳，排空已进入各 Session 队列的�
 
 ## Web 界面
 
-[`@deepseek-ai/dsh-client-ui-message-feedback`](../../packages/client/ui-message-feedback) 是浏览器侧消费方。`@deepseek-ai/dsh-api-remotes` 挂载生成的 `messageFeedback` 贡献，因此该插件调用 `ctx.remote.messageFeedback`，不接触传输层。
-
-控件是 `conversation.chat.assistant-actions` list slot 的 `feedback` 条目（order 10），该 slot 由 `ui-conversation` 声明，并渲染在已定稿助手消息的 IconActions 行内。为抵达该渲染点需要一处管道改动：`AssistantMessageNode` 现在携带来自 `assistant/message` 事件的可选 `messageId`。被中断冻结的部分输出没有该字段，渲染点在字段缺失时跳过该 slot。该操作栏每个 Turn 渲染一次，位于收尾的助手消息上：Host 接受每条 append-origin 步骤消息作为目标，但多步骤 Turn 中较早的步骤渲染的是工具行而非可评分正文，因此 UI 暴露的范围比 Host 约定允许的更窄。
-
-每个 Session 一个 `MessageFeedbackController`，支撑该 Session 内所有消息的控件：一次 `list` 读取即填充整段对话，且延迟到首次 hover 或 focus 才发起，而非挂载时触发。每次变更把该 controller 最后观察到的版本作为 `ifVersion` 发送；`version-conflict` 响应携带权威条目，controller 据此对账而不重新拉取。变更按 Session 串行，排队操作与已提交版本比较。`connection/reset` 只刷新已读取过的 Session。
+浏览器侧已移除：没有任何消息渲染评分控件，因此下面的 Host Remote 约定在本仓库中没有客户端消费方。家庭组合仍然保留 Host 能力 —— `message-feedback` 行依旧加载 `@deepseek-ai/dsh-message-feedback` 及其 storage domain —— 而 `apps/web/tests/message-feedback-protocol.snapshot.ts` 仍然在组装后的 Web 面上驱动 `messageFeedback.list`、`put` 与 `delete`，界面的缺席并没有让这条线路失去证据。`@deepseek-ai/dsh-api-remotes` 仍为任何索取 `ctx.remote.messageFeedback` 的浏览器包挂载生成的 `messageFeedback` 贡献；目前没有包索取。
 
 ## 边界与限制
 
@@ -217,9 +213,8 @@ Plugin disposal 会先关闭变更接纳，排空已进入各 Session 队列的�
 - 由于 persistence 没有按 id 读取元数据的操作，cold 请求会扫描完整的 Session snapshot 目录。单个 Session 行也没有条目数或聚合字节上限；在具体消费方拥有行策略之前，`maxNoteBytes` 只限制每条备注。
 - 只有 `{createdAt, cwd}` 不同时，header 身份才能识别复用的 id；本约定无法区分保留相同 header 身份的克隆日志。
 - Host 约定不记录已认证的 actor 或审计身份，因此假设调用方边界可信。
-- Web 控件只出现在对话视图。trajectory 与 waterfall 视图不渲染反馈条目，尽管它们的助手节点携带相同的 `messageId`。
 - 该 sidecar 不发布实时帧，因此另一个标签页的评分要等到重连或下一次冲突响应才可见，不会立即出现。
-- 备注编辑器不预先校验 `maxNoteBytes`；超长备注在保存时以 `note-too-large` 失败，而不是在输入过程中。
+- Web 界面从不预先校验 `maxNoteBytes`；超长备注在保存时以 `note-too-large` 失败，而不是在输入过程中。任何未来的客户端继承这一选择。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

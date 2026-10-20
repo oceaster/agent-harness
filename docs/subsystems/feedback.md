@@ -203,11 +203,7 @@ Plugin disposal closes mutation admission, drains accepted per-Session queue wor
 
 ## Web surface
 
-[`@deepseek-ai/dsh-client-ui-message-feedback`](../../packages/client/ui-message-feedback) is the browser consumer. `@deepseek-ai/dsh-api-remotes` mounts the generated `messageFeedback` contribution, so the plugin calls `ctx.remote.messageFeedback` and never touches the transport.
-
-The controls are the `feedback` entry (order 10) of the `conversation.chat.assistant-actions` list slot, which `ui-conversation` declares and renders inside the finalized assistant message's IconActions row. Reaching that render site required one plumbing change: `AssistantMessageNode` now carries the optional `messageId` from the `assistant/message` event. The field is absent on interruption-frozen partials, and the render site skips the slot when it is absent. The strip renders once per turn, on the closing assistant message: the Host accepts every append-origin step message as a target, but earlier steps of a multi-step turn render tool rows rather than a rateable body, so the UI exposes a narrower set than the Host contract allows.
-
-One `MessageFeedbackController` per Session backs every message control in that Session: a single `list` read seeds the whole transcript, deferred to first hover or focus rather than fired on mount. Each mutation sends the version that controller last observed as `ifVersion`; a `version-conflict` reply carries the authoritative item, so the controller reconciles from the reply instead of refetching. Mutations serialize per Session so a queued operation compares against the committed version. A `connection/reset` refreshes only Sessions already read.
+The browser half was removed: no message renders a rating control, so the Host Remote contract below has no client consumer in this repository. The household composition keeps the Host capability — the `message-feedback` row still loads `@deepseek-ai/dsh-message-feedback` with its storage domain — and `apps/web/tests/message-feedback-protocol.snapshot.ts` still drives `messageFeedback.list`, `put`, and `delete` over the assembled Web surface, which is what keeps the wire contract proven while the UI is gone. `@deepseek-ai/dsh-api-remotes` still mounts the generated `messageFeedback` contribution for any browser package that asks for `ctx.remote.messageFeedback`; nothing does today.
 
 ## Boundaries and limitations
 
@@ -217,9 +213,8 @@ One `MessageFeedbackController` per Session backs every message control in that 
 - Cold requests scan the complete Session snapshot catalog because persistence has no lookup-by-id metadata operation. One Session row also has no item-count or aggregate-byte cap; `maxNoteBytes` bounds only each note until a concrete consumer owns a row policy.
 - Header identity detects a reused id only when `{createdAt, cwd}` differs; a cloned log retaining the same header identity is indistinguishable by this contract.
 - The Host contract records no authenticated actor or audit identity and therefore assumes a trusted caller boundary.
-- The Web controls appear in the chat view only. The trajectory and waterfall views render no feedback entry even though their assistant nodes carry the same `messageId`.
 - The sidecar publishes no live frames, so a second tab's rating becomes visible on reconnect or on the next conflict reply rather than immediately.
-- The note editor does not pre-check `maxNoteBytes`; an oversized note fails on save with `note-too-large` rather than while typing.
+- The Web UI pre-checked none of `maxNoteBytes`; an oversized note failed on save with `note-too-large` rather than while typing. Any future client inherits that choice.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

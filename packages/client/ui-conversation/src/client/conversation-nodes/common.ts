@@ -9,7 +9,7 @@ import type {
  * Relative positions in one durable event's seq neighborhood: interrupted
  * Assistant, its follow-up Nodes, then follow-ups to an ordinary final. The
  * max-tokens notice sits between a closing Assistant and the turn-tail so the
- * tail stays the turn's last node and keeps its branch action enabled.
+ * notice renders above the footer row instead of after it.
  */
 export const CHAT_SYNTHETIC_SEQ_OFFSETS = {
   interruptedAssistant: -0.9,

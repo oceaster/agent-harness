@@ -140,13 +140,6 @@ describe('conversation slot inject API', () => {
     const chatView = b.chatViewApi(ROOT)
     chatView.injected.loadOlder()
     expect(b.sessionFake.loadOlder).toHaveBeenCalledTimes(1)
-    chatView.injected.forkAt(17)
-    await vi.waitFor(() => {
-      expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [ROOT] })
-    })
-    expect(b.runtime.sessions.calls).toContainEqual({
-      method: 'fork', args: [{ sessionId: ROOT, atSeq: 17, increaseTitle: true }],
-    })
     await b.runtime.dispose()
   })
 

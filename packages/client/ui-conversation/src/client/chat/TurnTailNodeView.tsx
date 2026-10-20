@@ -6,16 +6,13 @@ import { assistantText } from './turn-assistant.ts'
 import css from './TurnTailNodeView.module.css'
 
 type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
-  & PropsRenderSlots<'conversation.chat.turnTail' | 'conversation.chat.assistant-actions'>
+  & PropsRenderSlots<'conversation.chat.turnTail'>
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, forkAt, renderSlot, renderSlotChain, t, useSession,
+  node, openFile, renderSlotChain, t,
 }: TurnTailNodeViewProps) {
   const data = node.data
-  const readOnly = useSession(snapshot => Boolean(snapshot.subagent))
-  const hasLaterChatNode = useSession(snapshot =>
-    snapshot.chat.locations.getTurn(data.turn).at(-1) !== node.key)
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
     ? node.location.turn
     : undefined
@@ -27,12 +24,6 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   const runMs = turn.start === undefined || turn.end === undefined
     ? undefined
     : Math.max(0, turn.end.time - turn.start.time)
-  // Interruption-frozen partials carry no messageId, so they address no
-  // durable message and contribute no per-message actions.
-  const messageId = closing.finalNode.messageId
-  const assistantActions = readOnly || messageId === undefined
-    ? null
-    : renderSlot('conversation.chat.assistant-actions', { messageId })
   return (
     <div className={css.root} data-turn-tail={data.turn} data-time-hover-root>
       {tail}
@@ -43,10 +34,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         ttftMs={data.ttftMs}
         tokensPerSecond={data.tokensPerSecond}
         clock="end"
-        onBranch={readOnly ? undefined : () => { forkAt(closing.finalNode.seq) }}
-        branchUnavailable={data.branchUnavailable || hasLaterChatNode}
         className={css.actions}
-        extraActions={assistantActions}
         t={t}
       />
     </div>

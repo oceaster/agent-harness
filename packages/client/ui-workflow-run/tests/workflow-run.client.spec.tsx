@@ -293,7 +293,6 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
     cwd: undefined,
     openFile: () => {},
     inspectCall: () => {},
-    forkAt: () => {},
     renderMessageImages: () => null,
     fileMentions: () => undefined,
     openSession,

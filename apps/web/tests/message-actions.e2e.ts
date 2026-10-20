@@ -1,14 +1,14 @@
 // Web e2e scenario: message IconActions + clocks. Cold-seeds a deterministic
-// completed-turn-tail fork case (zero model calls) and pins the settled
-// conversation aria after the footers are focus-revealed — the surface package
-// jsdom tests cannot substitute for (docs/testing.md snapshot rule).
+// two-turn transcript (zero model calls), pins that the settled assistant row
+// carries copy alone beside its timing/token reading, and forks through the
+// session-row action — the surface package jsdom tests cannot substitute for
+// (docs/testing.md snapshot rule).
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
@@ -95,7 +95,7 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await scaffold?.close()
   })
 
-  it.skipIf(MODE === 'record')('enables branch only on the completed transcript tail', async () => {
+  it.skipIf(MODE === 'record')('keeps copy as the only control on the settled message row', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-actions'))
     const groupRow = page.locator('[role="treeitem"]').first()
     await groupRow.waitFor({ timeout: 15_000 })
@@ -107,20 +107,23 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBe(1)
 
     // Focus-reveal the footers (hover:hover keeps them opacity-hidden until
-    // hover/focus-within). Branch renders only under assistant answers — user
-    // bubbles carry none — and only a completed transcript tail enables it.
+    // hover/focus-within). Every message row carries copy; nothing else does.
     const copyButtons = page.getByRole('button', { name: 'Copy' })
     await expect.poll(() => copyButtons.count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(4)
     await copyButtons.first().focus()
-    const branchButtons = page.getByRole('button', { name: 'Branch into a new conversation' })
-    await expect.poll(() => branchButtons.count(), { timeout: 5_000 }).toBe(2)
+    // The assistant footer row: copy alone beside the timing/token reading.
+    const row = page.locator('[data-turn-tail] div[class*="actions"]').last()
+    await expect.poll(() => row.getByRole('button', { name: 'Copy' }).count(), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => row.locator('button').count(), { timeout: 5_000 }).toBe(1)
+    await expect.poll(() => row.getByText(/Ran for|TTFT|tok\/s/u).count(), { timeout: 5_000 }).toBeGreaterThanOrEqual(1)
+    // Neither removed affordance survives anywhere in the transcript.
+    await expect.poll(() => page.getByRole('button', { name: 'Branch into a new conversation' }).count(), {
+      timeout: 5_000,
+    }).toBe(0)
     await expect.poll(
-      () => branchButtons.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-disabled'))),
+      () => page.getByRole('button', { name: /^(Good response|Bad response|Remove rating)$/u }).count(),
       { timeout: 5_000 },
-    ).toEqual(['true', null])
-    await branchButtons.first().focus()
-    await expect.poll(() => page.getByRole('tooltip').textContent(), { timeout: 5_000 })
-      .toBe('Available only on the last message of a completed turn')
+    ).toBe(0)
     await expect.poll(() => page.getByRole('button', { name: 'Edit' }).count(), { timeout: 5_000 }).toBe(0)
   }, 60_000)
 
@@ -137,24 +140,10 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
   })
 
-  it.skipIf(MODE === 'record')('forks through the settled-message and session-row actions', async () => {
+  it.skipIf(MODE === 'record')('forks through the session-row action', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-fork'))
-    // The last message action belongs to the completed second-turn assistant.
-    await page.getByRole('button', { name: 'Branch into a new conversation' }).last().click()
-    await expect.poll(
-      () => scaffold.ctx.agents.list().find(agent => agent.session.header.parentSession === SessionId(SEED_ID)),
-      { timeout: 15_000 },
-    ).toBeDefined()
-    await expect.poll(
-      () => page.locator('[role="treeitem"]').count(),
-      { timeout: 10_000 },
-    ).toBe(3)
-    await expect.poll(
-      () => page.locator('[role="treeitem"][aria-selected="true"]').count(),
-      { timeout: 10_000 },
-    ).toBe(1)
-    // The row action owns a distinct ui-workspace injection from the message
-    // action above, so exercise both through the loaded app before capture.
+    // The session row owns the only remaining fork action: message rows no
+    // longer offer one.
     const sourceRow = page.locator('[role="treeitem"][aria-selected="true"]')
     const rowBox = await sourceRow.boundingBox()
     if (rowBox === null) throw new Error('fork source row has no layout box')
@@ -168,11 +157,11 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await expect.poll(
       () => scaffold.ctx.agents.list().filter(agent => agent.session.header.parentSession !== undefined).length,
       { timeout: 15_000 },
-    ).toBe(2)
+    ).toBe(1)
     await expect.poll(
       () => page.locator('[role="treeitem"]').count(),
       { timeout: 10_000 },
-    ).toBe(4)
+    ).toBe(3)
     await expect.poll(
       () => page.locator('[role="treeitem"][aria-selected="true"]').count(),
       { timeout: 10_000 },

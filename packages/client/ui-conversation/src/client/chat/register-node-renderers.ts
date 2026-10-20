@@ -43,7 +43,6 @@ export function registerChatNodeRenderers(ctx: Context): void {
     locale: NS,
     children: {
       'conversation.chat.turnTail': { kind: 'chain', scope: 'session' },
-      'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
     },
   }, TurnTailNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
