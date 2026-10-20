@@ -8,7 +8,7 @@ This household deployment plugin provides one persistent sidebar inbox row for e
 
 Agent rows resolve their canonical conversation through `/v1/browser/inbox/open`. The controller refreshes the runtime session list before selecting the returned id, so the composer can bind an existing session. Opening a row creates no arbitrary client-side session. Workspaces are configured per agent by e-server.
 
-Agent Channels occupy the main chat tile through layout's `conversation.page` slot. Channel rows have the same full width and selection feedback as inbox rows. Both row types expose Clear through their dropdown menu and confirmation. Channel pages contain read-only history and Refresh; they have no input, editing controls or model lifecycle. Selecting an agent row restores its conversation without interrupting ongoing work.
+Agent Channels occupy the main chat tile through layout's `conversation.page` slot. Channel rows have the same full width and selection feedback as inbox rows. Both row types expose Clear through their dropdown menu and confirmation. Channel pages contain read-only history and Refresh; they have no input, editing controls or model lifecycle. A channel with no messages shows the household mark the unselected welcome screen uses rather than a sentence, while a read still in flight or one that failed keeps its own loading or error row instead of the mark. Selecting an agent row restores its conversation without interrupting ongoing work.
 
 Channel history, available pairs and Clear are scoped to the signed-in person by the backend. Clearing a channel removes its shared history and undelivered notifications; accepted messages remain in the recipient's agent conversation.
 

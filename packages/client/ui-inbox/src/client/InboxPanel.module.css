@@ -318,6 +318,26 @@
   border-bottom: 1px solid var(--dsw-alias-border-l2); font-size: 14px; }
 .channelScroll { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px; }
 .channelContent { width: 100%; max-width: 748px; margin: 0 auto; }
+/* Empty channel: the household mark the unselected welcome screen shows — the
+   soft glow ellipse plus the ec-logo-2-outline art e-server serves at
+   /v1/browser/inbox/brand.svg, masked into the same gradient. Copied from
+   ui-conversation's welcome art on purpose (see ChannelPlaceholder.tsx): the
+   two client packages are independent, and a fork-only brand mark does not
+   belong in an upstream package such as ui-primitives. Sizing, gradient stops
+   and opacity are the welcome screen's values verbatim so both screens read as
+   one piece of art rather than two takes. */
+.channelScroll[data-empty='true'] { display: flex; flex-direction: column; justify-content: center;
+  /* Nothing to scroll in an empty channel, and the glow is deliberately wider
+     and taller than the content column (welcome sizing); clip it here instead
+     of leaving a phantom scroll range and a stray horizontal bar. */
+  overflow: hidden; }
+.channelEmpty { --channel-empty-mark: linear-gradient(145deg, rgba(190, 197, 208, 0.72), rgba(140, 150, 168, 0.28) 52%, rgba(190, 197, 208, 0.5));
+  position: relative; isolation: isolate; display: grid; place-items: center; }
+.channelEmptyGlow { position: absolute; width: min(1051px, 150%); max-width: none; height: auto; pointer-events: none; }
+.channelEmptyMark { width: clamp(130px, 30vw, 300px); aspect-ratio: 755 / 712; opacity: 0.42;
+  background: var(--channel-empty-mark);
+  mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat;
+  -webkit-mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat; }
 .channelHeader .channelReload { padding: 4px; }
 .channelMessage { display: flex; justify-content: flex-start; margin: 0 0 24px; }
 .channelMessage[data-side='right'] { justify-content: flex-end; }
