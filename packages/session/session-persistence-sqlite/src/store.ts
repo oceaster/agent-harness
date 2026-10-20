@@ -260,6 +260,30 @@ export class SqliteStore implements PersistenceBackend<number> {
     }))
   }
 
+  /**
+   * Delete one materialized session's metadata row and every event row in one
+   * transaction. Events go first so a deployment that opens the database
+   * without `PRAGMA foreign_keys` still leaves no orphan rows behind.
+   * @param id - persisted session to delete.
+   * @param signal - optional cancellation before opening or committing.
+   * @returns whether a metadata row for this id existed.
+   */
+  async removeStored(id: SessionId, signal?: AbortSignal): Promise<boolean> {
+    await this.observe(signal)
+    this.db.exec(sql('begin-immediate'))
+    try {
+      validateSchemaForMutation(this.databaseConstructor, this.db, this.databasePath)
+      signal?.throwIfAborted()
+      const existed = this.rowFor(id) !== undefined
+      this.db.prepare(sql('delete-session-events')).run(id)
+      this.db.prepare(sql('delete-session')).run(id)
+      this.db.exec(sql('commit'))
+      return existed
+    } catch (error: unknown) {
+      this.rollback(error, 'delete')
+    }
+  }
+
   async close(): Promise<void> {
     if (this.ready === undefined) {
       if (this.pathReady !== undefined) await Promise.allSettled([this.pathReady])

@@ -129,6 +129,12 @@ export class SqliteSessionPersistence extends SessionPersistence {
   listSnapshots(signal?: AbortSignal): Promise<SessionPersistenceSnapshot[]> {
     return this.store.listSnapshots(signal)
   }
+
+  override readonly supportsDestroy = true
+
+  override destroy(id: SessionId): Promise<boolean> {
+    return this.coordinator.destroy(id)
+  }
 }
 
 export default SqliteSessionPersistence

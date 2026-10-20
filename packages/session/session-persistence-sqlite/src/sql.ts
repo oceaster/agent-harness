@@ -11,6 +11,8 @@ const SQL_RESOURCES = [
   'begin-immediate',
   'commit',
   'delete-events-from',
+  'delete-session',
+  'delete-session-events',
   'foreign-keys-on',
   'insert-event',
   'insert-persistence-state',

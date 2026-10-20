@@ -199,6 +199,12 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     return this.coordinator.readFrom(id, fromSeq, signal)
   }
 
+  override readonly supportsDestroy = true
+
+  override destroy(id: SessionId): Promise<boolean> {
+    return this.coordinator.destroy(id)
+  }
+
   // One method serves both public `list` and the backend hook; delegating it to
   // the coordinator would call this hook recursively.
 
@@ -506,6 +512,27 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     }
     signal?.throwIfAborted()
     return artifacts
+  }
+
+  /**
+   * Delete one stored log together with the session directory that owns it.
+   * That directory belongs to exactly one session, so it goes rather than
+   * surviving as an empty husk, and any session-local artifact a later version
+   * adds there is deleted with the log it belongs to.
+   */
+  async removeStored(id: SessionId, signal?: AbortSignal): Promise<boolean> {
+    signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    signal?.throwIfAborted()
+    const path = await this.findLog(id, signal)
+    if (path === undefined) return false
+    const project = dirname(dirname(path))
+    await rm(dirname(path), { recursive: true, force: true })
+    // The deletion is only crash-durable once the parent directory's metadata is
+    // synced, exactly as materialization syncs the entry it publishes.
+    /* v8 ignore next -- native Windows coverage exercises this platform dispatch; Linux covers the POSIX peer */
+    if (process.platform !== 'win32') await this.syncDirPosix(project)
+    return true
   }
 
   // --- materialization / append / repair (file mechanics) ---

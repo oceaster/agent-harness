@@ -199,6 +199,17 @@ export interface PersistenceBackend<TornMarker = unknown> {
   list(signal?: AbortSignal): Promise<SessionHeader[]>
 
   /**
+   * Permanently delete one stored session and every stored event. The
+   * coordinator calls this only after establishing that the identity is not
+   * live and that no draining retirement still owes it a write, so nothing can
+   * append behind the deletion.
+   * @param id - persisted session id to delete.
+   * @param signal - optional cancellation for backend deletion work.
+   * @returns whether a stored session with this id existed.
+   */
+  removeStored(id: SessionId, signal?: AbortSignal): Promise<boolean>
+
+  /**
    * Optional side-effect-free artifact locator, used to point refusal
    * diagnostics ({@link SessionFormatUnsupportedError}) at the raw log.
    * Backends without one artifact per session omit it or return `undefined`.
@@ -657,8 +668,37 @@ export class PersistenceCoordinator<TornMarker = unknown> {
     this.states.set(meta.id, { meta, cursor: 0, materialized: false })
   }
 
-  // `async` so synchronous materialization failures below reject (not throw) per
-  // the Promise<void> contract — callers use `await expect(...).rejects`.
+  /**
+   * Permanently delete one stored session and everything the coordinator holds
+   * for it. Refuses while the identity is bound to a live Session: the live log
+   * is the authority, so a deletion underneath it would silently discard what
+   * the session appends next.
+   *
+   * A just-disposed Session still owes a buffered tail to this backend, and its
+   * retirement runs as its own serialized operation. That retirement is awaited
+   * BEFORE taking this deletion's chain slot — awaiting it inside would hold the
+   * slot the drain needs and deadlock the id against itself.
+   * @param id - the persisted session to delete.
+   * @returns whether a stored session with this id existed.
+   */
+  async destroy(id: SessionId): Promise<boolean> {
+    await this.waitForRetirement(id)
+    return this.serialize(id, () => this.destroyCore(id))
+  }
+
+  private async destroyCore(id: SessionId): Promise<boolean> {
+    if (this.ctx.sessions.get(id) !== undefined) {
+      throw new Error(`cannot destroy session "${id}" while it is live`)
+    }
+    const existed = await this.backend.removeStored(id)
+    // A prepared cold source would otherwise resurrect the deleted log: the
+    // next append or load would adopt the retained snapshot and continue
+    // writing a session this backend no longer stores.
+    this.preparations.invalidate(id)
+    this.states.delete(id)
+    return existed
+  }
+
   /**
    * Durably persist a batch of events. Honors the append-only and contiguous-seq
    * contracts; rejects non-JSON-serializable `event.data`.
@@ -666,6 +706,8 @@ export class PersistenceCoordinator<TornMarker = unknown> {
    * @param events - the contiguous batch to persist, in seq order; materialized
    *   as a detached lossless-JSON snapshot at call time.
    */
+  // `async` so synchronous materialization failures below reject (not throw) per
+  // the Promise<void> contract — callers use `await expect(...).rejects`.
   async append(id: SessionId, events: readonly SessionEvent[]): Promise<void> {
     // Validate and deep-snapshot the complete batch HERE, in one traversal,
     // before the op waits behind the per-session chain. A check followed by

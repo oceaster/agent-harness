@@ -161,6 +161,10 @@ class MemoryPersistence extends SessionPersistence implements PersistenceBackend
     if (closers.length > 0) entry.events.push(...structuredClone(closers) as SessionEvent[])
   }
 
+  async removeStored(id: SessionId): Promise<boolean> {
+    return this.store.delete(id)
+  }
+
   async list(signal?: AbortSignal): Promise<SessionHeader[]> {
     signal?.throwIfAborted()
     return [...this.store.values()].map(e => structuredClone(e.meta))
@@ -228,6 +232,10 @@ class ControlledBackend implements PersistenceBackend<never> {
     this.repairAttempts += 1
     const entry = this.store.get(m.id)
     if (entry !== undefined) entry.events.push(...structuredClone(closers) as SessionEvent[])
+  }
+
+  async removeStored(id: SessionId): Promise<boolean> {
+    return this.store.delete(id)
   }
 
   async list(): Promise<SessionHeader[]> {
