@@ -13,7 +13,7 @@ import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts
 import type {
   ChatConversationViewNode, ConversationNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ChatNodeViewProps } from '../src/client/contract/slots.ts'
+import type { ChatNodeViewProps, UseChatNodeReaction } from '../src/client/contract/slots.ts'
 import {
   formatMessageClock, msUntilNextLocalMidnight, startOfLocalDay,
 } from '../src/client/chat/message-chrome.ts'
@@ -43,6 +43,11 @@ afterEach(() => {
 // Mirrors the real lookup chain (conversation namespace, then common).
 const t: ChatNodeViewProps['t'] = makeTranslate(zh, commonZh)
 const renderMessageImages: AssistantMarkdownProps['renderMessageImages'] = () => null
+/** A row with no reactable message: the fixture has no log to fold a badge from. */
+const useReaction: UseChatNodeReaction = () => ({
+  reaction: undefined,
+  react: () => Promise.reject(new Error('chat-branch-tails: no reaction target in this fixture')),
+})
 const RETRY_ID = 'retry-fixture' as Extract<ConversationNode, { kind: 'model-retry' }>['retryId']
 
 interface MessageItemProps {
@@ -68,7 +73,10 @@ function MessageItem({ node, t: translate, referenceLabels }: MessageItemProps) 
         ? { ...node, referenceLabels }
         : node,
   }
-  const props = { node: viewNode, t: translate, renderMessageImages } as ChatNodeViewProps
+  // This fixture drives MessageItem through its copy/clock arms only: no
+  // reaction state is in scope here, so the row offers no React affordance.
+  // The React path is covered by reaction-actions.client.spec.tsx.
+  const props = { node: viewNode, t: translate, renderMessageImages, useReaction } as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
     case 'steering':

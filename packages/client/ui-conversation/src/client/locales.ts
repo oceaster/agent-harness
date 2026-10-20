@@ -87,6 +87,14 @@ export const zh = {
   'chat.loadingHistory': '载入历史…',
   'chat.loadError': '历史加载失败：{message}（{code}）',
   'chat.toBottom': '回到底部',
+  // The React affordance: a button, its emoji table, the badge the log folds
+  // back, and the honest refusal copy. The badge label names the glyph because
+  // a screen reader cannot read an emoji on its own.
+  'reaction.button': '表情回应',
+  'reaction.table': '选择一个表情回应',
+  'reaction.option': '用 {emoji} 回应',
+  'reaction.current': '当前回应 {emoji}',
+  'reaction.failed': '回应失败：{reason}',
   'fileOpen.title': '无法打开文件',
   'fileOpen.unknown': '无法打开此文件',
   'fileOpen.folderTitle': '无法打开文件夹',
@@ -256,6 +264,11 @@ export const en = {
   'chat.loadingHistory': 'Loading history…',
   'chat.loadError': 'Failed to load history: {message} ({code})',
   'chat.toBottom': 'Back to bottom',
+  'reaction.button': 'React',
+  'reaction.table': 'Choose a reaction',
+  'reaction.option': 'React with {emoji}',
+  'reaction.current': 'Current reaction {emoji}',
+  'reaction.failed': 'Reaction failed: {reason}',
   'fileOpen.title': 'Couldn’t open file',
   'fileOpen.unknown': 'Couldn’t open this file',
   'fileOpen.folderTitle': 'Couldn’t open folder',

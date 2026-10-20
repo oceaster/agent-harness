@@ -17,7 +17,8 @@ import {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type {
-  ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps, SelectionTarget, UseChatNodeTurnData,
+  ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps, SelectionTarget,
+  SessionReactionAction, UseChatNodeReaction, UseChatNodeTurnData,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -51,7 +52,8 @@ function snapshotBase(): ConversationSnapshot {
   return {
     sessionId: SID, views: EMPTY_CONVERSATION_VIEWS, chat: chatSnapshotFixture(), nodes: [],
     turnTimings: new Map(), turnEnds: new Map(), partial: null, runningCalls: [],
-    pending: [], queue: [], running: false, composerPhase: 'active', removed: false, openState: 'open', openError: null,
+    pending: [], queue: [], reactions: new Map(), running: false, composerPhase: 'active',
+    removed: false, openState: 'open', openError: null,
     hasMore: false, loadingOlder: false, promptError: null, blank: false, subagent: null, lastAgentError: null,
   }
 }
@@ -205,6 +207,10 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     openFile: ChatNodeOwnerProps['openFile']
     inspectCall: ChatNodeOwnerProps['inspectCall']
   }> = []
+  // The reaction note writer every row shares: resolving by default, so a test
+  // that cares only about the badge never has to stub it.
+  const reactSpy = vi.fn<(emoji: string, action: SessionReactionAction) => Promise<void>>()
+    .mockResolvedValue(undefined)
   const renderCommandSlot = ((_key: string, _owner: object, opts?: { fallback?: React.ReactNode }) =>
     opts?.fallback ?? null) as unknown as React.ComponentProps<typeof CommandNodeView>['renderSlot']
   const renderTurnTail = ((_key: string, _owner: object) => null) as unknown as
@@ -224,8 +230,16 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
         ? location.turn.data.get(dataKey)
         : undefined
     })
+    // The reaction face wired exactly as apply.ts wires it: the badge is the
+    // log's own fold off the snapshot, and the writer is the fire-and-forget
+    // note call (spied, so a test can assert the wire arguments).
+    const useReaction: UseChatNodeReaction = targetSeq => ({
+      reaction: props.useSession(snapshot =>
+        targetSeq === undefined ? undefined : snapshot.reactions.get(targetSeq)),
+      react: reactSpy,
+    })
     const nodeProps = <Kind extends ChatNode['kind']>(): ChatNodeViewProps<Kind> => (
-      { ...props, ...nodeOwner, useTurnData } as unknown as ChatNodeViewProps<Kind>
+      { ...props, ...nodeOwner, useTurnData, useReaction } as unknown as ChatNodeViewProps<Kind>
     )
     switch (nodeOwner.node.kind) {
       case 'user':
@@ -324,7 +338,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const setSelection = (next: SelectionTarget | null): void => { chat.actions.select(next) }
   return {
     set, ChatView, props, openDetails, openFile, inspectCall,
-    chatScroll, setSelection, toolOwners,
+    chatScroll, setSelection, toolOwners, reactSpy,
   }
 }
 
