@@ -306,7 +306,7 @@ describe('ConversationRoot resident composer', () => {
     expect(b.chat.store.getSnapshot().draft).toBe('ordinary revised')
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(b.sink).toHaveBeenCalledWith('ordinary revised', [], 'queue', expect.any(AbortSignal))
-    expect((b.view.getByRole('button', { name: 'Child' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(b.view.queryByRole('button', { name: 'Child' })).toBeNull()
     expect(b.view.queryByText('Root')).toBeNull()
   })
 
@@ -337,13 +337,12 @@ describe('ConversationRoot resident composer', () => {
     const textarea = b.view.container.querySelector('textarea')
     expect(host).not.toBeNull()
     expect(seat).not.toBeNull()
-    expect(header).not.toBeNull()
-    // Header is column chrome above the scrollport; the seat sticks inside it.
-    expect(host?.contains(header)).toBe(false)
+    expect(header).toBeNull()
+    // Persistent inboxes have no title bar; the composer stays in the scrollport.
     expect(host?.contains(seat)).toBe(true)
     expect(seat?.contains(textarea)).toBe(true)
-    expect(b.slotCalls).toContain('conversation.session.header.actions')
-    expect(b.slotCalls).toContain('conversation.session.header.utilities')
+    expect(b.slotCalls).not.toContain('conversation.session.header.actions')
+    expect(b.slotCalls).not.toContain('conversation.session.header.utilities')
   })
 
   it('sticky composer seat wraps the whole overlay chain, not only the fallback stack', () => {
@@ -368,7 +367,7 @@ describe('ConversationRoot resident composer', () => {
     const host = b.view.container.querySelector('[data-conversation-scroll]')
     const header = b.view.container.querySelector('header')
     expect(host).not.toBeNull()
-    expect(header?.getAttribute('aria-hidden')).toBe('true')
+    expect(header).toBeNull()
     expect(b.view.getByText('探索未至之境')).toBeTruthy()
     expect(b.view.getByText('预览版')).toBeTruthy()
     expect(b.view.queryByTestId('view-chat')).toBeNull()
@@ -458,8 +457,7 @@ describe('ConversationRoot resident composer', () => {
 
     expect(b.view.getByTestId('view-chat')).toBeTruthy()
     expect(b.view.queryByTestId('view-new-view')).toBeNull()
-    expect(b.view.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected')).toBe('true')
-    expect(b.view.getByRole('tab', { name: 'New view' }).getAttribute('aria-selected')).toBe('false')
+    expect(b.view.queryByRole('tablist')).toBeNull()
   })
 
   it('prompt failure renders the promptError strip (ordinary failure, no transaction UI)', () => {

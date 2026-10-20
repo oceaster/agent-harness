@@ -35,12 +35,15 @@ export function ChannelPage({ useChannels, refreshChannel, t }: ChannelPageProps
         {state.error !== null && <p role="alert">{state.error}</p>}
         {state.loading && <p>{t('channel.loading')}</p>}
         {!state.loading && state.messages.length === 0 && state.error === null && <p>{t('channel.empty')}</p>}
-        {state.messages.map(message => <article className={css.channelMessage} key={message.id} data-testid="agent-channel-message">
-          <header><strong>{message.sender} → {message.recipient}</strong>
-            <span>{message.priority === 'high' ? t('channel.high') + ' · ' : ''}{message.status}</span>
-          </header>
-          <p>{message.content}</p>
-          <time dateTime={new Date(message.created * 1000).toISOString()}>{new Date(message.created * 1000).toLocaleString()}</time>
+        {state.messages.map(message => <article className={css.channelMessage} key={message.id}
+          data-testid="agent-channel-message" data-side={message.sender === state.selected?.agents[1] ? 'right' : 'left'}>
+          <div className={css.channelMessageStack}>
+            <header><strong>{message.sender}</strong>
+              {message.priority === 'high' && <span>{t('channel.high')}</span>}
+              <time dateTime={new Date(message.created * 1000).toISOString()}>{new Date(message.created * 1000).toLocaleString()}</time>
+            </header>
+            <p className={css.channelBubble}>{message.content}</p>
+          </div>
         </article>)}
       </div>
     </div>

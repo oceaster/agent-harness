@@ -74,6 +74,10 @@ export function ConversationSessionHeader({
   const blank = useSession(s => s.blank)
   const hideChrome = blank && composerPhase === 'blank'
 
+  // Persistent agent inboxes need no title or duplicate agent badge. Keep the
+  // hierarchy navigation only for read-only subagent transcripts.
+  if (!readOnly) return null
+
   return (
     <header
       className={clsx(css.header, hideChrome && css.headerHidden)}
@@ -102,9 +106,7 @@ export function ConversationSessionHeader({
                 })}
                 {ancestry.length === 0 && <span className={css.crumbCurrent}>{sessionId}</span>}
               </nav>
-              <div className={css.headerActions}>
-                {!readOnly && renderSlot('conversation.session.header.actions', {})}
-              </div>
+
             </div>
             <div className={css.center}>
               {tabs.length > 1 && (
@@ -127,9 +129,7 @@ export function ConversationSessionHeader({
                 {renderSlot('conversation.session.header.utilities', {})}
               </div>
             </div>
-            <div className={css.headerMode}>
-              {!readOnly && renderSlot('conversation.session.header.mode', {})}
-            </div>
+
           </div>
         </>
       )}
