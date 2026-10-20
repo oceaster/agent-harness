@@ -1147,8 +1147,14 @@ re-applied on every upstream pull:
      button 500 messages deep) and its `historyPages` metric; the
      workspace/history scenario still measures the trajectory rows, which do
      page. These suites are already red at base for the `ui-inbox` composition
-     reason recorded in entry 22, so nothing here was executed in a browser in
-     this change — the committed aria goldens likewise could not be re-recorded.
+     reason recorded in entry 22 — reproduced here: the seeded session never
+     appears in a `[role="treeitem"]` row, the page shows the household
+     "Select an Agent or Channel" region instead, so nothing in this change was
+     executed in a browser. `apps/web/tests/snapshots/stats-paged-history/ui.expected.md`
+     records the previously paged transcript (all 28 turns, captured after the
+     click) and now mismatches: it needs `npm run test:web:refresh` once that
+     composition question is answered, which is also when this scenario's new
+     assertions become executable.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
