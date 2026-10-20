@@ -37,7 +37,12 @@ async function composed(workspaces: readonly Workspace[] = []): Promise<Context>
       })
       const agent = {} as Agent
       const agentCtx = ownerCtx.extend({ agent })
-      Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx })
+      // `options` is a required, always-populated field of a real Agent (the
+      // AgentLoop constructor takes it, defaulting to {}), and this fork's model
+      // selection writes the selected provider/model into it at prompt assembly
+      // (`cbb64017cb`, FORK-NOTES "Easter personality deployment hooks"). A
+      // double that omits it answers a shape the real registry never answers.
+      Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx, options: {} })
       await options.setup?.(agentCtx)
       ctx.agents.register(agent)
       return { agent, dispose: () => Promise.resolve() }
@@ -77,7 +82,9 @@ function liveAgent(
       reason: { kind: 'aborted', reason: { kind: 'user' } },
     })
   }
-  ctx.agents.register({ id: session.id, session, status: 'idle', ctx } as Agent)
+  // `options` matches the real Agent shape for the same reason as the factory
+  // above: selection assembly writes into it (`cbb64017cb`).
+  ctx.agents.register({ id: session.id, session, status: 'idle', ctx, options: {} } as Agent)
   return session
 }
 

@@ -61,7 +61,10 @@ export class SettingsScopeController<T> implements SettingsScope<T> {
    * @param api - settings wire face (writes only; reads ride the mirror).
    * @param spec - namespace identity and optional narrowing decoder.
    * @param mirror - the shared describe mirror this scope derives from.
-   * @param persistence - remote browsers remain process-local because settings RPCs are loopback-only.
+   * @param persistence - `host` binds the shared Host document on every served
+   * authority, `memory` keeps a process-local stand-in. This deployment always
+   * passes `host` (`bc2970c4af`, FORK-NOTES 18): the household reaches the app
+   * through the e-server proxy, so a loopback test is not a capability test.
    * @param schema - settings-owned schema operations.
    */
   constructor(

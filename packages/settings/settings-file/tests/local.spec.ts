@@ -128,7 +128,14 @@ describe('boot and reads', () => {
     expect(scope.get()).toEqual({ theme: 'dark', fontSize: 14 })
   })
 
-  it.skipIf(process.platform === 'win32')('fails loud at boot when the document exists but is unreadable', async () => {
+  it.skipIf(process.platform === 'win32')('fails loud at boot when the document exists but is unreadable', async (test) => {
+    // Mode bits do not bind a root process, so `chmod 0` cannot produce the
+    // unreadable document this case is about. Kept as coverage, skipped with a
+    // reason: run the suite as a non-root user to exercise it.
+    test.skip(
+      process.getuid?.() === 0,
+      'this process runs as root: it reads a 0o000 document, so the unreadable-boot case is unobservable',
+    )
     const dir = await tempDir()
     const path = join(dir, 'settings.yaml')
     await writeFile(path, 'ui-theme:\n  theme: light\n')

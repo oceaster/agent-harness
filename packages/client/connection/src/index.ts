@@ -67,20 +67,26 @@ export const Config: z<ConnectionConfig> = z.object({
 })
 
 /**
- * Methods gated to loopback even on a trusted-host deployment. Native dialogs
- * act on the host machine; the settings and credential domains mutate the
- * user's configuration and secret store, and READING them is equally
+ * Methods gated behind the browser-trust fence on a `trustedHosts` deployment.
+ * Native dialogs act on the host machine; the settings and credential domains
+ * mutate the user's configuration and secret store, and READING them is equally
  * privileged — `settings.describe` returns every exposed namespace's
  * configuration and `credentials.describe` reports whether an arbitrary
  * environment-variable name is configured and where from, which is
- * reconnaissance no anonymous caller should have. `trustedHosts` is a
- * DNS-rebinding fence, explicitly not authentication, so the whole
- * configuration plane stays loopback-same-origin until a real authentication
- * layer exists. `llm.discoverModels` belongs to that plane on both counts: it
- * carries a draft credential, and it makes the HOST issue a GET to a URL the
- * caller chose and reports back the status or the parsed body — an anonymous
- * LAN caller would have a probe for whatever the host can reach and the
- * browser cannot.
+ * reconnaissance no anonymous caller should have. `llm.discoverModels` belongs
+ * to that plane on both counts: it carries a draft credential, and it makes the
+ * HOST issue a GET to a URL the caller chose and reports back the status or the
+ * parsed body — an anonymous caller would have a probe for whatever the host
+ * can reach and the browser cannot.
+ *
+ * These methods are NOT loopback-only here (`1ed4447cc6`, FORK-NOTES 1). The
+ * household reaches the app at `100.100.1.0:8443` through the e-server
+ * PIN/profile proxy, so a loopback-only configuration plane would refuse the
+ * owner browsing his own machine's settings; the fence is the deployment's
+ * declared authority list, the same one the ordinary `/api` route uses.
+ * `trustedHosts` is a DNS-rebinding fence, not authentication, so an undeclared
+ * authority stays refused for this whole set while the e-server origin's Basic
+ * auth plus PIN profile is the authentication in front of it.
  *
  * The model catalog (`llm.providers`, `llm.models`) is deliberately NOT here:
  * it carries provider ids, display names, and model lists — no endpoints,
@@ -122,8 +128,8 @@ const PRIVILEGED_METHODS = new Set([
  * Mounts the API gateway under the browser transport prefix. Every request on
  * the prefix passes the browser-trust fence first (DNS-rebinding and
  * cross-site defense — [api-request-trust](./api-request-trust.ts));
- * privileged methods additionally pass it with an empty trust list, which
- * pins them to loopback.
+ * privileged methods pass the same fence, so a declared authority reaches them
+ * and an undeclared one is refused (`1ed4447cc6`).
  * @param ctx - Host plugin context.
  * @param config - resolved plugin config (schema defaults applied).
  */

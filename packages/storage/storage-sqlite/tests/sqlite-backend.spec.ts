@@ -206,8 +206,14 @@ describe('sqlite backend specifics', () => {
     await closed
   })
 
-  it('propagates filesystem errors other than an existing database file', async () => {
+  it('propagates filesystem errors other than an existing database file', async (test) => {
     if (process.platform === 'win32') return
+    // EACCES is produced by the directory's mode bits, which do not bind a root
+    // process. Kept as coverage, skipped with a reason: run as a non-root user.
+    test.skip(
+      process.getuid?.() === 0,
+      'this process runs as root: it creates the database inside a 0o500 directory, so EACCES cannot arise',
+    )
     const dir = await mkdtemp(join(tmpdir(), 'dsh-storage-sqlite-'))
     dirs.push(dir)
     await chmod(dir, 0o500)

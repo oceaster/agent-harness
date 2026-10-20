@@ -99,6 +99,18 @@ const roots: string[] = []
 const fixtures: MessagesFixture[] = []
 const contexts: Context[] = []
 
+// The distributed Claude Code CLI refuses the permission bypass to a privileged
+// process — `--dangerously-skip-permissions cannot be used with root/sudo
+// privileges for security reasons` — and exits 1 before it opens a stream, so
+// every `bypassPermissions` scenario in this file is unobservable when the suite
+// runs as root. The coverage stays: run the suite as a non-root user and these
+// run. Measured directly against the shipped binary:
+//   $ <sdk>/claude --print --dangerously-skip-permissions hi
+//   --dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons
+const rootBypassRefused = process.getuid?.() === 0
+const ROOT_BYPASS_REASON =
+  'this process runs as root: the Claude Code CLI refuses --dangerously-skip-permissions to root, so bypassPermissions cannot run here'
+
 // Ambient Anthropic model env leaks into the real CLI and overrides the
 // fixture settings.json on developer machines; delete it for this file and
 // restore it after, like the workspace-context USERPROFILE isolation.
@@ -345,7 +357,8 @@ describe('real Claude Agent SDK 0.3.220 and its distributed Claude Code 2.1.220 
     await expectQuiescent(harness.handles)
   })
 
-  it('maps a real SDK max-turns result to safe query-run facts', async () => {
+  it('maps a real SDK max-turns result to safe query-run facts', async (test) => {
+    test.skip(rootBypassRefused, ROOT_BYPASS_REASON)
     const root = mkdtempSync(join(tmpdir(), 'dsh-claude-code-max-turns-'))
     roots.push(root)
     const target = join(root, 'max-turns.txt')
@@ -378,7 +391,8 @@ describe('real Claude Agent SDK 0.3.220 and its distributed Claude Code 2.1.220 
     await expectQuiescent(harness.handles)
   })
 
-  it('runs two named instances concurrently and unloads one without revoking its run', async () => {
+  it('runs two named instances concurrently and unloads one without revoking its run', async (test) => {
+    test.skip(rootBypassRefused, ROOT_BYPASS_REASON)
     const safeInstance = await realInstanceFixture({ kind: 'hold' })
     const bypassInstance = await realInstanceFixture({
       kind: 'complete',
@@ -504,7 +518,8 @@ describe('real Claude Agent SDK 0.3.220 and its distributed Claude Code 2.1.220 
     await expectQuiescent(harness.handles)
   })
 
-  it('runs an explicitly selected bypass write in the isolated workspace', async () => {
+  it('runs an explicitly selected bypass write in the isolated workspace', async (test) => {
+    test.skip(rootBypassRefused, ROOT_BYPASS_REASON)
     const root = mkdtempSync(join(tmpdir(), 'dsh-claude-code-bypass-target-'))
     roots.push(root)
     const target = join(root, 'bypass.txt')

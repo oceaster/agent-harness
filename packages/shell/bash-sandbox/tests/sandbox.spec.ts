@@ -514,7 +514,14 @@ describe('result facts', () => {
     expect(result.sandbox).toEqual({ mode: 'read-only', denied: false, enforcement: 'full' })
   })
 
-  it('reports a real permission failure as a sandbox denial with the mode it ran under', async () => {
+  it('reports a real permission failure as a sandbox denial with the mode it ran under', async (test) => {
+    // The denial is produced by a 0o555 directory's mode bits, which do not bind
+    // a root process (the write simply succeeds and nothing is denied). Kept as
+    // coverage, skipped with a reason: run the suite as a non-root user.
+    test.skip(
+      process.getuid?.() === 0,
+      'this process runs as root: it writes into a 0o555 directory, so no denial evidence exists',
+    )
     const { bash } = await setup()
     const lockedDir = join(mkdtempSync(join(tmpdir(), 'dsh-sandbox-denied-')), 'locked')
     mkdirSync(lockedDir)

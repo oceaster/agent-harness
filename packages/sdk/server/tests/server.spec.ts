@@ -42,6 +42,18 @@ async function mockCompletionServer(): Promise<{ url: string; requests: unknown[
     let body = ''
     request.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
     request.on('end', () => {
+      // The fork's DeepSeek route derives its advisory catalog from the
+      // provider's own bodyless `GET /models` listing (`7fe84a0c7b`, FORK-NOTES
+      // 6), so this double answers that request beside the completion POSTs.
+      // Parsing its empty body used to throw inside an event emission, which
+      // surfaced as an uncaught exception and reddened the whole run even
+      // though every test passed. `data: []` is the adapter's "no information"
+      // answer: the built-in catalog stands.
+      if (request.method !== 'POST') {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ object: 'list', data: [] }))
+        return
+      }
       requests.push(JSON.parse(body))
       headers.push(request.headers)
       response.writeHead(200, { 'content-type': 'text/event-stream' })

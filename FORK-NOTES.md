@@ -1091,7 +1091,7 @@ re-applied on every upstream pull:
    directions. Re-apply after an upstream pull, which will restore the larger
    corpus and the stricter comparison.
 
-23. **The chat transcript has no "Load earlier" and never grows**
+24. **The chat transcript has no "Load earlier" and never grows**
    (`ui-conversation`) — Owen: "as the user begins to scroll up in chat there
    is a 'Load earlier' indicator, remove this feature, so the client side
    visible messages are only ever so recent." The control is deleted, not
@@ -1156,10 +1156,113 @@ re-applied on every upstream pull:
      composition question is answered, which is also when this scenario's new
      assertions become executable.
 
+25. **Every failing test is classified: fork policy or environment, never
+    "known red"** — the suite carried 14 red files nobody had justified, which
+    is exactly how a real regression hides. Each of the 23 failing tests at
+    `7c797cea12` is now exactly one of two of the fork's three allowed kinds —
+    **FORK CONTRADICTION** (the test asserts upstream policy this fork decided
+    against: amended to assert what ships, with the deciding commit cited, and
+    upstream's own case kept wherever it still holds) or **ENVIRONMENT** (the
+    case cannot arise in this process: guarded with `test.skip(condition,
+    reason)`, so a verbose run prints `↓ <test> [reason]` and the case still
+    runs where the condition holds). No third kind was needed: none of the 23
+    was OUR REGRESSION. There is no "known failure" bucket, and nothing was
+    deleted to turn the suite green.
+
+    Measured starting point, first-hand in this checkout: a detached worktree at
+    `7c797cea12` with `node_modules` hardlinked from the live checkout, then
+    `npx vitest run` → `Test Files 14 failed | 823 passed | 11 skipped (848)`,
+    `Tests 23 failed | 14013 passed | 119 skipped (14155)`, exit 1, plus three
+    uncaught `SyntaxError: Unexpected end of JSON input` from
+    `packages/sdk/server/tests/{server,plugin-apply}.spec.ts` (not among the 23;
+    fixed in C below).
+
+    | Test (as it failed at `7c797cea12`) | Class | Action | Evidence |
+    | --- | --- | --- | --- |
+    | `connection/tests/node-half.host.spec.ts` › `pins privileged methods to loopback even for a declared trusted authority` | FORK CONTRADICTION | Amended to `reaches privileged methods from a declared trusted authority and still refuses an undeclared one`: a declared authority reaches every privileged method (the empty proxy answers the carrier's 404, i.e. the fence passed), `harness.other` still gets 403 `forbidden` on all of them, and loopback still reaches them. | `1ed4447cc6` (FORK-NOTES 1); product: `connection/src/index.ts`'s privileged guard is the same `isTrustedApiRequest(request, trustedHosts)` call the ordinary `/api` route makes — the privileged set reuses the declared list, it does not add a loopback rule |
+    | same file › `answers a declared LAN authority with 403 on every configuration method, over real HTTP` | FORK CONTRADICTION | Amended to the same three claims through a real `IncomingMessage` and a real parsed `Host` header on a real server: declared → 404 per method, undeclared → 403 per method. | `1ed4447cc6`; the case's `serve()`/`call()` fixtures drive the deployed HTTP path, not a hand-built request object |
+    | `ui-theme/tests/apply.client.spec.ts` › `loads Host settings at boot, refreshes its namespace, and keeps remote browsers process-local` | FORK CONTRADICTION | Amended to `…binds remote browsers to the same document`: an off-loopback browser reads the Host document at boot (`describe` called), writes its switch through it (`mutate` called), and the preference lands in `getTheme()`. | `bc2970c4af` replaced `connection.isLoopback ? 'host' : 'memory'` with `'host'` in `ui-settings/src/client/index.ts`; `memory` stays valid API, this deployment never selects it. The household browses `100.100.1.0:8443`, so `isLoopback` is false for the owner's own browser |
+    | `ui-trajectory/tests/views.client.spec.tsx` › `renders two tabs, defaults to chat, and switches to the trajectory ledger`; `opens a local record inspector and switches payload tabs without opening chat details`; `labels a standalone compaction as between-turn work in the ledger and inspector`; `activates only the selected standalone compaction section`; `dragging the overview focuses overlapping records without filtering the ledger`; `clicking a timeline block clears the range, selects the record, and opens its inspector`; `empty window keeps the toolbar and reports no timing data` (7) | FORK CONTRADICTION | Amended to mount the one conversation shape whose header this fork renders — the read-only subagent transcript (`mountTranscript`) — so all seven behaviours (ledger rows, inspector, compaction sections, overview drag, timeline click, empty window) still run; plus one new case, `renders no tab ring inside an inbox conversation, where the header is absent`, pinning the fork's other half. | `1964411d9e` + FORK-NOTES 8; `ui-conversation/src/client/skeleton/ConversationSession.tsx:79` is `if (!readOnly) return null`, where `readOnly = Boolean(session.subagent) \|\| summary.origin === 'subagent'`; verdict and composed-surface evidence below |
+    | `host/apiproxy/tests/api-proxy-fork.spec.ts` › `installs the latest logged model selection before the child can run` | FORK CONTRADICTION | Assertion unchanged; both agent doubles now carry `options: {}`. Product untouched. | `cbb64017cb` made prompt assembly write the selected provider/model into `agent.options` (`model-selection.ts:69` threw `TypeError: Cannot convert undefined or null to object` on the double). A real agent always has it: `AgentLoop`'s constructor takes `options`, defaulting to `{}` |
+    | `scripts/locale-dictionary-parity.spec.ts` › `declares the same keys in zh and en, so the single fallback locale always resolves` | FORK CONTRADICTION | Already amended on master by the docs sweep as `SHIPPED_PAIR_FLOOR = 25` with `toBeGreaterThanOrEqual`; this branch keeps master's version verbatim and drops its own duplicate hunk (resolved as an identical-content conflict). Parity itself was never the failure: `problems` was `[]` — only the stale `> 25` floor failed, five pairs below upstream's corpus. | master `ab0ba7688e`, FORK-NOTES 23; `1698de83a4`, `24362c8cfe` and FORK-NOTES 19/20/22 name the five deleted pairs and their registrants |
+    | `context/agent-instructions/tests/agent-instructions.spec.ts` › `skips a file that becomes unreadable after discovery without failing the request` | ENVIRONMENT | Guarded: skips with `this process runs as root: it reads the 0o000 instruction file, so the unreadable-after-discovery case is unobservable`. | root: `↓ … [reason]`; uid 1000: `✓` unskipped (transcript below) |
+    | `settings/settings-file/tests/local.spec.ts` › `fails loud at boot when the document exists but is unreadable` | ENVIRONMENT | Guarded, reason `…reads a 0o000 document…`. | as above |
+    | `settings/settings-file/tests/concurrency.spec.ts` › `surfaces a non-contention lock failure as the write error` | ENVIRONMENT | Guarded, reason `…writes into a 0o500 directory…`. | as above |
+    | `shell/bash-sandbox/tests/sandbox.spec.ts` › `reports a real permission failure as a sandbox denial with the mode it ran under` | ENVIRONMENT | Guarded, reason `…writes into a 0o555 directory, so no denial evidence exists`. | as above |
+    | `storage/storage-sqlite/tests/sqlite-backend.spec.ts` › `propagates filesystem errors other than an existing database file` | ENVIRONMENT | Guarded, reason `…creates the database inside a 0o500 directory, so EACCES cannot arise`. | as above |
+    | `subagent/subagent-acp/tests/subagent-acp.spec.ts` › `rejects a config cwd directory without search permission at load` | ENVIRONMENT | Guarded, reason `…the search bit does not bind it…`. | as above |
+    | `subagent/subagent/tests/out-of-process.spec.ts` › `rejects a directory without search permission` | ENVIRONMENT | Guarded, same reason. | as above |
+    | `subagent/subagent-claude-code/tests/real-product.spec.ts` › `maps a real SDK max-turns result to safe query-run facts`; `runs two named instances concurrently and unloads one without revoking its run`; `runs an explicitly selected bypass write in the isolated workspace` (3) | ENVIRONMENT | Guarded with one shared reason, measured against the shipped binary: `--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons`. The CLI exits 1 before opening a stream, so every `bypassPermissions` scenario is unobservable as root. | `$ <sdk>/claude --print --dangerously-skip-permissions hi` prints that refusal; uid 1000: all three `✓` unskipped, plus the file's other five cases |
+    | `shell/bash-sandbox/tests/partial-landlock.spec.ts` › `keeps a real malformed executable ordinary across no-shebang spawn behavior` | ENVIRONMENT | **Measured rather than skipped.** The host-dependent constant is gone: the expected exit status is taken from an unconfined `spawnSync()` of the same file, so the case runs everywhere instead of hiding. The sandbox facts it exists to prove — an ordinary outcome, no denial, no runner-failure attribution — are unchanged and still asserted for both the foreground run and the background task. | The pinned `127` was one shell's behaviour: the no-shebang fallback hands the file's text to `/bin/sh`, and here that is bash with the llvm `not` utility on PATH, which turns the unknown command into exit `1`. Measuring keeps the case honest on both kinds of host |
+
+    **Why the seven ui-trajectory cases are a contradiction and not a
+    retirement (§5).** The `conversation.view` tab ring lives in
+    `ConversationSessionHeader`, and that component returns `null` for every
+    conversation that is not a read-only subagent transcript
+    (`ConversationSession.tsx:79`) — the household sidebar is an inbox of one
+    persistent conversation per agent, so the title row, the tabs, the utilities
+    and the mode label are gone, which is what the spike measured as
+    `role=tab` count 0. The view is reachable nonetheless: `ui-subagent` is
+    composed in the web app (`packages/bundle/web-app/cordis.patch.yml`), its
+    catalog action lists a conversation's subagents, and `openChild({ parentSessionId,
+    childSessionId, mode })` navigates to that child transcript
+    (`SubagentCatalogAction.tsx`), where `readOnly` is true and the header — with
+    the Chat/Trajectory tabs — renders. `ui-trajectory` is a composed row in the
+    same file, so the trajectory view is a live surface of this deployment, and
+    with it the trajectory's own "Load earlier history", which master's chat
+    paging removal deliberately kept alive (`Session.loadOlder`, `hasMore`,
+    `loadingOlder`: FORK-NOTES 24). So the seven tests were wrong about *which*
+    surface carries the ring, not about behaviour that no longer exists; they are
+    re-pointed at the surface that exists and a new case pins the absence in an
+    inbox conversation. **Validation limit, stated plainly:** this rests on the
+    composition files plus the unit mount, not a recorded browser run — the
+    `apps/web` lanes are red at base for the unrelated `ui-inbox` composition
+    reason in FORK-NOTES 22, and a targeted browser run would have measured that
+    pre-existing breakage rather than this change.
+
+    **The ENVIRONMENT guards were verified where the condition holds.** A second
+    checkout (same commit, `node_modules` hardlinked, tree owned by uid 1000) was
+    run as `runuser -u owen` over the guarded files: `Test Files 37 passed (37)`,
+    `Tests 946 passed (946)`, zero skipped — all ten guarded cases `✓`
+    unskipped, including `fails loud at boot when the document exists but is
+    unreadable`, `rejects a directory without search permission`, the sqlite
+    `EACCES` case, the bash-sandbox denial, and all three Claude Code
+    `bypassPermissions` cases. So the guards suppress nothing that works; they
+    convert a red line into a stated skip in exactly the process where the
+    premise cannot exist. (The copy is a plain filesystem copy because `/tmp` is
+    a separate filesystem and hardlinking across it fails; ownership was changed
+    on the copy only, never on a hardlinked inode.)
+
+    **C. Fixed, outside the 23 — the same contradiction shape in a double.**
+    `packages/sdk/server/tests/{server,plugin-apply}.spec.ts` parsed every
+    request body as a completion payload, and the fork's DeepSeek route also
+    fetches the provider's bodyless `GET /models` listing (`7fe84a0c7b`, entry
+    6); the parse threw inside an event emission and surfaced as an uncaught
+    exception that exited the run 1 even though every test in both files passed.
+    Both doubles now answer that request with `{"object":"list","data":[]}` (the
+    adapter's "no information": the built-in catalog stands) and record only POST
+    payloads.
+
+    **Result on this branch** (rebased onto master `2defc254b5`):
+    `npx vitest run` → `Test Files 843 passed | 9 skipped (852)`,
+    `Tests 14058 passed | 125 skipped (14183)`, 0 failed, exit 0. The skips are
+    the pre-existing platform/engine-conditional ones plus the ten guards above;
+    a verbose run names each with its reason. Gates: `pnpm typecheck` 0,
+    `pnpm build` 0 (warm tree), `node scripts/verify-deployment-build.ts` →
+    `deployment build: current source and browser artifacts agree`, 0, and
+    `pnpm doc-sync` 28/28 (0 failed).
+
+    **What an upstream pull must not resurrect:** loopback-only privileged
+    methods, a non-loopback `memory` settings scope, a conversation header for
+    ordinary sessions, an agent double without `options`, a hardcoded
+    pair-count floor, and a pinned shell exit status. **What it must keep:** the
+    `test.skip(condition, reason)` guards — deleting them turns a stated skip
+    back into a red line everyone learns to ignore.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 
-23. **Reaction notes: a log-only event kind the model reads and nothing else
+26. **Reaction notes: a log-only event kind the model reads and nothing else
     shows** (`core/session`, `host/apiproxy`; ticket `f1bdaed3`) — Owen's
    reaction feature needs a durable record of "a person reacted 👍 to that
    message" that is invisible in the transcript, excluded from compaction, and

@@ -56,6 +56,12 @@ beforeEach(() => {
   localStorage.clear()
 })
 
+/** The one transcript shape this fork's conversation header renders (FORK-NOTES 8). */
+const SUBAGENT: NonNullable<ConversationSnapshot['subagent']> = {
+  address: { parentSessionId: 'parent' as SessionId, childSessionId: SID, mode: 'continuable' },
+  parentAvailable: true,
+}
+
 /** Node fixture: user prologue, two turns, one tool result inside turn 1. */
 const NODES = [
   { kind: 'user', seq: 1, time: 1_000, content: [], source: null },
@@ -215,8 +221,18 @@ function tabsOf(slots: SlotRegistry): ViewTab[] {
 }
 
 /** Mount the strict Session header/body over the ring ledger with outlet-faithful render shares. */
-function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES) {
-  const sessionSnapshot = sessionSnapshots.get(slots) ?? createSnapshotStore(historySnapshot(nodes))
+function mount(
+  slots: SlotRegistry,
+  nodes: ConversationSnapshot['nodes'] = NODES,
+  shape: { subagent?: boolean } = {},
+) {
+  const stored = sessionSnapshots.get(slots) ?? createSnapshotStore(historySnapshot(nodes))
+  // `subagent` is the read-only subagent transcript — the one conversation shape
+  // whose header this fork still renders, and therefore the only one that
+  // carries the view tab ring (see `mountTranscript` and FORK-NOTES 3/8).
+  const sessionSnapshot = shape.subagent === true
+    ? createSnapshotStore({ ...stored.getSnapshot(), subagent: SUBAGENT })
+    : stored
   const useSession = bindSnapshotSelector(sessionSnapshot)
   const chat = createChatStore().create()
   const views = {
@@ -298,6 +314,29 @@ function mount(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES
   )
 }
 
+/**
+ * Mount the conversation the way a read-only subagent transcript renders it —
+ * the header, and with it the view tab ring, exists there and nowhere else.
+ *
+ * Why this is the honest mount for the tab cases (`1964411d9e`, FORK-NOTES 8):
+ * the household sidebar is an inbox of one persistent conversation per agent, so
+ * `ConversationSessionHeader` returns null for an ordinary conversation
+ * ("persistent agent inboxes need no title or duplicate agent badge"). Upstream
+ * rendered the header — title, tabs, utilities, mode label — for every session.
+ * The seven tab cases below are about the VIEW RING: they switch the active
+ * conversation view and expect the ledger, the inspector and the overview to
+ * follow. That behaviour is real and reachable in this deployment, but only
+ * from the subagent transcript header, so the fixture now constructs exactly
+ * that surface instead of an upstream-only chrome. `renders no tab ring inside
+ * an inbox conversation` pins the other half of the fork's rule.
+ * @param slots - the bench's real SlotRegistry.
+ * @param nodes - conversation nodes; defaults to the shared fixture.
+ * @returns the RTL render result of the mounted root.
+ */
+function mountTranscript(slots: SlotRegistry, nodes: ConversationSnapshot['nodes'] = NODES) {
+  return mount(slots, nodes, { subagent: true })
+}
+
 describe('plugin registration', () => {
   it('registers trajectory after chat on the ring', async () => {
     const b = await bench()
@@ -358,9 +397,27 @@ describe('plugin registration', () => {
 })
 
 describe('tab switching in ConversationRoot', () => {
+  it('renders no tab ring inside an inbox conversation, where the header is absent', async () => {
+    // FORK POLICY (`1964411d9e`, FORK-NOTES 8): the sidebar is an inbox of one
+    // persistent conversation per agent, so the conversation header — title
+    // crumbs, view tabs, utilities, mode label — returns null for an ordinary
+    // session. Upstream renders it for every session and its specs (including
+    // this file's sibling cases) drive the ring through it. What stays true here:
+    // the registered views still project onto the ring, and the ACTIVE view still
+    // paints in the view area. What does not exist any more is the tablist, so
+    // asserting its absence is how this deployment's shape is pinned.
+    const b = await bench()
+    mount(b.slots)
+    expect(tabsOf(b.slots).map(tab => tab.id)).toEqual(['chat', 'trajectory'])
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.queryAllByRole('tab')).toEqual([])
+    expect(screen.queryByRole('banner')).toBeNull()
+    expect(screen.getByTestId('chat-body')).toBeTruthy()
+  })
+
   it('renders two tabs, defaults to chat, and switches to the trajectory ledger', async () => {
     const b = await bench()
-    const view = mount(b.slots)
+    const view = mountTranscript(b.slots)
     expect(screen.getByTestId('chat-body')).toBeTruthy()
     expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Chat', 'Trajectory'])
 
@@ -394,7 +451,7 @@ describe('tab switching in ConversationRoot', () => {
 
   it('opens a local record inspector and switches payload tabs without opening chat details', async () => {
     const b = await bench()
-    mount(b.slots)
+    mountTranscript(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
 
     fireEvent.keyDown(screen.getByRole('row', { name: /TOOL/ }), { key: 'Enter' })
@@ -431,7 +488,7 @@ describe('tab switching in ConversationRoot', () => {
       summary: [{ type: 'text', text: 'standalone summary' }],
     }
     const b = await bench(historySnapshot(nodes, { requests: [compaction] }))
-    const view = mount(b.slots, nodes)
+    const view = mountTranscript(b.slots, nodes)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
 
     expect(screen.getByText('Between turns')).toBeTruthy()
@@ -483,7 +540,7 @@ describe('tab switching in ConversationRoot', () => {
       },
     ]
     const b = await bench(historySnapshot(nodes, { requests: compactions }))
-    mount(b.slots, nodes)
+    mountTranscript(b.slots, nodes)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
 
     const firstRequest = screen.getByRole('button', { name: 'Request #2 · Compaction' })
@@ -508,7 +565,7 @@ describe('tab switching in ConversationRoot', () => {
 
   it('dragging the overview focuses overlapping records without filtering the ledger', async () => {
     const b = await bench()
-    mount(b.slots)
+    mountTranscript(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
     const plot = screen.getByLabelText('Timeline overview; drag horizontally to focus events')
     vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
@@ -540,7 +597,7 @@ describe('tab switching in ConversationRoot', () => {
 
   it('clicking a timeline block clears the range, selects the record, and opens its inspector', async () => {
     const b = await bench()
-    const view = mount(b.slots)
+    const view = mountTranscript(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
     const plot = screen.getByLabelText('Timeline overview; drag horizontally to focus events')
     vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
@@ -578,7 +635,7 @@ describe('tab switching in ConversationRoot', () => {
 
   it('empty window keeps the toolbar and reports no timing data', async () => {
     const b = await bench(historySnapshot([]))
-    mount(b.slots)
+    mountTranscript(b.slots)
     fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
     expect(screen.getByRole('toolbar', { name: '轨迹工具栏' })).toBeTruthy()
     expect(screen.getByText('No timing data')).toBeTruthy()

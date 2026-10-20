@@ -126,7 +126,7 @@ describe('ui-theme apply', () => {
     await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(2) })
   })
 
-  it('loads Host settings at boot, refreshes its namespace, and keeps remote browsers process-local', async () => {
+  it('loads Host settings at boot, refreshes its namespace, and binds remote browsers to the same document', async () => {
     const b = await bench()
     // The shared mirror read once at bench time; a Host-side change reaches it
     // through the document invalidation, exactly as production announces one.
@@ -148,14 +148,25 @@ describe('ui-theme apply', () => {
     b.ctx.emit('connection/reset')
     await vi.waitFor(() => { expect(theme.getTheme().preference).toBe('dark') })
 
+    // FORK POLICY (`bc2970c4af`, FORK-NOTES 18): upstream runs a non-loopback
+    // page's settings scopes in a process-local `memory` mode, which asserts
+    // itself below as "describe and mutate were never called". This fork serves
+    // the household through the e-server PIN/profile proxy at
+    // `100.100.1.0:8443`, so the owner's own browser reports
+    // `isLoopback: false` — and the appearance preference must still reach the
+    // shared Host document, or the phone and the laptop each get their own theme
+    // and the welcome acknowledgement never lands. The off-loopback half
+    // therefore proves the OPPOSITE of upstream: the document is read at boot
+    // and a browser switch is written back through it. `memory` mode remains
+    // correct API in the mirror; this deployment just never selects it.
     const remote = await bench(false)
     declareItems(remote.slots)
     await remote.ctx.plugin({ inject: [...inject], apply }).await()
     const remoteTheme = remote.ctx.get('theme') as ThemeRuntime
+    await vi.waitFor(() => { expect(remote.describe).toHaveBeenCalled() })
     remoteTheme.setTheme('dark')
-    await Promise.resolve()
-    expect(remote.describe).not.toHaveBeenCalled()
-    expect(remote.mutate).not.toHaveBeenCalled()
+    await vi.waitFor(() => { expect(remote.mutate).toHaveBeenCalled() })
+    expect(remoteTheme.getTheme().preference).toBe('dark')
   })
 
   it('activates before a slow settings refresh and converges when it settles', async () => {

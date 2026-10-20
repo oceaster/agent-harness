@@ -139,6 +139,15 @@ async function mockCompletionServer(): Promise<{ url: string; requests: unknown[
     let body = ''
     request.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
     request.on('end', () => {
+      // Bodyless `GET /models` is the fork's advisory-catalog discovery
+      // (`7fe84a0c7b`, FORK-NOTES 6); parsing its empty body threw inside an
+      // event emission and surfaced as an uncaught exception. See
+      // `server.spec.ts`'s double for the same guard.
+      if (request.method !== 'POST') {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ object: 'list', data: [] }))
+        return
+      }
       requests.push(JSON.parse(body))
       response.writeHead(200, { 'content-type': 'text/event-stream' })
       response.write('data: {"choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}\n\n')

@@ -86,7 +86,14 @@ describe('writer lock', () => {
     expect(await readFile(lockPath, 'utf8')).toBe('slow-holder\n')
   }, 10_000)
 
-  it.skipIf(process.platform === 'win32')('surfaces a non-contention lock failure as the write error', async () => {
+  it.skipIf(process.platform === 'win32')('surfaces a non-contention lock failure as the write error', async (test) => {
+    // The lock-write failure this case surfaces comes from the directory's mode
+    // bits, which do not bind a root process. Kept as coverage, skipped with a
+    // reason: run the suite as a non-root user to exercise it.
+    test.skip(
+      process.getuid?.() === 0,
+      'this process runs as root: it writes into a 0o500 directory, so the lock-failure branch is unobservable',
+    )
     const dir = await tempDir()
     const path = join(dir, 'settings.yaml')
     const ctx = await boot({ path, watch: false })

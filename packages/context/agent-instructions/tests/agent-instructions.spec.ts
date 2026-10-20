@@ -430,7 +430,14 @@ describe('workspace context instruction discovery', () => {
   })
 
   // POSIX-only fixture: chmod 0 cannot make a file unreadable to its owner on Windows.
-  it.skipIf(process.platform === 'win32')('skips a file that becomes unreadable after discovery without failing the request', async () => {
+  it.skipIf(process.platform === 'win32')('skips a file that becomes unreadable after discovery without failing the request', async (test) => {
+    // chmod 0 does not stop a root process from reading the file, so the
+    // discovery-then-unreadable premise cannot be created here. Kept as
+    // coverage, skipped with a reason: run the suite as a non-root user.
+    test.skip(
+      process.getuid?.() === 0,
+      'this process runs as root: it reads the 0o000 instruction file, so the unreadable-after-discovery case is unobservable',
+    )
     const root = await tempRepo()
     const home = await tempRepo()
     try {

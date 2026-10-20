@@ -4,6 +4,7 @@
  * and a POSIX fake Landlock launcher that prints its notice before exec.
  */
 
+import { spawnSync } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -152,6 +153,20 @@ describe('partial Landlock runner-failure classification', () => {
     // Node/libuv may expose execve's ENOEXEC directly (Darwin) or retry a
     // no-shebang executable through /bin/sh (Linux). Neither path supplies the
     // ENOENT/EACCES with the exact failed executable path required for runner attribution.
+    //
+    // The fallback shell's own exit status is therefore MEASURED from an
+    // unconfined spawn of the same file, not assumed. Pinning 127 here pinned
+    // the shell of whichever host wrote the case: the fallback hands the file's
+    // text to a shell, so a command on PATH whose name matches the file's first
+    // word decides the status (this host ships the llvm `not` utility, which
+    // turns "command not found" into 1). What the case is really about — the
+    // sandbox carries an ordinary, non-denied, non-runner-failed outcome
+    // through — is asserted unchanged below.
+    const unconfined = spawnSync(runner, [], { encoding: 'utf8' })
+    expect(unconfined.error).toBeUndefined()
+    const fallbackCode = unconfined.status
+    expect(fallbackCode).not.toBeNull()
+
     const foreground = await bash.run(bash.resolve(request)).catch((value: unknown) => value)
     expect(foreground).not.toBeInstanceOf(SandboxUnavailableError)
 
@@ -170,7 +185,7 @@ describe('partial Landlock runner-failure classification', () => {
       expect(background).not.toBeInstanceOf(SandboxUnavailableError)
     } else {
       expect(foreground).toMatchObject({
-        exitCode: 127,
+        exitCode: fallbackCode,
         signal: null,
         sandbox: { mode: 'read-only', denied: false, enforcement: 'full' },
       })
@@ -179,7 +194,7 @@ describe('partial Landlock runner-failure classification', () => {
       const background = bash.start(bash.resolve(request))
       await background.done
       expect(background.status).toBe('completed')
-      expect(background.exitCode).toBe(127)
+      expect(background.exitCode).toBe(fallbackCode)
       expect(background.signal).toBeNull()
       expect(background.sandbox).toEqual({ mode: 'read-only', denied: false, enforcement: 'full' })
       const output = background.readOutput().delta
