@@ -495,6 +495,45 @@ describe('SubagentRuntime.followup residency routing', () => {
     expect(userTexts(loaded.events)).toEqual(['child task', 'first follow-up', 'second follow-up'])
   })
 
+  it('removes one queued occurrence without ending the open child turn or disturbing its FIFO', async () => {
+    const releaseFirst = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([
+      { chunks: textResponse('first'), gate: releaseFirst.promise },
+      { chunks: textResponse('second') },
+    ])
+    const { ctx, parent } = await setupWith(adapter)
+    parkParent(ctx, parent)
+    const started = await ctx.subagents.startContinuable(startSpec(parent))
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+    const child = ctx.agents.get(started.childId)!
+    expect(child.status).toBe('running')
+    const cancel = vi.spyOn(child, 'cancel')
+    const retracted = await followup(ctx, parent, started.childId, message('retracted follow-up'))
+    await followup(ctx, parent, started.childId, message('kept follow-up'))
+    expect(child.inbox.nextTurn).toHaveLength(2)
+    const turnsBefore = child.session.events.filter(event => event.type === 'turn/start').length
+
+    // Exactly what `session.updateQueue({ kind: 'remove' })` runs against a
+    // resident child: the durable splice on the addressed MessageId, and
+    // nothing else. A deletion path that also cancelled or steered the child
+    // would end the turn this test is watching stay open.
+    child.inbox.remove(retracted)
+
+    expect(child.inbox.nextTurn).toHaveLength(1)
+    expect(child.status).toBe('running')
+    expect(child.session.events.filter(event => event.type === 'turn/start')).toHaveLength(turnsBefore)
+    expect(child.session.events.some(event => event.type === 'turn/end')).toBe(false)
+    expect(cancel).not.toHaveBeenCalled()
+    // The same Activation: nothing resumed the child and nothing reparented it.
+    expect(ctx.agents.get(started.childId)).toBe(child)
+
+    releaseFirst.resolve(undefined)
+    await waitNoActivation(ctx, started.childId)
+    const loaded = await ctx.sessionPersistence.load(started.childId)
+    // The retracted occurrence never ran; the kept one ran in its FIFO place.
+    expect(userTexts(loaded.events)).toEqual(['child task', 'kept follow-up'])
+  })
+
   it('cold-resumes a settled child into a new Activation', async () => {
     const { ctx, parent } = await setup([textResponse('first'), textResponse('after resume')])
     const started = await ctx.subagents.startContinuable(startSpec(parent))
@@ -2491,6 +2530,44 @@ describe('SubagentRuntime.interrupt', () => {
       .filter(event => event.type === 'turn/end')
       .map(event => (event).data.reason.kind)
     expect(turnEnds).toEqual(['aborted', 'completed', 'completed', 'completed'])
+  })
+
+  it('keeps the surviving occurrences parked across Stop after one was retracted', async () => {
+    const releaseFirst = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([
+      { chunks: textResponse('first'), gate: releaseFirst.promise },
+      { chunks: textResponse('second') },
+      { chunks: textResponse('third') },
+      { chunks: textResponse('fourth') },
+    ])
+    const { ctx, parent } = await setupWith(adapter)
+    const started = await ctx.subagents.startContinuable(startSpec(parent))
+    await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+    const child = ctx.agents.get(started.childId)!
+    const retracted = await followup(ctx, parent, started.childId, message('retracted B'))
+    await followup(ctx, parent, started.childId, message('kept C'))
+    await followup(ctx, parent, started.childId, message('kept D'))
+    // The queue-dock removal, before Stop: it retires one occurrence and leaves
+    // the child's open turn and the rest of the queue exactly as they were.
+    child.inbox.remove(retracted)
+    expect(child.inbox.nextTurn).toHaveLength(2)
+    expect(child.status).toBe('running')
+
+    const cancelSpy = vi.spyOn(child, 'cancel')
+    ctx.subagents.interrupt(started.childId, { kind: 'user', parentSessionId: parent.id })
+    expect(cancelSpy).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
+    releaseFirst.resolve(undefined)
+    await child.whenIdle()
+
+    // Stop still parks instead of resuming, and the surviving pair is intact.
+    expect(adapter.requests).toHaveLength(1)
+    expect(child.inbox.nextTurn).toHaveLength(2)
+    expect(child.status).toBe('idle')
+
+    await followup(ctx, parent, started.childId, message('waking E'))
+    await waitNoActivation(ctx, started.childId)
+    const loaded = await ctx.sessionPersistence.load(started.childId)
+    expect(userTexts(loaded.events)).toEqual(['child task', 'kept C', 'kept D', 'waking E'])
   })
 
   it('interrupts only the target while its resident descendant keeps running', async () => {
