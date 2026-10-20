@@ -18,6 +18,22 @@
     persona: >-
       You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
 
+# Full access is the ONLY permission level in this household: the address space
+# never offers a narrower one, and confinement that still matters lives outside
+# this knob (filesystem permissions, a separate account per agent) or at the
+# server level (profile, roster, tailnet, gateway). The table therefore carries
+# one preset: the settings schema is built from these names, so any other value
+# — a typed `/permission workspace-write`, a stale settings document — is
+# unresolvable instead of silently available. A patch replaces the targeted
+# row's whole config, so the table appears here in full.
+- id: permission
+  config:
+    defaultPreset: danger-full-access
+    presets:
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+
 # TODO: Re-enable shared HMR for Web after its reload lifecycle is tested.
 - id: hmr
   disabled: true
@@ -203,8 +219,16 @@
     - id: ui-settings-general
       name: '@deepseek-ai/dsh-client-ui-settings-general'
 
+    # DISABLED: models are server-side (the gateway routes them and the
+    # composer's effort slider picks the effort), so the Models page, the
+    # provider/key editors, and this plugin's two onboarding dialogs are all
+    # choices a household member does not own. Disabled rather than deleted
+    # because this file's convention is to disable a row the surface no longer
+    # wants: an absent row would silently return the day someone reorders the
+    # layer.
     - id: ui-settings-models
       name: '@deepseek-ai/dsh-client-ui-settings-models'
+      disabled: true
 
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
@@ -296,11 +320,10 @@
     - id: ui-model-selection
       name: '@deepseek-ai/dsh-client-ui-model-selection'
 
-    - id: ui-permission
-      name: '@deepseek-ai/dsh-client-ui-permission-presets'
-
-    # The agent-preset row in General settings: the default preset for
-    # sessions created later. Absent a roster it renders nothing.
+    # The session header's read-only agent-preset label. Which agent a
+    # conversation uses is decided by the inbox row that starts it, so this
+    # plugin no longer offers a settings row, a preset chip, or a roster
+    # editor.
     - id: ui-agent-preset
       name: '@deepseek-ai/dsh-client-ui-agent-preset'
 

@@ -251,17 +251,16 @@ export function apply(ctx: Context): void {
 
   // The default composer body: its own single slot inside the composer
   // chain's fallback. Public machine surface arrives via the
-  // provide channel above; the keyboard command face and the stop/retry
-  // verbs ride this inject (package-internal — hub and bar are one plugin).
+  // provide channel above; the keyboard command face and the stop verb ride
+  // this inject (package-internal — hub and bar are one plugin).
   // Session-maybe: with no current session the machine faces are absent and
   // the hooks compartment binds static empty sources (module constants, so
   // observableHook caching and hook order stay stable across transitions).
   slots.register({
     name: 'conversation.composer.bar',
     locale: NS,
-    // The two named control seats in the bar's tool row (plan beside the
-    // access control, model right); empty until their owning plugins
-    // register.
+    // The two named control seats in the bar's tool row (plan left, model
+    // right); empty until their owning plugins register.
     children: {
       'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.plan': { kind: 'single', scope: 'session' },
@@ -278,7 +277,6 @@ export function apply(ctx: Context): void {
             submissionPolicy.resolve(running, gesture, steeringAvailable),
           toggleCommandMenu: undefined,
           stop: undefined,
-          command: undefined,
           hooks: { notices: ABSENT_NOTICES, lexicon: ABSENT_LEXICON, menuLauncher: ABSENT_MENU_LAUNCHER },
         }
       }
@@ -327,12 +325,6 @@ export function apply(ctx: Context): void {
           scopedConversation(sessions, sessionId).cancel().catch(() => {
             // Stop failure surfaces via snapshot.promptError; nothing to restore.
           })
-        },
-        command: async (line) => {
-          const session = sessions.binding(sessionId)?.session
-          if (session === undefined) return false
-          const result = await session.command(line)
-          return result.ok && result.value.matched
         },
         hooks: {
           notices: shell.notices,

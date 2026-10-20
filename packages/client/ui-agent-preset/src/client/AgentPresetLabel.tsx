@@ -2,10 +2,9 @@
  * The session header's agent-preset label.
  *
  * Read-only by construction: a session's composition is fixed once its
- * conversation starts, and a header is only worth reading after that. Offering
- * a control here would promise a switch the host refuses; naming what the
- * session runs is the honest affordance, and the choice itself lives on the
- * new-session screen ({@link AgentPresetSeat}).
+ * conversation starts, and a header is only worth reading after that. Naming
+ * what the session runs is the honest affordance — which agent a conversation
+ * uses was decided by the inbox row that started it.
  */
 
 import { useEffect } from 'react'
@@ -14,7 +13,7 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import { IconAgentPresetOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 // Type-only: pulls the ui-conversation SlotMap merge (the header actions).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { AgentPresetSettingsState } from './settings-store.ts'
+import type { AgentPresetRosterState } from './roster-store.ts'
 import { presetDisplayText } from './locales.ts'
 import css from './AgentPresetLabel.module.css'
 
@@ -22,7 +21,7 @@ import css from './AgentPresetLabel.module.css'
 export interface AgentPresetLabelInjected {
   hooks: {
     /** Roster snapshot bound by the renderer as useAgentPresets. */
-    agentPresets: SnapshotStore<AgentPresetSettingsState>
+    agentPresets: SnapshotStore<AgentPresetRosterState>
   }
   /** Read the roster, so the label can show a name rather than an id. */
   load: () => Promise<void>

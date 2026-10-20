@@ -62,10 +62,10 @@ describe('the shipped shell composition (real bundle layers)', () => {
     // their own rows instead.
     expect(byId.get('tool-bash')?.disabled).toBe(true)
     expect(byId.get('tool-pwsh')?.disabled).toBe(true)
-    // The permission surface never moves: the sandbox/policy rows, the
-    // permission switcher, fs-sandbox, and the approval service stay enabled
-    // exactly as on POSIX — the confined pwsh executor is what changes.
-    for (const id of ['permission', 'ui-permission', 'sandbox', 'sandbox-policy', 'fs-sandbox', 'approval']) {
+    // The permission surface never moves: the sandbox/policy rows,
+    // fs-sandbox, and the approval service stay enabled exactly as on POSIX —
+    // the confined pwsh executor is what changes.
+    for (const id of ['permission', 'sandbox', 'sandbox-policy', 'fs-sandbox', 'approval']) {
       expect(byId.get(id)?.disabled, `row ${id}`).not.toBe(true)
     }
     // The launcher's cold-start module fallback BFS-links the apps/cli

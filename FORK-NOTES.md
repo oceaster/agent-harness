@@ -434,6 +434,55 @@ re-applied on every upstream pull:
     modal, behind the PIN proxy, against the live route — is the coordinator's
     post-merge browser gate, not this package's proof.
 
+12. **Slimmed Settings and composer** (removals in `ui-agent-preset`,
+    `ui-permission-presets`, `ui-conversation`, `ui-settings-models`, and
+    `bundle/web-app/cordis.patch.yml`) — the household Settings modal now offers
+    only what a family member controls. Which agent a conversation uses is
+    decided by the inbox row that starts it, permission is always full access,
+    and models are server-side (the gateway routes them; the composer's effort
+    slider picks the effort), so four surfaces that contradicted those facts are
+    gone.
+
+    **Settings.** `ui-agent-preset` registers one seat, the read-only
+    `conversation.session.header.mode` label; its `settings.general.item` row
+    (id `agent-preset`), its `settings.section` (id `agent-presets`), the
+    new-session `conversation.hero.agentPreset` chip, and the roster-management
+    controller behind them are deleted rather than stubbed. The label reads the
+    roster for display copy only — nothing in the browser writes a preset
+    default. Note that the seat renders nowhere today: the shipped skeleton
+    renders the header's actions and utilities but not `header.mode`, so the
+    label is registered and invisible until a header mounts it. The
+    `ui-permission-presets` package is deleted outright, together with its
+    `/permission` popupSelect decoration: a decorated picker on a typed slash
+    command is still an affordance, and keeping a package alive for a value
+    nobody may change is not worth it.
+
+    **Composer.** `PermissionSelect` is deleted from `ui-conversation` (its
+    component, CSS, `input.accessMode`/`access.confirm.*` copy, its seat in the
+    input bar's bottom row, its `permissions` projection read, and the now
+    unowned `command` inject face on the composer bar). The bottom row keeps the
+    plan seat, the model/effort seat, the context meter and send.
+
+    **Composition rows touched in `packages/bundle/web-app/cordis.patch.yml`**
+    (three workers shared this file; reconcile by id):
+    - `permission` — new override row pinning full access as the only level:
+      `defaultPreset: danger-full-access` plus a preset table whose only entry
+      is `danger-full-access` (`sandbox: danger-full-access`, `approval: never`).
+      The host builds its settings schema from the table's names, so no other
+      value resolves: `/permission workspace-write` now fails with
+      `unknown preset ...` instead of switching, and a stale settings document
+      naming a removed preset fails loudly at load.
+    - `ui-settings-models` — `disabled: true`, which also removes its two
+      `settings.onboarding` dialogs (the welcome notice and the DeepSeek key
+      dialog). Disabled rather than deleted, following the `ui-workspace`
+      precedent recorded in that file.
+    - `ui-permission` — row deleted with the package.
+    - `ui-agent-preset` — row kept; only its comment changed.
+
+    Language, Appearance and the busy Enter-behavior rows are untouched. The
+    host `/permission` command itself still exists in
+    `packages/interaction/permission-presets`; the pin, not the missing UI, is
+    what refuses a downgrade.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.

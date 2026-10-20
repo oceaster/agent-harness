@@ -236,7 +236,6 @@
 }
 
 .tools,
-.modes,
 .trailing {
   display: flex;
   align-items: center;
@@ -248,10 +247,6 @@
    controls. */
 .tools {
   gap: 16px;
-}
-
-.modes {
-  gap: 12px;
 }
 
 .trailing {

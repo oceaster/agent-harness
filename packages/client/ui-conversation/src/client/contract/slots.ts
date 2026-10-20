@@ -530,13 +530,6 @@ export interface ComposerBarInjected {
   /** Cancel the in-flight turn; absent with the session. */
   stop: (() => void) | undefined
   /**
-   * Submit one slash-command line against this session's agent (the chrome
-   * controls' write path — the permission chip submits `/permission <preset>`);
-   * absent with the session.
-   * Resolves admission: false = rejected/unmatched/transport failure.
-   */
-  command: ((line: string) => Promise<boolean>) | undefined
-  /**
    * Registrant hooks compartment: the renderer binds these to
    * useNotices/useLexicon (static absent sources without a session — hook
    * order stays constant).
