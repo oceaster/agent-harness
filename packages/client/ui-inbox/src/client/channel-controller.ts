@@ -26,6 +26,14 @@ export interface ChannelState {
 export class ChannelController {
   /** Shared channel selection and transcript rendered by the sidebar and chat tile. */
   readonly store = createSnapshotStore<ChannelState>({ rows: [], selected: null, messages: [], error: null, loading: false })
+  /**
+   * The durable half of the selection, and only the id: the row itself is
+   * server data (its name, agents, presence) and is re-read from the list on
+   * every boot, so restoring a stored row object would resurrect a stale
+   * channel.
+   */
+  private readonly selection = createSnapshotStore<{ channelId: string | null }>(
+    { channelId: null }, { persist: { name: 'dsh.inbox.channel' } })
   private reading = false
   private revision = 0
   /** Refresh permitted channel rows from the caller's own cookie-authenticated API. */
@@ -42,10 +50,47 @@ export class ChannelController {
    * @param id - channel id returned by the authenticated list.
    */
   async open(id: string): Promise<void> {
-    const state = this.store.getSnapshot(), selected = state.rows.find(row => row.id === id)
+    const selected = this.store.getSnapshot().rows.find(row => row.id === id)
     if (selected === undefined) return
-    this.store.set({ ...state, selected, messages: [], error: null, loading: true })
+    this.selection.set({ channelId: id })
+    this.select(selected)
     await this.refresh()
+  }
+  /**
+   * Reopen the channel this person was reading when the page last unloaded.
+   * Called by the plugin once the server's rows are known, so the restore is
+   * ONE step: the channel becomes the selection and the caller switches the
+   * main view in the same write (ui-inbox is the single writer of the channel
+   * page — see index.ts), which is what keeps the painted surface and the
+   * sidebar's current row from ever disagreeing.
+   *
+   * A stored id that no longer resolves (the channel was cleared, removed, or
+   * belongs to a different person's list) is dropped and the ordinary
+   * conversation default stands: nothing failed, so nothing is reported.
+   * @param openPage - selects the channel page; called only when the id resolves.
+   * @returns the reopened channel id, or null when nothing was restored.
+   */
+  async restorePersisted(openPage: () => void): Promise<string | null> {
+    const channelId = this.selection.getSnapshot().channelId
+    if (channelId === null) return null
+    const state = this.store.getSnapshot()
+    // Rows are unknown yet (the read is in flight or failed): keep the id and
+    // let the next read try. Only a rows set the server actually answered can
+    // retire the selection.
+    if (state.rows.length === 0) return null
+    const channel = state.rows.find(row => row.id === channelId)
+    if (channel === undefined) {
+      this.selection.set({ channelId: null })
+      return null
+    }
+    this.select(channel)
+    openPage()
+    await this.refresh()
+    return channelId
+  }
+  /** Make one channel the selection and mark its transcript as loading. */
+  private select(channel: AgentChannel): void {
+    this.store.set({ ...this.store.getSnapshot(), selected: channel, messages: [], error: null, loading: true })
   }
   /** Clear only the person's selected channel history after confirmation in the view.
    * @param id - channel to clear; omitted uses the current selection.
@@ -72,7 +117,10 @@ export class ChannelController {
     }
   }
   /** Return to the agent conversation while preserving channel history on the server. */
-  close(): void { this.store.set({ ...this.store.getSnapshot(), selected: null, loading: false }) }
+  close(): void {
+    this.selection.set({ channelId: null })
+    this.store.set({ ...this.store.getSnapshot(), selected: null, loading: false })
+  }
   /** Poll only the open channel; a selection change cannot display another channel's response. */
   async refresh(): Promise<void> {
     const channel = this.store.getSnapshot().selected

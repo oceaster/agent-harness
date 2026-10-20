@@ -6,7 +6,7 @@
  * on boot without throwing when the API misbehaves, and gives the rows' open
  * verb the sessions service as its navigation seam.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore, SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
@@ -49,6 +49,7 @@ function sessionList() {
 /**
  * Boot the plugin over a real slot ledger and a fake sessions service.
  * @param listBody - what the stubbed inbox list endpoint answers.
+ * @param options - the channel list the origin offers, when a test needs one.
  */
 async function bench(listBody: unknown = {
   person: { id: 'p-1', name: 'Person One' },
@@ -57,14 +58,15 @@ async function bench(listBody: unknown = {
     sessionId: 's-a', blank: false, lastActivityAt: 100, running: false,
     enabled: true, disabled: false, presence: 'online', completion: 0,
   }],
-}) {
+}, options: { channels?: readonly unknown[] } = {}) {
   const sessions = sessionList()
   const opened: string[] = []
   let cleared = false
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   ctx.provide('locale', new LocaleRuntime(ctx))
-  ctx.provide('layout', { openPage: vi.fn() })
+  const openPage = vi.fn()
+  ctx.provide('layout', { openPage })
   ctx.provide('sessions', {
     list: sessions.store,
     // The concrete runtime's wire-pump verb: the fixture answers it the way the
@@ -82,20 +84,30 @@ async function bench(listBody: unknown = {
   // list body answered for /open would parse as malformed.
   const fetchStub = vi.fn((input: string) => {
     fetches.push(input)
-    const body = input.endsWith('/channels') ? { channels: [] } : input.endsWith('/open')
-      ? { agent: 'agent-a', sessionId: 's-a', created: false, blank: true, lastActivityAt: null }
-      : input.endsWith('/clear')
-        ? {
-          agent: 'agent-a', hasConversation: false, sessionId: null, blank: true, lastActivityAt: null, cleared: true,
-        }
-        : listBody
+    let body: unknown = listBody
+    if (input.endsWith('/channels')) {
+      body = { channels: options.channels ?? [] }
+    } else if (input.includes('/channels/')) {
+      body = { messages: [] }
+    } else if (input.endsWith('/open')) {
+      body = { agent: 'agent-a', sessionId: 's-a', created: false, blank: true, lastActivityAt: null }
+    } else if (input.endsWith('/clear')) {
+      body = {
+        agent: 'agent-a', hasConversation: false, sessionId: null, blank: true, lastActivityAt: null, cleared: true,
+      }
+    }
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
   })
   vi.stubGlobal('fetch', fetchStub)
   const fiber = ctx.plugin({ inject: [...inject], apply })
-  return { ctx, fiber, sessions, opened, fetches, clearedFlag: () => cleared, entry: () => ctx.slots.entries('sidebar.workspaces')[0] }
+  return {
+    ctx, fiber, sessions, opened, fetches, openPage,
+    clearedFlag: () => cleared,
+    entry: () => ctx.slots.entries('sidebar.workspaces')[0],
+  }
 }
 
+beforeEach(() => { localStorage.clear() })
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('ui-inbox registration', () => {
@@ -201,6 +213,44 @@ describe('ui-inbox registration', () => {
     expect(b.entry()).toBeDefined()
     await b.fiber.dispose()
     expect(b.entry()).toBeUndefined()
+  })
+})
+
+describe('ui-inbox channel restore (where you were, channel half)', () => {
+  const channelRow = { id: 'c-delta-darwin', name: 'Delta-Darwin', agents: ['delta', 'darwin'] }
+
+  it('reopens the channel that was open and selects its page in one step', async () => {
+    // A reload: the id survived in localStorage, no click exists yet.
+    localStorage.setItem('dsh.inbox.channel', JSON.stringify({ channelId: channelRow.id }))
+    const b = await bench(undefined, { channels: [channelRow] })
+    await b.fiber.await()
+    const face = b.entry()?.inject?.() as unknown as InboxInjected
+    await vi.waitFor(() => { expect(b.openPage).toHaveBeenCalledWith('agent-channel') })
+    // ui-inbox is the single writer of the channel page: the selection is
+    // already the channel when the page is selected, so nothing paints the
+    // agent conversation first and corrects itself a frame later.
+    expect(face.hooks.channels.getSnapshot().selected?.id).toBe(channelRow.id)
+    expect(b.openPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the conversation default in place when the persisted channel is gone', async () => {
+    localStorage.setItem('dsh.inbox.channel', JSON.stringify({ channelId: 'cleared-elsewhere' }))
+    const b = await bench(undefined, { channels: [channelRow] })
+    await b.fiber.await()
+    const face = b.entry()?.inject?.() as unknown as InboxInjected
+    await vi.waitFor(() => { expect(face.hooks.channels.getSnapshot().rows).toHaveLength(1) })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(b.openPage).not.toHaveBeenCalled()
+    expect(face.hooks.channels.getSnapshot().selected).toBeNull()
+    expect(face.hooks.channels.getSnapshot().error).toBeNull()
+    expect(JSON.parse(localStorage.getItem('dsh.inbox.channel')!)).toEqual({ channelId: null })
+  })
+
+  it('does not restore anything when no channel was open', async () => {
+    const b = await bench(undefined, { channels: [channelRow] })
+    await b.fiber.await()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(b.openPage).not.toHaveBeenCalled()
   })
 })
 

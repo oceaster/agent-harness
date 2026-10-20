@@ -118,6 +118,9 @@ function drag(handle: Element, fromX: number, toX: number): void {
 }
 
 beforeEach(() => {
+  // The panel widths are durable now (dsh.layout.panels), so each test starts
+  // from empty storage instead of inheriting the previous test's drag.
+  localStorage.clear()
   frameWidth = 1920
   frameHeight = 1080
   selectedSession.current = 's-test' as SessionId

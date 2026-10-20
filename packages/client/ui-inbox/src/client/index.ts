@@ -71,6 +71,26 @@ export function apply(ctx: ClientContext): void {
     }, 2000)
     return () => { clearInterval(timer) }
   }, 'ui-inbox: agent channels')
+  // Where-you-were, channel half. The open channel is durable (ChannelController
+  // persists its id), and this plugin is the SINGLE writer of the channel page:
+  // the restore selects the channel and calls layout.openPage in one step, so a
+  // reload lands on the channel itself instead of painting the agent
+  // conversation first and correcting a frame later. Disarmed after the first
+  // resolved boot (or when there was nothing to restore) so a later rows
+  // refresh can never re-navigate the person; an id the server no longer offers
+  // is dropped by the controller and the ordinary conversation default stands,
+  // silently, because nothing failed.
+  ctx.effect(() => {
+    let armed = true
+    const restore = (): void => {
+      if (!armed || channels.store.getSnapshot().rows.length === 0) return
+      armed = false
+      void channels.restorePersisted(() => { ctx.layout.openPage('agent-channel') })
+    }
+    restore()
+    const stop = channels.store.subscribe(() => { restore() })
+    return () => { stop() }
+  }, 'ui-inbox: channel restore')
   // The navigation seam, assembled explicitly. `list`, `open` and `clear` are
   // the typed ISessions face; `refresh` is not — the runtime keeps the
   // wire-pump verbs on the concrete SessionRuntime it provides as

@@ -130,21 +130,61 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().details).toBe(0)
   })
 
-  it('does not persist panel geometry', () => {
+  it('persists exactly the two panel widths, under the dsh prefix', () => {
     const first = createLayoutStore().create()
     first.actions.setSidebar(400)
     first.actions.openDetails()
     first.actions.setDetails(500)
-    expect(localStorage.getItem(PERSIST_KEY)).toBeNull()
+    expect(JSON.parse(localStorage.getItem(PERSIST_KEY)!)).toEqual({ sidebar: 400, details: 500 })
+  })
 
+  it('restores sidebar width, details width and whether details is open', () => {
+    createLayoutStore().create().actions.setSidebar(400)
+    const reopened = createLayoutStore().create()
+    expect(reopened.store.getSnapshot()).toMatchObject({ sidebar: 400, details: 0 })
+    reopened.actions.openDetails()
+    reopened.actions.setDetails(500)
+    const reloaded = createLayoutStore().create()
+    expect(reloaded.store.getSnapshot()).toMatchObject({ sidebar: 400, details: 500 })
+    // A closed details panel is a stored 0 too, not a missing key.
+    reloaded.actions.closeDetails()
+    expect(createLayoutStore().create().store.getSnapshot().details).toBe(0)
+  })
+
+  it('never persists the viewport-derived fields or the selected page', () => {
+    const first = createLayoutStore().create()
+    first.actions.setSidebar(400)
+    // Shape first, then breakpoint: each setter drops the manual override, so
+    // the expand below is the last word (that ordering is the store's own rule).
+    first.actions.setPortrait(true)
+    first.actions.setNarrow(true)
+    first.actions.toggleSidebar()      // narrowExpanded = true
+    first.actions.openPage('agent-channel')
+    expect(first.store.getSnapshot()).toMatchObject({
+      narrow: true, narrowExpanded: true, portrait: true, page: 'agent-channel',
+    })
+    // The stored subset is the widths and nothing else: replaying a viewport
+    // reading would fight AppFrame's own measurement, and the page has a single
+    // writer (ui-inbox), so layout must not persist it.
+    const stored = JSON.parse(localStorage.getItem(PERSIST_KEY)!) as Record<string, number>
+    expect(Object.keys(stored).sort()).toEqual(['details', 'sidebar'])
     const second = createLayoutStore().create()
     expect(second.store.getSnapshot()).toEqual({
-      sidebar: SIDEBAR_DEFAULT,
+      sidebar: 400,
       details: 0,
       narrow: false,
       narrowExpanded: false,
       portrait: false,
       page: null,
     })
+  })
+
+  it('keeps unrelated stored keys out of the state and falls back on a corrupt entry', () => {
+    localStorage.setItem(PERSIST_KEY, '{"sidebar":420,"details":0}')
+    expect(createLayoutStore().create().store.getSnapshot().sidebar).toBe(420)
+    localStorage.setItem(PERSIST_KEY, 'not json')
+    const fallback = createLayoutStore().create()
+    expect(fallback.store.getSnapshot().sidebar).toBe(SIDEBAR_DEFAULT)
+    expect(fallback.store.getSnapshot().details).toBe(0)
   })
 })

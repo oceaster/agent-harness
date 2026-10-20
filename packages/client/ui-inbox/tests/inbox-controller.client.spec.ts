@@ -159,8 +159,18 @@ function bench(options: BenchOptions = {}) {
   const hand = clock()
   const port: InboxSessionPort = {
     list: sessions.store,
-    open: (id) => { opened.push(id) },
-    clear: () => { cleared = true },
+    // The real SessionRuntime projects every selection into `list.current` on
+    // its own snapshot store, and the inbox derives the row highlight from that
+    // value. A double that only recorded the call would let a click-only
+    // highlight pass this suite while a reload showed no current row at all.
+    open: (id) => {
+      opened.push(id)
+      sessions.store.set({ ...sessions.store.getSnapshot(), current: id })
+    },
+    clear: () => {
+      cleared = true
+      sessions.store.set({ ...sessions.store.getSnapshot(), current: undefined })
+    },
     ...options.withoutRefresh === true ? {} : {
       refresh: () => {
         refreshes += 1
@@ -277,7 +287,7 @@ describe('inbox controller: opening a row', () => {
     await b.controller.load()
     await b.controller.open('agent-c')
     // The only id the list ever learned is the one the answer named.
-    expect(seen.flat()).toEqual(['s-new'])
+    expect([...new Set(seen.flat())]).toEqual(['s-new'])
     expect(b.opened).toEqual(['s-new'])
   })
 
@@ -581,6 +591,90 @@ describe('inbox controller: clearing a row', () => {
     await b.controller.clear('agent-c')
     expect(b.state().notices).toEqual({})
     expect(b.state().rows.find(row => row.agent === 'agent-c')?.hasConversation).toBe(false)
+  })
+})
+
+describe('inbox controller: the current row follows the runtime selection', () => {
+  it('marks the row of the session the runtime restored, with no click behind it', async () => {
+    // The reload case: the runtime restores `dsh.sessions.current` before any
+    // click exists, so a click-only marker would leave the pane painting a
+    // conversation with no current row.
+    const sessions = sessionList(['s-a'])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    const b = bench({ sessions })
+    b.controller.followSessions()
+    await b.controller.load()
+    expect(b.state().openAgent).toBe('agent-a')
+    expect(b.calls.filter(call => call.api === 'open')).toEqual([])
+    expect(b.opened).toEqual([])
+  })
+
+  it('follows the selection frame by frame, in either arrival order', async () => {
+    // Rows first, then the frame.
+    const sessions = sessionList(['s-a', 's-b'])
+    const b = bench({ sessions })
+    const stop = b.controller.followSessions()
+    await b.controller.load()
+    expect(b.state().openAgent).toBeNull()
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-b') })
+    await settle()
+    expect(b.state().openAgent).toBe('agent-b')
+    // A row the server no longer names a conversation for is still matched by
+    // the id the runtime holds: agent-c has no session, so no row is marked.
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-unknown') })
+    await settle()
+    expect(b.state().openAgent).toBeNull()
+    stop()
+  })
+
+  it('clears the marker when the runtime clears its selection', async () => {
+    const sessions = sessionList(['s-a'])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    const b = bench({ sessions })
+    b.controller.followSessions()
+    await b.controller.load()
+    expect(b.state().openAgent).toBe('agent-a')
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: undefined })
+    await settle()
+    expect(b.state().openAgent).toBeNull()
+  })
+
+  it('a restored conversation that no longer exists leaves the ordinary default, silently', async () => {
+    // The runtime keeps a persisted selection whose session the host does not
+    // list (a deleted conversation, or an agent removed from the roster): no row
+    // names it, so no row claims to be open and nothing is reported as failed.
+    const sessions = sessionList(['s-a'])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-deleted') })
+    const b = bench({ sessions })
+    b.controller.followSessions()
+    await b.controller.load()
+    expect(b.state().openAgent).toBeNull()
+    expect(b.state().notices).toEqual({})
+    expect(b.state().busy).toEqual([])
+    expect(b.state().status).toBe('ready')
+    // A conversation that does exist still marks its row afterwards.
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    await settle()
+    expect(b.state().openAgent).toBe('agent-a')
+  })
+
+  it('never marks a row for a subagent conversation', async () => {
+    const sessions = sessionList(['s-a'])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    const b = bench({ sessions })
+    b.controller.followSessions()
+    await b.controller.load()
+    sessions.add('s-sub', { parentId: sid('s-a'), origin: 'subagent', running: true })
+    sessions.store.set({
+      ...sessions.store.getSnapshot(),
+      current: sid('s-sub'),
+      byId: { ...sessions.store.getSnapshot().byId, [sid('s-sub')]: {
+        id: sid('s-sub'), displayTitle: 's-sub', running: true, blank: false, updatedAt: 0,
+        parentId: sid('s-a'), origin: 'subagent',
+      } },
+    })
+    await settle()
+    expect(b.state().openAgent).toBeNull()
   })
 })
 

@@ -71,6 +71,30 @@ function rafBatch(notify: () => void): () => void {
 }
 
 /**
+ * Opt-in persistence declaration: the localStorage key, plus an optional
+ * picker of the subset that is durable.
+ *
+ * The picker exists because some state is a *preference* and some is a
+ * *measurement* of the current frame (viewport width, portrait shape). Storing
+ * a measurement makes it fight the component that re-measures it on every
+ * resize, so a store whose state mixes the two persists only the preference
+ * half and lets the rest start from `init`.
+ */
+export interface PersistOption<T> {
+  /** localStorage key; every caller keeps it under the `dsh.` prefix. */
+  name: string
+  /**
+   * Select the durable subset of the state. Omitted = persist the whole value.
+   * With a picker the entry stores `partial(state)` and restores it as
+   * `{ ...init, ...stored }`, so a key an older build never wrote keeps its
+   * default instead of arriving as `undefined`.
+   * @param state - current state.
+   * @returns the subset to store.
+   */
+  partial?: (state: T) => Partial<T>
+}
+
+/**
  * Create a snapshot store.
  *
  * Flush default is 'sync' (controlled inputs need same-tick echo); frame-driven
@@ -84,12 +108,12 @@ function rafBatch(notify: () => void): () => void {
  * @returns the store.
  */
 export function createSnapshotStore<T>(
-  init: T, opts?: { flush?: 'raf' | 'sync'; persist?: { name: string } }): SnapshotStore<T> {
+  init: T, opts?: { flush?: 'raf' | 'sync'; persist?: PersistOption<T> }): SnapshotStore<T> {
   // Immer enters through produce() in update() below (identical semantics to
   // the immer middleware without its setState-signature mutator generics).
   const withSelector = subscribeWithSelector(() => init)
   const api: StoreApi<T> = createStore<T>()(withSelector)
-  if (opts?.persist) attachPersistence(api, opts.persist.name)
+  if (opts?.persist) attachPersistence(api, init, opts.persist)
 
   let subscribe = (fn: () => void) => api.subscribe(fn)
   if (opts?.flush === 'raf') {
@@ -123,27 +147,51 @@ export function createSnapshotStore<T>(
  * draft becomes {0:'h',1:'e',...}) — not fixable via merge/deserialize options
  * because the corruption happens before serialization. Storage failures
  * (quota, private mode) only disable persistence, never break the store.
+ *
+ * With a picker the round trip is a subset: the entry holds `partial(state)`
+ * and rehydration merges that subset over `init`, so excluded fields (and keys
+ * an older build never wrote) keep their declared defaults.
+ * @param api - the engine store.
+ * @param init - the state the store was created with (the merge base).
+ * @param persist - key plus optional picker.
  */
-function attachPersistence<T>(api: StoreApi<T>, name: string): void {
+function attachPersistence<T>(api: StoreApi<T>, init: T, persist: PersistOption<T>): void {
   // Non-browser runs (node e2e booting the client tree) have no localStorage:
   // persistence silently disables — same contract as a storage failure, minus
   // the per-store console noise a ReferenceError would produce.
   if (typeof localStorage === 'undefined') return
+  const pick = persist.partial
   try {
-    const raw = localStorage.getItem(name)
+    const raw = localStorage.getItem(persist.name)
     if (raw !== null) {
-      api.setState(devFreeze(JSON.parse(raw) as T), true)
+      const parsed: unknown = JSON.parse(raw)
+      if (pick === undefined) {
+        api.setState(devFreeze(parsed as T), true)
+      } else if (isPlainObject(parsed)) {
+        // A subset entry merges over init instead of replacing state, so the
+        // viewport-derived half of a mixed store starts at its default.
+        api.setState(devFreeze({ ...init, ...parsed as Partial<T> }), true)
+      } else {
+        // A picker whose entry is not an object (an older build's whole-value
+        // entry, or hand-edited garbage) cannot be merged: fall back to init.
+        console.error(`snapshot store '${persist.name}' rehydration skipped: entry is not a subset object`)
+      }
     }
   } catch (error) {
-    console.error(`snapshot store '${name}' rehydration failed:`, error)
+    console.error(`snapshot store '${persist.name}' rehydration failed:`, error)
   }
   api.subscribe((state) => {
     try {
-      localStorage.setItem(name, JSON.stringify(state))
+      localStorage.setItem(persist.name, JSON.stringify(pick === undefined ? state : pick(state)))
     } catch (error) {
-      console.error(`snapshot store '${name}' persistence failed:`, error)
+      console.error(`snapshot store '${persist.name}' persistence failed:`, error)
     }
   })
+}
+
+/** Whether a parsed storage entry can be spread over an init object. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** Deep-freeze wholesale-set state outside production: set() bypasses immer's freeze. */
@@ -172,6 +220,12 @@ export interface EngineStoreInstance<T, A extends ActionsDecl<T>> extends StoreI
 /** The engine-backed handle: create() narrowed to the engine instance. */
 export interface EngineStoreHandle<T, A extends ActionsDecl<T>> extends StoreHandle<T, A> {
   /**
+   * The declaration this handle was built from: the ui-slots contract spec
+   * (whose `persist` is the storage name — the contract's own form) plus the
+   * engine-only picker, normalised out of the `{ name, partial }` shorthand.
+   */
+  readonly spec: StoreSpec<T, A> & { readonly partial?: (state: T) => Partial<T> }
+  /**
    * Construct a live engine instance (see the contract JSDoc on
    * {@link StoreHandle.create} for scopeKey/persist semantics).
    *
@@ -189,6 +243,15 @@ export interface EngineStoreHandle<T, A extends ActionsDecl<T>> extends StoreHan
 }
 
 /**
+ * The store declaration `defineStore` accepts: the ui-slots contract spec with
+ * the persist position widened to the engine's two forms — the bare storage
+ * name (whole-value persistence) and `{ name, partial? }` (subset persistence
+ * for stores that mix durable preferences with viewport-derived fields).
+ */
+export type StoreDeclaration<T, A extends ActionsDecl<T>> =
+  Omit<StoreSpec<T, A>, 'persist'> & { persist?: string | PersistOption<T> }
+
+/**
  * Declare a store: initial state, optional persistence, and the full write
  * set as pure draft mutators. The returned handle is the registration
  * currency of the store seat — its identity keys instance sharing. Satisfies
@@ -201,20 +264,36 @@ export interface EngineStoreHandle<T, A extends ActionsDecl<T>> extends StoreHan
  * so call sites write `(d, x: X) => { ... }` with no draft annotation. If a
  * future TS version breaks this single-literal inference, the design's
  * documented fallback is currying (`defineStore(init).actions({...})`).
- * @param decl - init lambda (fresh state per instance), optional persist key, actions table.
+ * @param decl - init lambda (fresh state per instance), optional persist key or `{ name, partial }`, actions table.
  * @returns the store handle.
  */
 export function defineStore<T, A extends ActionsDecl<T>>(
-  decl: StoreSpec<T, A> & { actions: A & ActionsDecl<T> }): EngineStoreHandle<T, A> {
+  decl: StoreDeclaration<T, A> & { actions: A & ActionsDecl<T> }): EngineStoreHandle<T, A> {
+  // Normalise the two persist shorthands into the contract spec (a storage
+  // name) plus the engine-only picker, so `handle.spec` stays a valid
+  // StoreSpec for the framework while create() still knows the subset.
+  const persist: PersistOption<T> | undefined = decl.persist === undefined
+    ? undefined
+    : typeof decl.persist === 'string' ? { name: decl.persist } : decl.persist
+  const spec: StoreSpec<T, A> & { readonly partial?: (state: T) => Partial<T> } = {
+    init: decl.init,
+    actions: decl.actions,
+    ...(persist === undefined ? {} : { persist: persist.name }),
+    ...(persist?.partial === undefined ? {} : { partial: persist.partial }),
+  }
   return {
-    spec: decl,
+    spec,
     create(scopeKey?: string): EngineStoreInstance<T, A> {
-      const persistKey = decl.persist === undefined
+      const persistKey = persist === undefined
         ? undefined
-        : scopeKey === undefined ? decl.persist : `${decl.persist}.${scopeKey}`
+        : scopeKey === undefined ? persist.name : `${persist.name}.${scopeKey}`
       const store = createSnapshotStore<T>(
         decl.init(),
-        persistKey !== undefined ? { persist: { name: persistKey } } : undefined)
+        persistKey === undefined ? undefined : {
+          persist: persist?.partial === undefined
+            ? { name: persistKey }
+            : { name: persistKey, partial: persist.partial },
+        })
       const actions = {} as Record<string, (...params: unknown[]) => void>
       for (const key of Object.keys(decl.actions)) {
         const mutate = decl.actions[key] as (draft: T, ...params: unknown[]) => void

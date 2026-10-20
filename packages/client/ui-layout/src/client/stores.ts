@@ -1,11 +1,14 @@
 /**
- * The root entry's transient layout store: panel geometry as plain widths in
- * px (0 = closed). Module level exports the factory only — a module-level
+ * The root entry's layout store: panel geometry as plain widths in px (0 =
+ * closed). Module level exports the factory only — a module-level
  * handle would pin the store's identity in the module
  * cache (a de-facto singleton surviving plugin reloads). register() receives
  * the factory (exclusive use: the framework instantiates per entry), AppFrame
  * derives its PropsStore share from the return type, and the service face
  * receives the bound actions through the registration's inject hook.
+ *
+ * The panel widths are durable across reloads (see createLayoutStore); the
+ * viewport readings and the selected center page are not.
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import {
@@ -56,6 +59,15 @@ type LayoutActions = {
  * open/close transitions write 0 / the default explicitly. Below the
  * auto-collapse breakpoint (AppFrame feeds setNarrow) the sidebar toggle
  * flips the narrowExpanded override instead of the preference.
+ *
+ * Persistence is a SUBSET on purpose: only the two panel widths are durable.
+ * `narrow`, `narrowExpanded` and `portrait` are measurements of the current
+ * frame — AppFrame re-reads them on every measure and both setters drop the
+ * manual override when the measurement changes, so storing them would replay
+ * a stale viewport's answer and fight the frame that owns it. `page` is not
+ * durable here either: the channel page has one writer (ui-inbox, which
+ * restores the open channel id and selects the page in the same step), and a
+ * second writer would paint the conversation for a frame before it lands.
  * @returns the store handle (spec + type + identity + factory in one).
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
@@ -63,6 +75,10 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
     init: (): LayoutState => ({
       sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, portrait: false, page: null,
     }),
+    persist: {
+      name: 'dsh.layout.panels',
+      partial: (state: LayoutState) => ({ sidebar: state.sidebar, details: state.details }),
+    },
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },

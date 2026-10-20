@@ -576,6 +576,59 @@ re-applied on every upstream pull:
    `packages/client/ui-inbox/tests/fixture/portrait-probe.mjs` against the
    keyless `dsh web` fixture at 390x844, 800x1200, 1200x800 and 1280x900.
 
+15. **Client state persists across reloads** (`ui-layout`, `ui-inbox`, and the
+   `partial` picker in `runtime/src/client/contract/store.ts`) — Owen's rule:
+   all state in the harness app must survive a reload, especially the
+   contact/channel currently displayed in the main view. The mechanism is the
+   engine's EXISTING opt-in persistence (`createSnapshotStore(init, { persist })`
+   / `defineStore({ persist })`, hand-rolled whole-value JSON to localStorage);
+   there is no second mechanism, and every key stays under the `dsh.` prefix.
+
+   The contract, as implemented:
+
+   - **Opt-in, per store.** A store declares `persist: 'dsh.<name>'` for
+     whole-value persistence, or `persist: { name, partial }` to store only a
+     subset. With a picker the entry holds `partial(state)` and rehydration is
+     `{ ...init, ...stored }`, so an excluded field (or a key an older build
+     never wrote) keeps its declared default instead of arriving `undefined`.
+     A corrupt or non-object entry falls back to `init` and only disables that
+     one restore: storage failures (quota, private mode, no localStorage at all
+     in a node run) never break the store.
+   - **Persisted today:** `dsh.sessions.current` (the open conversation; the
+     runtime restores it into the session list, and the list is the authority),
+     `dsh.conversation.chat.<scope>` (composer draft/mode per session),
+     `dsh.workspace.view.v5`, `dsh.trajectory.duration`, `dsh.layout.panels`
+     (sidebar width, details width and whether details is open — a subset:
+     widths only), and `dsh.inbox.channel` (the open channel id — a subset: the
+     id only, never the server-owned row).
+   - **Not persisted, on purpose.** `narrow`, `narrowExpanded` and `portrait`
+     are viewport *measurements*: AppFrame re-measures them on every resize and
+     `setNarrow`/`setPortrait` drop the manual override when the measurement
+     changes, so a stored reading would fight the frame that owns it. The
+     layout store's `page` is not persisted either, because the channel page has
+     ONE writer: ui-inbox restores the persisted channel id and calls
+     `layout.openPage('agent-channel')` in the same step once the server's rows
+     are known, so a reload lands on the channel itself instead of painting the
+     agent conversation for a frame. A persisted id that no longer resolves
+     (cleared, removed, or another person's channel) is dropped and the ordinary
+     conversation default stands, with no banner: nothing failed.
+   - **The row highlight is derived, never owned.** `InboxState.openAgent` is
+     recomputed from `sessions.list.current` on every frame — the same value the
+     conversation pane renders — so "the painted conversation" and "the row
+     claiming to be current" cannot disagree, including after a reload where the
+     runtime restores the selection and no click ever ran.
+   - **Client state dies at every login boundary.** It is per-origin browser
+     state, so the e-server PIN/profile proxy owns the wipe: logout clears the
+     origin's storage and so does the PIN lock screen (`e-server` `24cd5bc`).
+     Nothing in the harness needs a profile-aware key for that; a persisted id
+     from another person's session simply does not resolve and is dropped.
+
+   Re-apply on an upstream pull: the `PersistOption`/`StoreDeclaration` pair and
+   `attachPersistence` in `packages/client/runtime/src/client/contract/store.ts`,
+   the `persist` block in `ui-layout/src/client/stores.ts`, and the persisted
+   selection store plus `restorePersisted` in `ui-inbox/src/client/` (with the
+   restore effect in its `index.ts` that is armed exactly once per load).
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

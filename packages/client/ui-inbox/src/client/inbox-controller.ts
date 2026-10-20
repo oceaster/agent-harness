@@ -63,7 +63,15 @@ export interface InboxState {
   busy: readonly string[]
   /** The last failed action per agent, cleared by that agent's next action. */
   notices: Readonly<Record<string, InboxNoticeCode>>
-  /** Agent whose conversation this plugin put in the pane, for the row highlight. */
+  /**
+   * Agent whose conversation the runtime has open, for the row highlight.
+   * DERIVED, never owned: {@link InboxController.reconcile} recomputes it from
+   * `sessions.list.current` on every frame, so the row that claims to be
+   * current is always the row of the session the pane actually paints. That is
+   * what makes a reload land on the same conversation — the restored session
+   * arrives from the runtime's persisted selection, with no click to record it
+   * here.
+   */
   openAgent: string | null
   /**
    * Running conversations below each row's own session, at any depth, keyed by
@@ -246,12 +254,25 @@ export class InboxController {
 
   /**
    * Fold the session list's running/blank bits into the rows that name those
-   * sessions, and recount the running conversations below each row.
+   * sessions, recount the running conversations below each row, and re-derive
+   * which agent is open from the runtime's own selection.
    */
   private reconcile(): void {
     const snapshot = this.store.getSnapshot()
-    if (snapshot.rows.length === 0) return
-    const { ids, byId } = this.sessions.list.getSnapshot()
+    const { ids, byId, current } = this.sessions.list.getSnapshot()
+    // The row highlight follows `sessions.list.current` — the exact value the
+    // conversation pane renders — instead of a private click record. A frame
+    // therefore always wins, including the boot frame that restores the
+    // persisted selection with no click behind it, and a session no row names
+    // (a subagent, or another person's conversation) marks no row.
+    const openAgent = current === undefined
+      ? null
+      : snapshot.rows.find(row => row.sessionId === current)?.agent ?? null
+    if (snapshot.rows.length === 0) {
+      if (openAgent === null) return
+      this.store.set({ ...snapshot, openAgent })
+      return
+    }
     let rows = snapshot.rows
     const activeSubagents: Record<string, number> = {}
     for (const row of snapshot.rows) {
@@ -265,8 +286,9 @@ export class InboxController {
       if (summary.running === row.running && summary.blank === row.blank) continue
       rows = patchRow(rows, row.agent, { running: summary.running, blank: summary.blank })
     }
-    if (rows === snapshot.rows && sameCounts(activeSubagents, snapshot.activeSubagents)) return
-    this.store.set({ ...snapshot, rows, activeSubagents })
+    if (rows === snapshot.rows && sameCounts(activeSubagents, snapshot.activeSubagents)
+      && openAgent === snapshot.openAgent) return
+    this.store.set({ ...snapshot, rows, activeSubagents, openAgent })
   }
 
   /**
@@ -329,6 +351,10 @@ export class InboxController {
     }
     const { sessionId, blank, lastActivityAt, created } = outcome.value
     const snapshot = this.store.getSnapshot()
+    // No optimistic row highlight here on purpose: the rows follow the
+    // runtime's selection (see reconcile), so the highlight moves exactly when
+    // `sessions.open` below moves the pane — the painted conversation and the
+    // current row cannot disagree, not even for one frame.
     this.store.set({
       ...snapshot,
       rows: patchRow(snapshot.rows, agent, {
@@ -340,7 +366,6 @@ export class InboxController {
         // keeps whatever the last frame said.
         ...created ? { running: false } : {},
       }),
-      openAgent: agent,
     })
     // The row names a different conversation now, so its descendant count is
     // recomputed rather than inherited from the previous session.
@@ -357,6 +382,10 @@ export class InboxController {
     } else {
       try {
         this.sessions.open(sessionId as SessionId)
+        // The selection just moved: re-derive the highlight now rather than
+        // waiting for the list frame, so a click is live even before the
+        // frames subscription is attached.
+        this.reconcile()
       } catch {
         // The list carried the id and lost it before the select: report it
         // rather than throwing out of a click.
@@ -422,18 +451,15 @@ export class InboxController {
         lastActivityAt: value.lastActivityAt,
       }
     const clearOpen = value.cleared && (wasOpen || this.isCurrent(opened))
-    this.store.set({
-      ...snapshot,
-      rows: patchRow(snapshot.rows, agent, rowPatch),
-      openAgent: clearOpen ? null : snapshot.openAgent,
-    })
+    this.store.set({ ...snapshot, rows: patchRow(snapshot.rows, agent, rowPatch) })
     if (clearOpen) {
       // The conversation is gone: reset the pane instead of leaving a dead
       // session staged, and stop waiting on a session that no longer exists.
       this.sessions.clear()
     }
     // A cleared conversation has no descendants: drop the count with the row
-    // instead of waiting for the next session frame to notice.
+    // instead of waiting for the next session frame to notice. This also
+    // re-derives the row highlight from the runtime's (now cleared) selection.
     this.reconcile()
     this.finishAction(agent, value.cleared ? undefined : 'clear-refused')
   }

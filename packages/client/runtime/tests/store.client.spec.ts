@@ -124,6 +124,98 @@ describe('createSnapshotStore', () => {
   })
 })
 
+describe('createSnapshotStore: subset persistence (persist.partial)', () => {
+  /** A state that mixes a durable preference with viewport-derived fields. */
+  interface Mixed { width: number; viewport: boolean; page: string | null }
+  const mixedInit = (): Mixed => ({ width: 280, viewport: false, page: null })
+  const widthsOnly = (state: Mixed): Partial<Mixed> => ({ width: state.width })
+
+  /** In-memory localStorage stand-in (same shape the other persistence tests use). */
+  function memoryStorage(): Map<string, string> {
+    const backing = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => backing.get(k) ?? null,
+      setItem: (k: string, v: string) => { backing.set(k, v) },
+      removeItem: (k: string) => { backing.delete(k) },
+    })
+    return backing
+  }
+
+  it('stores only the picked subset, never the whole state', () => {
+    const backing = memoryStorage()
+    const store = createSnapshotStore(mixedInit(), {
+      persist: { name: 'spec-partial', partial: widthsOnly },
+    })
+    store.update((d) => { d.width = 400; d.viewport = true; d.page = 'agent-channel' })
+    // The excluded fields are not in the entry at all: a stored viewport
+    // reading would fight whatever re-measures it, and `page` has one writer.
+    expect(JSON.parse(backing.get('spec-partial')!)).toEqual({ width: 400 })
+  })
+
+  it('restores the subset over init, so excluded fields keep their defaults', () => {
+    const backing = memoryStorage()
+    backing.set('spec-partial', JSON.stringify({ width: 400 }))
+    const revived = createSnapshotStore(mixedInit(), {
+      persist: { name: 'spec-partial', partial: widthsOnly },
+    })
+    expect(revived.getSnapshot()).toEqual({ width: 400, viewport: false, page: null })
+  })
+
+  it('leaves a key an older build never wrote at its init default', () => {
+    memoryStorage().set('spec-partial-gap', JSON.stringify({}))
+    const revived = createSnapshotStore(mixedInit(), {
+      persist: { name: 'spec-partial-gap', partial: widthsOnly },
+    })
+    expect(revived.getSnapshot()).toEqual(mixedInit())
+  })
+
+  it('survives corrupt JSON: init state, a logged failure, and persistence that still works', () => {
+    const backing = memoryStorage()
+    backing.set('spec-corrupt', '{not json')
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const store = createSnapshotStore(mixedInit(), {
+        persist: { name: 'spec-corrupt', partial: widthsOnly },
+      })
+      expect(store.getSnapshot()).toEqual(mixedInit())
+      expect(errors).toHaveBeenCalledTimes(1)
+      // The store is fully usable, and its next write replaces the bad entry.
+      store.update((d) => { d.width = 500 })
+      expect(store.getSnapshot().width).toBe(500)
+      expect(JSON.parse(backing.get('spec-corrupt')!)).toEqual({ width: 500 })
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('ignores a non-object entry instead of spreading it into the state', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      for (const entry of ['"hello"', '5', 'null', '[1,2]']) {
+        const backing = memoryStorage()
+        backing.set('spec-foreign', entry)
+        const store = createSnapshotStore(mixedInit(), {
+          persist: { name: 'spec-foreign', partial: widthsOnly },
+        })
+        // A whole-value entry from an older build (or hand-edited garbage)
+        // cannot be merged; the store starts from init rather than from
+        // `{0:'h',1:'e',...}`-shaped corruption.
+        expect(store.getSnapshot()).toEqual(mixedInit())
+        vi.unstubAllGlobals()
+      }
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('attachPersistence still writes whole values for a picker-free declaration', () => {
+    const backing = memoryStorage()
+    const store = createSnapshotStore(mixedInit(), { persist: { name: 'spec-whole' } })
+    store.update((d) => { d.width = 400; d.page = 'p' })
+    expect(JSON.parse(backing.get('spec-whole')!)).toEqual({ width: 400, viewport: false, page: 'p' })
+  })
+})
+
 describe('defineStore', () => {
   const declare = () => defineStore({
     init: () => ({ selection: null as string | null, draft: '' }),
@@ -186,6 +278,34 @@ describe('defineStore', () => {
     expect(backing.has('spec.chat.s1')).toBe(false)
     expect(backing.has('spec.chat.s2')).toBe(true)
     expect(backing.has('spec.chat')).toBe(true)
+  })
+
+  it('accepts the { name, partial } form: subset entry, scope suffix, clearPersisted', () => {
+    const backing = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => backing.get(k) ?? null,
+      setItem: (k: string, v: string) => { backing.set(k, v) },
+      removeItem: (k: string) => { backing.delete(k) },
+    })
+    const handle = defineStore({
+      init: () => ({ width: 280, viewport: false }),
+      persist: { name: 'spec.panels', partial: (s: { width: number; viewport: boolean }) => ({ width: s.width }) },
+      actions: { resize: (d, px: number) => { d.width = px }, measure: (d) => { d.viewport = true } },
+    })
+    handle.create().actions.resize(400)
+    handle.create().actions.measure()
+    expect(JSON.parse(backing.get('spec.panels')!)).toEqual({ width: 400 })
+    // The spec stays a valid ui-slots StoreSpec (the storage name), with the
+    // picker carried beside it for the engine's own create().
+    expect(handle.spec.persist).toBe('spec.panels')
+    expect(handle.spec.partial).toBeTypeOf('function')
+    // The scope key suffixes the same key, and the picker still applies.
+    handle.create('s1').actions.resize(500)
+    expect(JSON.parse(backing.get('spec.panels.s1')!)).toEqual({ width: 500 })
+    const revived = handle.create('s1')
+    expect(revived.store.getSnapshot()).toEqual({ width: 500, viewport: false })
+    revived.clearPersisted()
+    expect(backing.has('spec.panels.s1')).toBe(false)
   })
 
   it('clearPersisted is a no-op without a persist declaration or without storage', () => {
