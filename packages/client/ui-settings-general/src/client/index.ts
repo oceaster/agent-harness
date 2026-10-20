@@ -71,16 +71,26 @@ export function apply(ctx: ClientContext): void {
   // locale/change re-registration wiring.
   const t = ctx.locale.bind(NS)
   const connection = ctx.get('connection') as ConnectionHandle
-  // The action follows the shared describe mirror, whose owning plugin
-  // already refreshes it on document commits and reconnects.
+  // The action is registered for every browser that can read the host document;
+  // whether it PAINTS is decided by availability, not page authority — the
+  // component renders only at `hasDocument`. There is deliberately no loopback
+  // test here: fork commit bc2970c4af ("settings work behind trusted-host proxy")
+  // made the whole settings plane read the host document from every origin this
+  // deployment serves, because the household reaches the app at
+  // 100.100.1.0:8443 through the e-server profile proxy — a page authority that
+  // is NOT loopback while the document still lives on this machine.
+  // `connection.isLoopback` is therefore false for the owner at his own desk, so
+  // upstream's loopback-only rule would hide a working control from him. That
+  // rule is intentionally overridden (FORK-NOTES 17); the `undefined` branch it
+  // used to leave behind here was dead code that read like a rule.
+  // The action follows the shared describe mirror, whose owning plugin already
+  // refreshes it on document commits and reconnects.
   const documentController = new SettingsDocumentStore(connection.api, ctx.settingsScope.describe())
-  const documentInjected = documentController === undefined
-    ? undefined
-    : (): SettingsDocumentActionInjected => ({
-      controller: documentController,
-      hooks: { snapshot: documentController.store },
-    })
-  ctx.effect(() => () => { documentController?.dispose() }, 'ui-settings-general: document action directory')
+  const documentInjected = (): SettingsDocumentActionInjected => ({
+    controller: documentController,
+    hooks: { snapshot: documentController.store },
+  })
+  ctx.effect(() => () => { documentController.dispose() }, 'ui-settings-general: document action directory')
   // The settings shell: this package occupies the sidebar-owned hole and
   // declares the settings slots. Ledger → nav-row projection as an observable
   // source (uSES contract: getSnapshot returns the cached rows until the
@@ -161,15 +171,13 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent))
   ctx.slots.inject('settings.header', () =>
     ctx.slots.register({ name: 'settings.header', locale: NS }, HeaderContent))
-  if (documentInjected !== undefined) {
-    ctx.slots.inject('settings.action', () => ctx.slots.register({
-      name: 'settings.action',
-      id: 'open-document',
-      order: 0,
-      locale: NS,
-      inject: documentInjected,
-    }, SettingsDocumentAction))
-  }
+  ctx.slots.inject('settings.action', () => ctx.slots.register({
+    name: 'settings.action',
+    id: 'open-document',
+    order: 0,
+    locale: NS,
+    inject: documentInjected,
+  }, SettingsDocumentAction))
   ctx.slots.inject('settings.close', () =>
     ctx.slots.register({ name: 'settings.close', locale: NS }, CloseLabel))
   ctx.slots.inject('settings.section', () => ctx.slots.register({

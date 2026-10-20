@@ -16,7 +16,7 @@ import type { SettingsDocumentActionInjected } from '../src/client/SettingsDocum
 // so browser-language detection never runs and a fresh LocaleRuntime opens on
 // FALLBACK_LOCALE (en); bench stages zh explicitly on the locale instead.
 
-/** The seats this plugin fills for a loopback browser (slot name → expected component). */
+/** The seats this plugin fills, for a browser on any page authority (FORK-NOTES 17). */
 const SEATS = [
   ['settings.trigger', TriggerContent],
   ['settings.header', HeaderContent],
@@ -168,13 +168,31 @@ describe('ui-settings-general apply', () => {
     await vi.waitFor(() => { expect(b.settingsDescribe).toHaveBeenCalledTimes(2) })
   })
 
-  it('withholds the loopback-only document action off-loopback', async () => {
+  it('offers the document action off-loopback too, backed by the host document', async () => {
+    // Fork policy, NOT upstream's: commit bc2970c4af ("settings work behind
+    // trusted-host proxy") made the settings plane read the host document from
+    // every origin this deployment serves. The household reaches the app at
+    // 100.100.1.0:8443 through the e-server profile proxy, where the page
+    // authority is not loopback while the settings document still lives on this
+    // machine — so `connection.isLoopback` is false for the owner at his own
+    // desk, and withholding the action there would hide a working control.
+    // Upstream's loopback-only rule is overridden (FORK-NOTES 17): the action
+    // registers on both authorities, and availability — the Host's
+    // `hasDocument` answer — is what decides whether it paints.
     const b = await bench(false)
     declare(b.slots)
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    expect(b.slots.entries('settings.action')).toEqual([])
-    expect(b.settingsDescribe).not.toHaveBeenCalled()
+    const action = b.slots.entries('settings.action')
+    expect(action).toHaveLength(1)
+    expect(action[0]!.component).toBe(SettingsDocumentAction)
+    // The shared mirror booted its one privileged read; the action's load adds
+    // none of its own, exactly as on a loopback page.
+    await vi.waitFor(() => { expect(b.settingsDescribe).toHaveBeenCalledOnce() })
+    const { controller } = (action[0]!.inject as unknown as () => SettingsDocumentActionInjected)()
+    await controller.load()
+    expect(b.settingsDescribe).toHaveBeenCalledOnce()
+    expect(controller.store.getSnapshot().status).toBe('ready')
     await fiber.dispose()
     for (const [name] of SEATS) expect(b.slots.entries(name)).toEqual([])
   })

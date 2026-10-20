@@ -452,10 +452,20 @@ describe('SettingsScopeBinder.bind', () => {
     expect(theme.getSnapshot()).toMatchObject({ revision: 1 })
   })
 
-  it('binds a remote browser in memory mode without starting a settings read', async () => {
-    const describeCall = vi.fn()
+  it('binds a remote browser to the host document, not process-local memory', async () => {
+    // Fork policy, NOT upstream's: commit bc2970c4af ("settings work behind
+    // trusted-host proxy") passes a constant 'host' persistence from bind(), so
+    // a browser whose page authority is not loopback still derives its
+    // preference from the host document. That is how language, appearance and
+    // the welcome acknowledgement reach the household at 100.100.1.0:8443,
+    // where the page authority is not loopback while the document lives on this
+    // machine. Upstream's process-local mode for remote browsers is therefore
+    // deliberately not selected (FORK-NOTES 17).
+    const describeCall = vi.fn().mockResolvedValue(described({ preference: 'dark' }, 2))
     const wire = { settings: { describe: describeCall } }
-    const mirror = new SettingsDescribeMirror(wire as never, 'memory')
+    // ui-settings' apply builds the mirror host-mode unconditionally, so a host
+    // mirror is the real composition for a remote browser too.
+    const mirror = new SettingsDescribeMirror(wire as never, 'host')
     const ctx = new Context()
     ctx.provide('connection', { api: wire, isLoopback: false } as never)
     let scope!: SettingsScope<UiTestSettings>
@@ -468,8 +478,12 @@ describe('SettingsScopeBinder.bind', () => {
       },
     })
     await fiber.await()
-    expect(scope.getSnapshot()).toMatchObject({ status: 'unavailable', mode: 'memory', writable: false })
+    await vi.waitFor(() => {
+      expect(scope.getSnapshot()).toMatchObject({
+        status: 'ready', mode: 'host', writable: true, value: { preference: 'dark' }, revision: 2,
+      })
+    })
+    expect(describeCall).toHaveBeenCalledTimes(1)
     await fiber.dispose()
-    expect(describeCall).not.toHaveBeenCalled()
   })
 })

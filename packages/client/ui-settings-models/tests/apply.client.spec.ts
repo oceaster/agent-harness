@@ -153,8 +153,35 @@ describe('ui-settings-models apply', () => {
     expect(() => b.locale.register('settings.models', 'en', {})).not.toThrow()
   })
 
-  it('keeps remote-browser acknowledgement in process memory', async () => {
-    const b = await bench(false)
+  it('off-loopback the acknowledgement is written to the host document', async () => {
+    // Fork policy, NOT upstream's: commit bc2970c4af ("settings work behind
+    // trusted-host proxy") made the settings plane host-backed on every origin
+    // the deployment serves, so the household's acknowledgement — reached at
+    // 100.100.1.0:8443, a page authority that is not loopback — lands in the
+    // host document instead of dying with the page. Upstream's process-local
+    // mode for remote browsers is deliberately not selected (FORK-NOTES 17).
+    // The write itself is the proof: a process-local acknowledgement never
+    // reaches the wire.
+    const acknowledgement = { current: undefined as string | undefined }
+    const view = () => ({
+      ns: WELCOME_NOTICE_SETTINGS_NAMESPACE,
+      schema: {},
+      value: acknowledgement.current === undefined ? {} : { [WELCOME_NOTICE_ACK_FIELD]: acknowledgement.current },
+      applies: 'live' as const,
+      secrets: [],
+      revision: 0,
+    })
+    const settings = {
+      describe: vi.fn(() => Promise.resolve({
+        rpcId: 'apply-remote-welcome' as never,
+        result: { ok: true as const, value: { writable: true, hasDocument: true, namespaces: [view()] } },
+      })),
+      mutate: vi.fn(() => Promise.resolve({
+        rpcId: 'apply-remote-welcome-write' as never,
+        result: { ok: true as const, value: view() },
+      })),
+    }
+    const b = await bench(false, settings)
     declare(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const entry = b.slots.entries('settings.onboarding')
@@ -164,9 +191,13 @@ describe('ui-settings-models apply', () => {
     )()
 
     await injected.controller.load()
-    expect(injected.controller.store.getSnapshot()).toEqual({
-      status: 'ready', acknowledged: false, error: null,
+    await vi.waitFor(() => {
+      expect(injected.hooks.welcome.getSnapshot()).toMatchObject({ status: 'ready', acknowledged: false })
     })
+    acknowledgement.current = WELCOME_NOTICE_VERSION
+    expect(await injected.controller.acknowledge()).toBe(true)
+    expect(settings.mutate).toHaveBeenCalledTimes(1)
+    expect(injected.hooks.welcome.getSnapshot()).toMatchObject({ status: 'ready', acknowledged: true })
   })
 })
 

@@ -753,6 +753,48 @@ re-applied on every upstream pull:
    Darwin, channel restored as the main view when unfolded, folded sidebar still
    folded with the channel still the main view, and the row highlight agreeing
    with the painted surface.
+18. **The settings plane is host-backed on every served authority**
+   (`ui-settings`, `ui-settings-general`; `bc2970c4af`) — upstream decides
+   client-side whether a browser may touch the privileged settings wire: a
+   non-loopback page runs the settings scopes in a process-local `memory` mode
+   and its Settings panel offers no local-document action. This fork overrides
+   both halves: the household reaches the app at `100.100.1.0:8443` through the
+   e-server PIN/profile proxy (nginx → e-server `/_dsh` → the harness on
+   loopback), the harness runs with `--trusted-host 100.100.1.0
+   --trusted-host easter-server.char-istrian.ts.net`, and the Host's own
+   privileged-method fence (`packages/client/connection/src/index.ts`, the
+   `PRIVILEGED_METHODS` check) accepts those authorities. So `settings.describe`
+   answers 200 behind the proxy and the document is shared on purpose: language,
+   appearance and the welcome acknowledgement live in it and must reach a
+   browser on a phone or a laptop, not only one on this machine.
+
+   The trap that makes upstream's rule wrong here: `connection.isLoopback` is
+   `pageLocation === undefined || isLoopbackHostname(pageLocation.hostname)`
+   (`packages/client/connection/src/client/index.ts`), and `100.100.1.0` is not
+   a loopback hostname. The owner browsing his own machine's settings through
+   the proxy therefore reports `isLoopback: false` — gating the settings plane
+   (or the "Open configuration file" action) on that signal hides a working
+   control from the person the document belongs to. Do not re-introduce the
+   gate; a loopback test here is not a capability test.
+
+   What that means in code, and what an upstream pull must restore:
+
+   - `ui-settings`: `new SettingsDescribeMirror(connection.api, 'host')` and
+     `SettingsScopeBinder.bind()` passing `'host'`, with no `isLoopback`
+     branch. `memory` mode still exists in the mirror and the scope controller
+     and is still correct API — this deployment just never selects it.
+   - `ui-settings-general`: `apply()` constructs `SettingsDocumentStore`
+     unconditionally and registers `settings.action` for every browser. What
+     decides whether the action paints is availability, not page authority:
+     `SettingsDocumentAction` renders only at `hasDocument`, and a failing
+     open keeps it available with a localized error.
+   - The three specs that encode upstream's rule were amended to this policy
+     rather than deleted: `ui-settings-general/tests/apply.client.spec.ts` >
+     'offers the document action off-loopback too, backed by the host document',
+     `ui-settings/tests/settings-scope.client.spec.ts` > 'binds a remote browser
+     to the host document, not process-local memory', and
+     `ui-settings-models/tests/apply.client.spec.ts` > 'off-loopback the
+     acknowledgement is written to the host document'. Each cites this entry.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
