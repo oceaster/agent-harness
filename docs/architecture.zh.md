@@ -133,4 +133,4 @@ seam 正是替换一个提供方就能改变整个产品的原因。文件系统
 | fork 活跃会话 | `ctx.sessions.fork(source, boundary?, childSessionId?)` |
 | 将注册项限定到单个 agent | 使用该 agent 的 `agent.ctx` |
 
-[扩展实操手册](cookbook/extension-cookbook.md)将功能映射到能力，并索引[包](cookbook/adding-a-package.md)、[工具](cookbook/adding-a-tool.md)、[LLM（大语言模型）适配器](cookbook/adding-an-llm-adapter.md)、[Chat 节点](cookbook/adding-a-conversation-node.md)和[设置卡片](cookbook/adding-a-settings-card.md)的分步指南。
+[扩展实操手册](cookbook/extension-cookbook.md)将功能映射到能力，并索引[包](cookbook/adding-a-package.md)、[工具](cookbook/adding-a-tool.md)、[LLM（大语言模型）适配器](cookbook/adding-an-llm-adapter.md)和[Chat 节点](cookbook/adding-a-conversation-node.md)的分步指南。插件配置不是扩展点：Web 的“插件”分区只是展示本部署运行了什么的只读视图，浏览器里不会写入任何内容。

@@ -96,12 +96,13 @@ describe('web e2e: settings modal and General preferences', () => {
     await dialog.getByRole('button', { name: '模型' }).click()
     await expect.poll(() => dialog.getByRole('button', { name: '模型' }).getAttribute('aria-current'), { timeout: 5_000 }).toBe('true')
     expect(await dialog.getByRole('button', { name: '通用设置' }).getAttribute('aria-current')).toBeNull()
-    // Plugins is a read-only projection of the same assembled Loader tree.
+    // Plugins is a read-only projection of the same assembled Loader tree, and
+    // the sole contribution renders bare: there is no tab strip to select, so
+    // the inventory is already mounted when the section is.
     // Capture one stable shipped row rather than the whole inventory so adding
     // an unrelated plugin does not rewrite this surface's golden.
     await dialog.getByRole('button', { name: '插件', exact: true }).click()
     await dialog.getByRole('heading', { name: '插件', exact: true }).waitFor({ timeout: 10_000 })
-    await dialog.getByRole('tab', { name: '插件列表', exact: true }).click()
     const pluginRow = dialog.locator(PLUGIN_ROW_SELECTOR)
     await pluginRow.waitFor({ timeout: 10_000 })
     const expectedPluginCount = [...scaffold.ctx.loader.entries()]
@@ -112,7 +113,9 @@ describe('web e2e: settings modal and General preferences', () => {
     expect(await dialog.locator('[data-plugin-count]').getAttribute('data-plugin-count'))
       .toBe(String(expectedPluginCount))
     expect(await dialog.getByRole('button', { name: '插件', exact: true }).getAttribute('aria-current')).toBe('true')
-    expect(await dialog.getByRole('tab', { name: '插件列表', exact: true }).getAttribute('aria-selected')).toBe('true')
+    // One read-only page is not a tab strip: no lone button sits in a tab bar.
+    expect(await dialog.getByRole('tab').count()).toBe(0)
+    expect(await dialog.getByRole('tablist').count()).toBe(0)
     expect(await dialog.getByRole('button', { name: '模型' }).getAttribute('aria-current')).toBeNull()
     const pluginsSnapshot = await captureStableAria(
       page,

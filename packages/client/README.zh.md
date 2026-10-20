@@ -35,7 +35,7 @@ dsh web GUI 的浏览器侧：shell 启动、浏览器与宿主通信、共享 U
 | [`ui-jobs/`](ui-jobs/README.md) | 在会话标题栏列出当前会话的后台任务。 |
 | [`ui-model-selection/`](ui-model-selection/README.md) | 在对话界面中提供模型选择。 |
 | [`ui-plan/`](ui-plan/README.md) | 展示生效中的 plan mode 状态及其退出控件。 |
-| [`ui-settings-plugins/`](ui-settings-plugins/README.md) | 拥有“插件”设置分区、它的标签页扩展点，以及可配置的宿主平面插件卡片。 |
+| [`ui-settings-plugins/`](ui-settings-plugins/README.md) | 拥有“插件”设置分区：只读外观，外加一个供功能插件贡献视图的标签页扩展点。本包不注册任何设置界面。 |
 | [`ui-user-questions/`](ui-user-questions/README.md) | 展示 agent 请求的交互式问题。 |
 | [`ui-agent-preset/`](ui-agent-preset/README.md) | 在页头标明当前会话运行的 agent 预设。 |
 | [`ui-settings/`](ui-settings/README.md) | 承载设置界面及其扩展区域。 |
