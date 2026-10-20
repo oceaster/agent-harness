@@ -125,17 +125,25 @@ async function responseBytes(response: Response): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer())
 }
 
+/**
+ * The plugin config's complete normalized defaults. Restated per assertion so a
+ * new config section cannot land without this test noticing it, which is what
+ * keeps the shipped policy visible rather than implied.
+ */
+const CONFIG_DEFAULTS = {
+  sessionExportCompressionLevel: 6,
+  coldBlankProbeMaxBytes: 1024,
+  destroyCancelSettleMs: 10_000,
+  subagentIdleReap: { idleMs: 21_600_000, scanIntervalMs: 3_600_000 },
+}
+
 describe('session export compression config', () => {
   it('defaults to level 6 and rejects values outside the integer 0-9 range', () => {
-    expect(ApiProxyService.Config({})).toEqual({
-      sessionExportCompressionLevel: 6,
-      coldBlankProbeMaxBytes: 1024,
-      destroyCancelSettleMs: 10_000,
-    })
+    expect(ApiProxyService.Config({})).toEqual(CONFIG_DEFAULTS)
     expect(ApiProxyService.Config({ sessionExportCompressionLevel: 0 }))
-      .toEqual({ sessionExportCompressionLevel: 0, coldBlankProbeMaxBytes: 1024, destroyCancelSettleMs: 10_000 })
+      .toEqual({ ...CONFIG_DEFAULTS, sessionExportCompressionLevel: 0 })
     expect(ApiProxyService.Config({ sessionExportCompressionLevel: 9 }))
-      .toEqual({ sessionExportCompressionLevel: 9, coldBlankProbeMaxBytes: 1024, destroyCancelSettleMs: 10_000 })
+      .toEqual({ ...CONFIG_DEFAULTS, sessionExportCompressionLevel: 9 })
     for (const value of [-1, 10, 1.5]) {
       expect(() => ApiProxyService.Config({ sessionExportCompressionLevel: value } as never)).toThrow()
     }
@@ -145,9 +153,9 @@ describe('session export compression config', () => {
 describe('cold blank probe config', () => {
   it('accepts a per-Session byte bound including zero and rejects invalid bounds', () => {
     expect(ApiProxyService.Config({ coldBlankProbeMaxBytes: 0 }))
-      .toEqual({ sessionExportCompressionLevel: 6, coldBlankProbeMaxBytes: 0, destroyCancelSettleMs: 10_000 })
+      .toEqual({ ...CONFIG_DEFAULTS, coldBlankProbeMaxBytes: 0 })
     expect(ApiProxyService.Config({ coldBlankProbeMaxBytes: 2048 }))
-      .toEqual({ sessionExportCompressionLevel: 6, coldBlankProbeMaxBytes: 2048, destroyCancelSettleMs: 10_000 })
+      .toEqual({ ...CONFIG_DEFAULTS, coldBlankProbeMaxBytes: 2048 })
     for (const value of [-1, 1.5]) {
       expect(() => ApiProxyService.Config({ coldBlankProbeMaxBytes: value })).toThrow()
     }

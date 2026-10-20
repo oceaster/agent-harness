@@ -25,6 +25,12 @@ import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   type SessionLogCompressionLevel,
 } from './session-export.ts'
+import {
+  DEFAULT_SUBAGENT_IDLE_REAP_IDLE_MS,
+  DEFAULT_SUBAGENT_IDLE_REAP_SCAN_INTERVAL_MS,
+  SubagentIdleReapConfigSchema,
+  type SubagentIdleReapConfig,
+} from './subagent-idle-reaper.ts'
 
 export type * from './api/index.ts'
 export { RpcId } from './api/rpc.ts'
@@ -33,6 +39,14 @@ export { AbstractApiClient, InProcessApiClient } from './fetch/client.ts'
 export type { IApiClient } from './fetch/client.ts'
 export { createApiProxy } from './api-proxy.ts'
 export type { ApiProxyDefaults } from './api-proxy.ts'
+export {
+  DEFAULT_SUBAGENT_IDLE_REAP_IDLE_MS,
+  DEFAULT_SUBAGENT_IDLE_REAP_SCAN_INTERVAL_MS,
+  MIN_SUBAGENT_IDLE_REAP_IDLE_MS,
+  MIN_SUBAGENT_IDLE_REAP_SCAN_INTERVAL_MS,
+  SubagentIdleReapConfigSchema,
+} from './subagent-idle-reaper.ts'
+export type { SubagentIdleReapConfig } from './subagent-idle-reaper.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -71,6 +85,22 @@ export interface Config {
    * @default 10000
    */
   destroyCancelSettleMs?: number
+  /**
+   * Fork-only housekeeping policy: automatically destroy subagent sessions that
+   * have been idle past `idleMs`, one scan per `scanIntervalMs`. Idleness is
+   * measured from the durable log's last event, never from process start, so a
+   * restart resets nobody's clock. A session that is running, or whose Agent
+   * holds queued work, is never reaped, and neither is anything that is not a
+   * subagent (`origin: 'subagent'` in its durable header) — a person's own
+   * conversation, including a persistent per-agent inbox row, is untouchable at
+   * any age. Reaping reuses `session.destroy` in full; the reaper deletes no log
+   * itself and a destroy refusal is logged and retried on the next pass.
+   * `idleMs` must be at least one hour and `scanIntervalMs` at least one
+   * minute: a nonsense value is refused when the plugin loads rather than
+   * silently applied.
+   * @default { idleMs: 21600000, scanIntervalMs: 3600000 }
+   */
+  subagentIdleReap?: SubagentIdleReapConfig
 }
 
 /**
@@ -90,6 +120,7 @@ export class ApiProxyService extends Service implements ApiProxy {
       .default(DEFAULT_SESSION_LOG_COMPRESSION_LEVEL) as z<SessionLogCompressionLevel>,
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     destroyCancelSettleMs: z.natural().default(DEFAULT_DESTROY_CANCEL_SETTLE_MS),
+    subagentIdleReap: SubagentIdleReapConfigSchema,
   })
 
   readonly sessions: ApiProxy['sessions']
@@ -122,6 +153,12 @@ export class ApiProxyService extends Service implements ApiProxy {
       ...(config.destroyCancelSettleMs === undefined
         ? {}
         : { destroyCancelSettleMs: config.destroyCancelSettleMs }),
+      // Always passed: this plugin owns the housekeeping policy, so its shipped
+      // default (six hours idle, hourly scan) is what a deployment runs.
+      subagentIdleReap: config.subagentIdleReap ?? {
+        idleMs: DEFAULT_SUBAGENT_IDLE_REAP_IDLE_MS,
+        scanIntervalMs: DEFAULT_SUBAGENT_IDLE_REAP_SCAN_INTERVAL_MS,
+      },
     })
     this.sessions = api.sessions
     this.subagents = api.subagents
