@@ -2,7 +2,7 @@
  * Machine state arrives through the standard provide channel
  * (useInput + inputActions); the keyboard/DOM command face and stop arrive
  * through this entry's own inject, whose hooks compartment binds
- * useNotices/useLexicon; layout-phase inputs (variant, placeholder,
+ * useNotices/useLexicon; placement inputs (placeholder,
  * region-slot content) ride the owner props. Session facts
  * (running/removed/promptError) are self-selected via useSession. */
 
@@ -40,7 +40,7 @@ export function InputBar({
   useSession, useInput, inputActions, keyboard, addImages, removeImage, draftImages,
   resolveSubmitMode, toggleCommandMenu, stop, command, t,
   renderSlot, useNotices, useLexicon, useMenuLauncher,
-  useProjection, sessionId, variant, disabled: inert = false, blocked,
+  useProjection, sessionId, disabled: inert = false, blocked,
   placeholder, accessory, overlay, leftItems, rightItems, footer,
 }: InputBarProps) {
   const input = useInput(s => s)
@@ -52,7 +52,8 @@ export function InputBar({
   const subagent = useSession(s => s.subagent) ?? null
   const removed = useSession(s => s.removed) ?? false
   // Plan mode swaps the textarea placeholder (the projection is the folded
-  // host value; owner-prop placeholders — hero, session-unavailable — win).
+  // host value; owner-prop placeholders — session-unavailable, a raised block —
+  // win).
   const planActive = useProjection('plan', plan => plan !== undefined && (plan.pending ? !plan.active : plan.active))
   // Absent (undefined: no frame yet) and cleared (null) both mean no goal.
   const hasGoal = useProjection('goal', goal => goal != null)
@@ -250,7 +251,8 @@ export function InputBar({
   // capped box can still move in this direction, keep the native scroll; only
   // at its own edge forward the delta to the active conversation scrollport, so
   // a short draft never traps the gesture and a long draft stays scrollable.
-  // Hero mounts have no host and keep native wheel scrolling.
+  // A bar mounted outside a conversation scrollport has no host and keeps
+  // native wheel scrolling.
   useEffect(() => {
     const el = scrollRef.current
     if (el === null) return
@@ -592,7 +594,7 @@ export function InputBar({
   }
 
   return (
-    <div className={clsx(css.root, variant === 'hero' && css.hero)}>
+    <div className={css.root}>
       {toast !== null && (
         <Toast
           key={toast.seq}

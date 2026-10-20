@@ -1,4 +1,5 @@
-// Web e2e scenario: startup auto-selection keeps the hero on screen.
+// Web e2e scenario: startup auto-selection keeps the empty conversation on
+// screen.
 //
 // A page load with a workspace already registered runs
 // `WorkspaceRuntime.startInitialSelection`: it connects the most recent
@@ -12,9 +13,8 @@
 // assembled application can show is that the path a user actually takes
 // reaches it: the real selection service, the real client session opening over
 // the real /api transport, and a real browser deciding what is painted.
-// The initial Workspace pick also records the resident Hero/composer nodes and
-// proves that opening the first blank Session fills the strict outlets without
-// replacing those nodes.
+// The first blank Session lands in the resident scroll body without replacing
+// the shell the empty conversation already mounted.
 //
 // The round-trip against a loopback host is far too fast to observe, so this
 // scenario HOLDS the `session.history` response open in the browser's network
@@ -39,6 +39,9 @@ const HISTORY_ROUTE = '**/api/session.history'
  * composer textarea, which carries an unrelated `data-phase` of its own.
  */
 const ROOT_PHASE = 'div[data-phase]'
+
+/** The branded placeholder of a selected conversation with no messages. */
+const EMPTY_PLACEHOLDER = '[data-testid="conversation-empty"]'
 
 /** Every distinct `data-phase` the conversation root shows, in order, across one page load. */
 function recordedPhases(page: Page): Promise<string[]> {
@@ -65,49 +68,51 @@ describe('web e2e: startup auto-selection', () => {
     await scaffold?.close()
   })
 
-  it('keeps the resident Hero and composer nodes when the first Workspace session appears', async () => {
-    onTestFailed(() => saveFailureShot(page, 'web-e2e-first-workspace-stable-tree'))
-    await page.locator(`${ROOT_PHASE}[data-phase="hero"]`).waitFor({ timeout: 15_000 })
-    await page.evaluate(() => {
-      const refs = {
-        root: document.querySelector('div[data-phase="hero"]'),
-        workspaceChip: document.querySelector('[aria-label="Choose workspace"]'),
-        scrollBody: document.querySelector('[data-conversation-scroll]'),
-        composerSeat: document.querySelector('[data-composer-seat]'),
-        textarea: document.querySelector('textarea'),
-      }
-      if (Object.values(refs).some(node => node === null)) throw new Error('incomplete initial Hero tree')
-      ;(window as unknown as { __heroTree: typeof refs }).__heroTree = refs
-    })
-
+  it('lands the first blank Session in the resident empty-conversation shell', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-first-workspace-empty-shell'))
     // A registered Workspace is the precondition for the reload case below;
-    // this first connection is also the no-Workspace → Workspace path.
+    // this first connection is also the no-conversation → empty-conversation
+    // path. Node identity across that transition is no longer observable
+    // through this lane — the inbox owns selection and the no-session screen
+    // renders no composer at all (FORK-NOTES "Inbox sidebar") — so the unit
+    // spec's empty → active flip test owns that claim, and this scenario pins
+    // what the browser paints once the Session is current.
     await connectFreshWorkspace(page, scaffold.workspaceCwd, 'startup-auto-selection')
 
-    expect(await page.evaluate(() => {
-      const before = (window as unknown as { __heroTree: Record<string, Element> }).__heroTree
+    const tree = await page.evaluate((placeholderSelector: string) => {
+      const root = document.querySelector('div[data-phase]')
+      const scrollBody = document.querySelector('[data-conversation-scroll]')
+      const composerSeat = document.querySelector('[data-composer-seat]')
+      const textarea = document.querySelector('textarea')
+      const placeholder = document.querySelector(placeholderSelector)
+      const seat = composerSeat?.getBoundingClientRect()
       return {
-        phase: document.querySelector('div[data-phase]')?.getAttribute('data-phase'),
-        root: document.querySelector('div[data-phase="hero"]') === before.root,
-        workspaceChip: document.querySelector('[aria-label="Choose workspace"]') === before.workspaceChip,
-        scrollBody: document.querySelector('[data-conversation-scroll]') === before.scrollBody,
-        composerSeat: document.querySelector('[data-composer-seat]') === before.composerSeat,
-        textarea: document.querySelector('textarea') === before.textarea,
-        textareaEnabled: !(document.querySelector('textarea') as HTMLTextAreaElement).disabled,
+        phase: root?.getAttribute('data-phase'),
+        rootInsideBody: root !== null && root.contains(composerSeat),
+        placeholderInBody: scrollBody !== null && scrollBody.contains(placeholder),
+        placeholderBeforeSeat: placeholder !== null && composerSeat !== null
+          && placeholder.compareDocumentPosition(composerSeat) === Node.DOCUMENT_POSITION_FOLLOWING,
+        seatInsideBody: scrollBody !== null && scrollBody.contains(composerSeat),
+        seatAtColumnFloor: seat !== undefined && scrollBody !== null
+          && Math.abs(seat.bottom - scrollBody.getBoundingClientRect().bottom) < 2,
+        textareaEnabled: textarea instanceof HTMLTextAreaElement && !textarea.disabled,
+        textareaInSeat: composerSeat !== null && composerSeat.contains(textarea),
       }
-    })).toEqual({
-      phase: 'hero',
-      root: true,
-      workspaceChip: true,
-      scrollBody: true,
-      composerSeat: true,
-      textarea: true,
+    }, EMPTY_PLACEHOLDER)
+    expect(tree).toEqual({
+      phase: 'active',
+      rootInsideBody: true,
+      placeholderInBody: true,
+      placeholderBeforeSeat: true,
+      seatInsideBody: true,
+      seatAtColumnFloor: true,
       textareaEnabled: true,
+      textareaInSeat: true,
     })
     expect(tripwire.pageErrors).toEqual([])
   }, 120_000)
 
-  it('keeps the hero and the composer on screen while the auto-selected blank session opens', async () => {
+  it('keeps the placeholder and the composer on screen while the auto-selected blank session opens', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-startup-auto-selection'))
     // Runs before any page script on the reload below, so the first phase the
     // root ever renders is recorded, not just the ones after a listener attaches.
@@ -140,22 +145,23 @@ describe('web e2e: startup auto-selection', () => {
     await page.reload({ waitUntil: 'commit' })
     await historyInFlight
 
-    // The frame a user sees while the session is still opening: hero phase, the
-    // hero title, and a composer that is actually painted (`settling` hides the
-    // seat with `visibility:hidden`, which Playwright reports as not visible).
-    await page.waitForSelector(ROOT_PHASE, { timeout: 15_000 })
-    expect(await page.locator(ROOT_PHASE).first().getAttribute('data-phase')).toBe('hero')
-    expect(await page.getByText('Into the Unknown').isVisible()).toBe(true)
+    // The frame a user sees while the session is still opening: the branded
+    // placeholder where the transcript will land, and a composer that is
+    // actually painted (`settling` hides the seat with `visibility:hidden`,
+    // which Playwright reports as not visible).
+    await page.waitForSelector(EMPTY_PLACEHOLDER, { timeout: 15_000 })
+    expect(await page.locator(ROOT_PHASE).first().getAttribute('data-phase')).toBe('active')
+    expect(await page.getByTestId('conversation-empty').isVisible()).toBe(true)
     expect(await page.locator('textarea').first().isVisible()).toBe(true)
 
     releaseHistory()
-    await page.locator('textarea:enabled[placeholder="Describe what you want to build"]')
+    await page.locator('textarea:enabled[placeholder="Message the agent"]')
       .waitFor({ timeout: 15_000 })
     acknowledgeReloadConnectionLoss(tripwire, warningsBefore)
 
     // Settling is not merely absent from the frame sampled above: the root
     // never entered it at any point of the load.
-    expect(await recordedPhases(page)).toEqual(['hero'])
+    expect(await recordedPhases(page)).toEqual(['active'])
     expect(tripwire.pageErrors).toEqual([])
   }, 120_000)
 })

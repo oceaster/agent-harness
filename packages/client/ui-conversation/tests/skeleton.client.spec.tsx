@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// ConversationRoot skeleton behavior: the ONE resident composer across the
-// hero (blank session) and active phases — same textarea DOM node, machine-
-// owned draft.
+// ConversationRoot skeleton behavior: the ONE resident composer across an
+// empty conversation and an active one — same textarea DOM node, machine-owned
+// draft, and the household mark above it while there are no messages.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
@@ -14,14 +14,12 @@ import type {
 import type { ConversationRootProps } from '../src/client/skeleton/ConversationRoot.tsx'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { createChatStore } from '../src/client/stores.ts'
 import { SessionInputShell } from '../src/client/input/facade.ts'
-import { en, zh } from '../src/client/locales.ts'
+import { zh } from '../src/client/locales.ts'
 import { ConversationRoot } from '../src/client/skeleton/ConversationRoot.tsx'
 import { ConversationSession, ConversationSessionHeader } from '../src/client/skeleton/ConversationSession.tsx'
-import { HeroShell } from '../src/client/skeleton/EmptyHero.tsx'
 import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
 import type {
@@ -252,14 +250,6 @@ function mount(
   }
 }
 
-describe('Hero chrome', () => {
-  it('renders the English headline and preview badge', () => {
-    const view = render(<HeroShell t={makeTranslate(en, commonEn)} />)
-    expect(view.getByText('Into the Unknown')).toBeTruthy()
-    expect(view.getByText('Preview')).toBeTruthy()
-  })
-})
-
 describe('ConversationRoot resident composer', () => {
   it('renders the composer inert with the blocker\u2019s own reason', () => {
     const b = mount(conversationSnapshot(), undefined, {
@@ -355,42 +345,52 @@ describe('ConversationRoot resident composer', () => {
     expect(seat?.contains(fallback)).toBe(true)
   })
 
-  it('hero phase: same textarea, hero chrome, no header, no workspace chip', () => {
-    const b = mount(
-      conversationSnapshot({ composerPhase: 'blank', blank: true }),
-      [
-        { ...workspace('one'), sessionIds: [SID] },
-        { ...workspace('second'), title: 'Selected Folder' },
-      ],
-    )
-    // Hero chrome present, view ring absent; scroll host already wraps the
-    // resident composer so the blank → active flip does not remount it.
+  it('empty conversation: the household mark above the docked composer, no headline chrome', () => {
+    const b = mount(conversationSnapshot({ composerPhase: 'blank', blank: true }))
+    // The mark, not a view ring: the placeholder is the whole conversation body
+    // until a message arrives.
     const host = b.view.container.querySelector('[data-conversation-scroll]')
     const header = b.view.container.querySelector('header')
+    const placeholder = b.view.getByTestId('conversation-empty')
     expect(host).not.toBeNull()
     expect(header).toBeNull()
-    expect(b.view.getByText('探索未至之境')).toBeTruthy()
-    expect(b.view.getByText('预览版')).toBeTruthy()
+    expect(host?.contains(placeholder)).toBe(true)
     expect(b.view.queryByTestId('view-chat')).toBeNull()
-    // The same machine-backed textarea is live in the hero, and the
-    // persistence mirror stays bound (ConversationSession mounts chrome-hidden
-    // for blank sessions): hero typing reaches the chat store.
-    const box = b.view.getByRole('textbox')
+    // The mark is the welcome screen's own art: one masked box plus the glow,
+    // never a second copy of the artwork.
+    expect(placeholder.querySelector('svg')).not.toBeNull()
+    expect(placeholder.querySelectorAll('div')).toHaveLength(1)
+    // The deleted hero chrome stays deleted.
+    expect(b.view.queryByText('探索未至之境')).toBeNull()
+    expect(b.view.queryByText('预览版')).toBeNull()
+    expect(b.view.queryByText('Into the Unknown')).toBeNull()
+    expect(b.view.queryByText('Preview')).toBeNull()
+    // Docking: the placeholder and the composer seat are siblings inside the
+    // conversation body, and the root reports the active phase — the same
+    // layout an active chat uses, so the first message moves nothing.
+    const seat = b.view.container.querySelector('[data-composer-seat]')
+    expect(seat?.parentElement).toBe(host)
+    expect(placeholder.parentElement).toBe(host)
+    expect(b.view.container.querySelector('[data-phase]')?.getAttribute('data-phase')).toBe('active')
+    // The bar keeps its ordinary placeholder: a blank conversation supplies no
+    // empty-state override any more.
+    const box = b.view.getByRole('textbox') as HTMLTextAreaElement
     expect(host?.contains(box)).toBe(true)
-    fireEvent.change(box, { target: { value: 'draft in hero' } })
-    expect(b.chat.store.getSnapshot().draft).toBe('draft in hero')
-    // The hero workspace chip is gone with the workspace picker it opened:
-    // nothing in the pane can switch (and thereby mint) a session any more.
-    expect(b.view.queryByRole('button', { name: '选择工作区' })).toBeNull()
-    expect(b.view.queryByRole('button', { name: 'Choose workspace' })).toBeNull()
-    expect(b.slotCalls).not.toContain('conversation.hero.workspace')
+    expect(box.placeholder).toBe('给智能体发消息')
+    // The same machine-backed textarea is live, and the persistence mirror
+    // stays bound (ConversationSession mounts chrome-hidden for blank
+    // sessions): typing reaches the chat store.
+    fireEvent.change(box, { target: { value: 'draft in the empty conversation' } })
+    expect(b.chat.store.getSnapshot().draft).toBe('draft in the empty conversation')
   })
 
   it('settling phase: a summary that does not prove the session blank hides the composer while it opens', () => {
     const b = mount(conversationSnapshot({ composerPhase: 'blank', blank: true, openState: 'loading' }))
     const root = b.view.container.querySelector('[data-phase]')
     expect(root?.getAttribute('data-phase')).toBe('settling')
-    expect(b.view.queryByText('探索未至之境')).toBeNull()
+    // The placeholder is withheld too: the session may still turn out to hold
+    // a transcript, and art that flashes then vanishes reads as a reload.
+    expect(b.view.queryByTestId('conversation-empty')).toBeNull()
   })
 
   it('settling phase: a session the list has no row for settles conservatively', () => {
@@ -403,7 +403,7 @@ describe('ConversationRoot resident composer', () => {
     expect(root?.getAttribute('data-phase')).toBe('settling')
   })
 
-  it('startup auto-selection: a summary-proven blank session opens straight into the hero', () => {
+  it('startup auto-selection: a summary-proven blank session opens straight into the placeholder', () => {
     const b = mount(
       conversationSnapshot({ composerPhase: 'blank', blank: true, openState: 'loading' }),
       undefined,
@@ -412,18 +412,20 @@ describe('ConversationRoot resident composer', () => {
     // The summary already proves the outcome, so the settling hide would only
     // blank the column for the history round-trip.
     const root = b.view.container.querySelector('[data-phase]')
-    expect(root?.getAttribute('data-phase')).toBe('hero')
-    expect(b.view.getByText('探索未至之境')).toBeTruthy()
+    expect(root?.getAttribute('data-phase')).toBe('active')
+    expect(b.view.getByTestId('conversation-empty')).toBeTruthy()
     expect(b.view.getByRole('textbox')).toBeTruthy()
   })
 
-  it('same textarea DOM node survives the hero → active flip into the sticky scrollport', () => {
+  it('same textarea DOM node survives the empty → active flip inside the sticky scrollport', () => {
     const b = mount(conversationSnapshot({ composerPhase: 'blank', blank: true }))
     const before = b.view.getByRole('textbox')
+    const placeholder = b.view.getByTestId('conversation-empty')
     fireEvent.change(before, { target: { value: 'kept across flip' } })
     // First message landed: content exists, phase leaves blank. Composer
-    // already sat in the resident scrollport during hero, so the textarea
-    // node and InputHub draft both survive.
+    // already sat in the resident scrollport, so the textarea node and the
+    // InputHub draft both survive, and the placeholder art makes way for the
+    // transcript at the same seat.
     b.session.set(conversationSnapshot({ composerPhase: 'active', blank: false }))
     b.rerender()
     const after = b.view.getByRole('textbox') as HTMLTextAreaElement
@@ -431,8 +433,9 @@ describe('ConversationRoot resident composer', () => {
     expect(after.value).toBe('kept across flip')
     expect(b.chat.store.getSnapshot().draft).toBe('kept across flip')
     expect(b.view.container.querySelector('[data-conversation-scroll]')?.contains(after)).toBe(true)
-    expect(b.view.queryByText('探索未至之境')).toBeNull()
+    expect(b.view.queryByTestId('conversation-empty')).toBeNull()
     expect(b.view.getByTestId('view-chat')).toBeTruthy()
+    expect(placeholder.isConnected).toBe(false)
   })
 
   it('keeps pending takeover interaction accessible outside the Chat view', () => {

@@ -1,15 +1,15 @@
 // Web e2e scenarios: lifecycle & chrome — the workspace-aware first-send
 // flow over the real wire, reload recovery, and the dark-mode token cascade.
-// One tiny recorded turn (text-only) drives the whole spec: the empty-state
-// hero materializes a real Workspace + Session on first send (the jsdom
+// One tiny recorded turn (text-only) drives the whole spec: the empty
+// conversation materializes a real Workspace + Session on first send (the jsdom
 // workspace-flow suite pins the object-layer state machine over the fixture
 // client; THIS spec pins the same flow through HTTP RPC + SSE + the host
 // gateway), reload replays everything from the log (zero further model
 // calls), and the theme scenario proves the shipped dark palette actually
 // cascades: attribute -> alias token flip -> painted surface change. No
 // theme/layout golden: aria snapshots are color-blind (lane scope: the
-// browser-e2e-lane Agent Note); the hero's waiting state gets the one golden
-// here.
+// browser-e2e-lane Agent Note); the empty conversation's waiting state gets the
+// one golden here.
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -153,19 +153,24 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     }
   })
 
-  it('sends the first prompt from the empty-state hero (all modes)', async () => {
+  it('sends the first prompt from the branded empty conversation (all modes)', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-lifecycle-send'))
     if (MODE !== 'record') {
       expect(fixtureUserPrompts(await readFile(FIXTURE, 'utf8'))).toEqual([PROMPT])
     }
-    // The blank frame renders the hero, not the resident composer: the
-    // headline plus the guidance placeholder are the empty state's anchors.
-    await expect.poll(() => page.getByText('Into the Unknown', { exact: false }).count(), { timeout: 15_000 }).toBe(1)
+    // The blank frame renders the household mark above the docked composer; it
+    // carries no text at all any more, so the anchor is the placeholder
+    // container rather than a headline, and the composer supplies the ordinary
+    // placeholder.
+    const placeholder = page.getByTestId('conversation-empty')
+    await placeholder.waitFor({ timeout: 15_000 })
     const input = page.locator('textarea').first()
     await input.waitFor({ timeout: 10_000 })
+    expect(await input.getAttribute('placeholder')).toBe('Message the agent')
     if (MODE !== 'record') {
-      // Golden of the hero's stable waiting state (captured before any send;
-      // the conversation-region goldens belong to the other scenarios).
+      // Golden of the empty conversation's stable waiting state (captured
+      // before any send; the conversation-region goldens belong to the other
+      // scenarios).
       const snapshot = await captureStableAria(page, '[class*="frame"]', scaffold.workspaceCwd)
       await compareOrRefreshGolden(HERO_EXPECTED, snapshot, MODE)
     }

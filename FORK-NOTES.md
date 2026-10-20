@@ -203,6 +203,29 @@ re-applied on every upstream pull:
    `/v1/browser/inbox{,/open,/clear}`; without it the sidebar degrades to a
    visible retryable error row, never a blank panel.
 
+9. **Branded empty conversation** (removals in `ui-conversation`) — a selected
+   conversation with no messages used to show the harness's own empty state: the
+   "Into the Unknown" headline, a "Preview" badge, and the composer centered
+   vertically. It now renders the mark the unselected welcome screen already
+   used — the `HeroGlow` ellipse plus the `ec-logo-2-outline` mark e-server
+   serves at `GET /v1/browser/inbox/brand.svg`, masked into a soft gradient —
+   inside the conversation body, with the composer docked exactly where an
+   active chat puts it so the first message moves nothing.
+
+   **Re-apply on every upstream pull.** The embedded diffs are: `ConversationRoot`
+   renders the placeholder (`data-testid="conversation-empty"`) as a
+   flex-filling sibling of the sticky composer seat and reports only the
+   `active` and `settling` phases; `EmptyHero.tsx` becomes `HeroGlow.tsx`
+   (`HeroShell` and `HeroShell.module.css` deleted outright); the
+   `hero.headline`, `hero.preview` and `placeholder.hero` locale keys are gone in
+   both languages, together with the composer bar's `variant` owner prop and
+   InputBar's centered card variant — one docked card geometry serves an empty
+   conversation and an active one. `settling` is unchanged: the composer seat and
+   the placeholder both stay hidden while a blank session's open is loading and
+   the list summary does not yet prove it blank. The `apps/web/tests` hero
+   anchors (four e2e specs, the two lifecycle-chrome goldens, the placeholder
+   lookups in the workspace-flow helpers and the HMR source needle) moved with it.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

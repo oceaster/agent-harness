@@ -82,8 +82,9 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
   await pathInput.press('Enter')
   await dialog.getByRole('button', { name: 'Open', exact: true }).click()
   // The pick connected the workspace: the blank session's live composer
-  // replaces the locked placeholder and enables.
-  await page.locator('textarea:enabled[placeholder="Describe what you want to build"]')
+  // replaces the locked placeholder and enables. It keeps the ordinary
+  // placeholder — an empty conversation has no empty-state override.
+  await page.locator('textarea:enabled[placeholder="Message the agent"]')
     .waitFor({ timeout: 15_000 })
 }
 
@@ -106,7 +107,7 @@ export async function connectFreshWorkspaceZh(page: Page, root: string, name = '
   await pathInput.fill(join(root, name))
   await pathInput.press('Enter')
   await dialog.getByRole('button', { name: '打开', exact: true }).click()
-  await page.locator('textarea:enabled[placeholder="描述你想要构建的内容"]')
+  await page.locator('textarea:enabled[placeholder="给智能体发消息"]')
     .waitFor({ timeout: 15_000 })
 }
 

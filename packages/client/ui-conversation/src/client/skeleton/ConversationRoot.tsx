@@ -1,10 +1,10 @@
 // Conversation skeleton. An unselected inbox shows the branded welcome screen;
-// selected conversations own the hero chrome, message chain and composer.
+// a selected conversation owns the branded empty placeholder, message chain and
+// docked composer.
 
 import { useCallback, useRef } from 'react'
-import clsx from 'clsx'
 import type { ConversationSlotProps, InputZone } from '../contract/slots.ts'
-import { HeroGlow, HeroShell } from './EmptyHero.tsx'
+import { HeroGlow } from './HeroGlow.tsx'
 import css from './ConversationRoot.module.css'
 
 /** Full props composed from the slot contract. */
@@ -43,19 +43,22 @@ export function ConversationRoot({
     seatObserver.current.observe(seat)
   }, [])
 
-  // While a session is still replaying (loading + blank) the hero/docked
-  // choice is unknowable — render the composer hidden instead of flashing
-  // the centered hero and snapping to the docked bar (or vice versa).
-  // Exemption: a session the list summary already proves blank can only
-  // land on the hero, so hiding would blank the column for the whole
+  // While a session is still replaying (loading + blank) the composer stays
+  // hidden: a session whose history has not landed may still turn out to hold
+  // a transcript, and a composer that flashes into place then moves reads as a
+  // reload. Exemption: a session the list summary already proves blank can only
+  // land on the placeholder, so hiding would blank the column for the whole
   // history round-trip (the startup auto-selection flash) for nothing.
   // The exemption is deliberately open-state-wide, not loading-only: a
-  // summary-blank session is the hero before its open starts (`cold`) and
-  // after one fails (`error`) for the same reason — there is no history.
+  // summary-blank session shows the placeholder before its open starts (`cold`)
+  // and after one fails (`error`) for the same reason — there is no history.
   const settling = sessionId !== undefined && composerPhase === 'blank' && openState === 'loading'
     && summaryBlank !== true
-  const hero = sessionId === undefined
-    || (composerPhase === 'blank' && (openState === 'open' || summaryBlank === true))
+  // A selected conversation with no messages: the household mark above the
+  // docked composer, which sits exactly where an active chat puts it. Settling
+  // withholds the art for the same reason it hides the composer — the column
+  // may still turn out to have a transcript.
+  const empty = composerPhase === 'blank' && !settling
   const zone: InputZone | undefined =
     session === undefined || inputState === undefined ? undefined : { session, input: inputState }
 
@@ -75,13 +78,12 @@ export function ConversationRoot({
   // A real conversation owns the composer; the unselected screen has no controls.
   const blocked = composerBlock !== undefined
   const inputBar = renderSlot('conversation.composer.bar', {
-    variant: hero ? 'hero' : 'composer',
     ...(blocked
     // `blocked`, not `disabled`: the bar refuses input either way, but a
     // block keeps the model seat live because choosing a model is how the
     // user clears it.
       ? { blocked: composerBlock, placeholder: composerBlock.reason }
-      : hero ? { placeholder: t('placeholder.hero') } : {}),
+      : {}),
     overlay: renderSlot('conversation.input.overlay', {}),
     leftItems: zone === undefined ? null : renderSlot('conversation.input.left', zone),
     rightItems: zone === undefined ? null : renderSlot('conversation.input.right', zone),
@@ -90,15 +92,13 @@ export function ConversationRoot({
   })
 
   const composerBar = (
-    <div className={clsx(css.composerStack, hero && css.composerHero)}>
-      {hero && <HeroGlow className={css.heroGlow} />}
-      {hero && <HeroShell t={t} />}
+    <div className={css.composerStack}>
       {zone !== undefined && renderSlot('conversation.input.dock', zone)}
       {inputBar}
     </div>
   )
 
-  const phase = settling ? 'settling' : hero ? 'hero' : 'active'
+  const phase = settling ? 'settling' : 'active'
   const composer = renderSlotChain(
     'conversation.composer',
     { interactions: pending, session },
@@ -120,6 +120,12 @@ export function ConversationRoot({
       {renderSlot('conversation.session.header', {})}
       <div className={css.scrollBody} data-conversation-scroll="">
         {renderSlot('conversation.session', {})}
+        {empty && (
+          <div className={css.conversationEmpty} data-testid="conversation-empty" aria-hidden="true">
+            <HeroGlow className={css.welcomeGlow} />
+            <div className={css.welcomeLogo} />
+          </div>
+        )}
         {!readOnly && composerSeat}
       </div>
     </div>

@@ -69,7 +69,6 @@ function mountBar(shell: SessionInputShell, over?: { running?: boolean; disabled
     command: () => Promise.resolve(true),
     // Mirrors the real lookup chain (conversation namespace, then common).
     t: makeTranslate(zh, commonZh),
-    variant: 'composer',
   }
   return render(<InputBar {...props} />)
 }

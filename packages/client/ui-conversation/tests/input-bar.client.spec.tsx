@@ -78,7 +78,6 @@ interface BenchOptions {
   queue?: ConversationSnapshot['queue']
   /** The hub's steer-all face (empty-draft accelerated Enter). */
   steerQueue?: () => void
-  variant?: 'hero' | 'composer'
   placeholder?: string
   t?: InputBarProps['t']
   command?: (line: string) => Promise<boolean>
@@ -188,7 +187,6 @@ function bench(over?: BenchOptions) {
     // Mirrors the real lookup chain (conversation namespace, then common).
     t: over?.t ?? makeTranslate(zh, commonZh),
     renderSlot,
-    variant: over?.variant ?? 'composer',
     ...(over?.inert === true ? { disabled: true } : {}),
     ...(over?.placeholder !== undefined ? { placeholder: over.placeholder } : {}),
     ...(over?.accessory !== undefined ? { accessory: over.accessory } : {}),
@@ -1269,7 +1267,7 @@ describe('insertText (scoped event body)', () => {
   })
 })
 
-describe('strips and variants', () => {
+describe('strips and the docked card', () => {
   it('announces promptError as a fading toast (ordinary failure — no transaction UI, no Retry)', () => {
     vi.useFakeTimers()
     try {
@@ -1306,10 +1304,13 @@ describe('strips and variants', () => {
     expect(view.queryByRole('alert')).toBeNull()
   })
 
-  it('hero variant adds the hero class and accessory row renders', () => {
-    const { view } = bench({ variant: 'hero', accessory: <i data-testid="acc" /> })
+  it('keeps one card geometry and renders the accessory row', () => {
+    const { view } = bench({ accessory: <i data-testid="acc" /> })
     expect(view.getByTestId('acc')).toBeTruthy()
-    expect(view.container.querySelector('[class*="hero"]')).not.toBeNull()
+    // One docked card geometry: an empty conversation mounts this same bar, so
+    // there is no centered empty-state variant left to switch to.
+    expect(view.container.querySelector('[class*="hero"]')).toBeNull()
+    expect(view.container.querySelector('[data-composer-card]')).not.toBeNull()
   })
 
   it('renders overlay anchor and left/right slot items', () => {

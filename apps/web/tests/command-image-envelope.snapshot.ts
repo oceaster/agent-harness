@@ -19,7 +19,7 @@ async function freshComposer(): Promise<HTMLTextAreaElement> {
   const start = tree.querySelector<HTMLButtonElement>('button[aria-label="New session in fixture"]')
   if (start === null) throw new Error('fixture Workspace new-session action missing')
   fireEvent.click(start)
-  return await screen.findByPlaceholderText('Describe what you want to build', {}, { timeout: 10_000 }) as HTMLTextAreaElement
+  return await screen.findByPlaceholderText('Message the agent', {}, { timeout: 10_000 }) as HTMLTextAreaElement
 }
 
 /** Paste one tiny PNG into the composer and wait for its rail thumbnail. */

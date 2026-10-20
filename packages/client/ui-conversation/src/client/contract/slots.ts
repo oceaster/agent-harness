@@ -217,13 +217,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * chain's fallback (a real entry, not a chain rider, so a
      * takeover election hides rather than unmounts it and the textarea DOM
      * survives). Session-maybe: the bar stays mounted across the
-     * no-session/session transition — the no-workspace hero renders the SAME
-     * textarea DOM as a read-only Workspace-picker trigger instead of a
-     * parallel inert tree — with the machine hooks absent until a session is
-     * current. InputBar registers
-     * here from this package's apply; its machine state arrives through the
-     * standard provide channel (useInput + inputActions), the keyboard
-     * command face through its own inject.
+     * no-session/session transition and renders the SAME textarea DOM in an
+     * empty conversation and in an active one, instead of a parallel inert
+     * tree with the machine hooks absent until a session is current. InputBar
+     * registers here from this package's apply; its machine state arrives
+     * through the standard provide channel (useInput + inputActions), the
+     * keyboard command face through its own inject.
      */
     'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe'; owner: ComposerBarOwnerProps }
     /** Optional draft-image rail, drop target, and preview surface inside the composer. */
@@ -479,14 +478,11 @@ export interface ConversationSessionHeaderInjected {
 }
 
 /**
- * Owner share of the composer-bar slot: ConversationRoot's layout-phase
- * inputs plus the input-region child-slot content it renders (the region
- * slots stay declared/rendered by the conversation entry; the bar hosts the
- * results as chrome).
+ * Owner share of the composer-bar slot: the input-region child-slot content
+ * the conversation entry renders (the region slots stay declared/rendered by
+ * that entry; the bar hosts the results as chrome).
  */
 export interface ComposerBarOwnerProps {
-  /** Hero = empty-state centered card; composer = resident bottom bar. */
-  variant: 'hero' | 'composer'
   /**
    * A block another plugin raised for this session: the bar refuses input and
    * shows the blocker's reason as the placeholder, but — unlike `disabled` —

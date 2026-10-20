@@ -4,9 +4,9 @@
 // it — the hero's decorative backdrop ellipse bleeds past the column and
 // becomes user-scrollable.
 //
-// The bleed is by construction and stays: `.heroGlow` is sized 1051/776 of the
-// hero box (ConversationRoot.module.css) so the blur scales with the input
-// card. The scroll container is where the bar comes from:
+// The bleed is by construction and stays: `.welcomeGlow` is sized
+// `min(1051px, 150%)` of the branded placeholder box (ConversationRoot.module.css)
+// so the blur scales with the conversation column. The scroll container is where the bar comes from:
 // `[data-conversation-scroll]` scrolls vertically, and a one-axis scroller
 // computes the other axis's initial `visible` to `auto`, so the bleed becomes
 // a bar; `overflow-x: hidden` on the scroller prevents it.
@@ -18,8 +18,9 @@
 // reason, which is why each stop also records whether it bleeds; the wide stop
 // is the control where it does not.
 //
-// Zero model calls: the hero is the boot state, so nothing is seeded and no
-// replay row mounts. A stray stream would fail loud with NO_ADAPTER.
+// Zero model calls: an empty conversation is the boot state, so nothing is
+// seeded and no replay row mounts. A stray stream would fail loud with
+// NO_ADAPTER.
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
@@ -87,8 +88,8 @@ function measureColumn(page: Page, width: number): Promise<ColumnMetrics> {
   return page.evaluate((viewportWidth) => {
     const scroller = document.querySelector<HTMLElement>('[data-conversation-scroll]')
     if (scroller === null) throw new Error('conversation scroll container not in the DOM')
-    const glow = scroller.querySelector<SVGElement>('[class*="heroGlow"]')
-    if (glow === null) throw new Error('hero glow not in the DOM — the boot state is not the hero')
+    const glow = scroller.querySelector<SVGElement>('[data-testid="conversation-empty"] [class*="welcomeGlow"]')
+    if (glow === null) throw new Error('placeholder glow not in the DOM — the boot state is not an empty conversation')
     const box = scroller.getBoundingClientRect()
     const glowBox = glow.getBoundingClientRect()
     return {
@@ -209,7 +210,7 @@ describe('web e2e: the conversation column scrolls on one axis', () => {
     page = await newEnglishPage(browser, 900)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
-    await page.waitForSelector('[data-conversation-scroll] [class*="heroGlow"]', { timeout: 30_000 })
+    await page.waitForSelector('[data-conversation-scroll] [data-testid="conversation-empty"] [class*="welcomeGlow"]', { timeout: 30_000 })
   }, 180_000)
 
   afterAll(async () => {
