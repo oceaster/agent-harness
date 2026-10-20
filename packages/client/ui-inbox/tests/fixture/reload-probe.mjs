@@ -22,6 +22,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 // home), so the probe resolves it from there instead of adding a second copy to
 // this UI plugin.
 import { chromium } from '../../../../../apps/web/node_modules/playwright/index.mjs'
+import { SEEDED_SESSIONS } from './seeded-sessions.mjs'
 
 const [baseUrl, outDir = '/tmp/reload-proof'] = process.argv.slice(2)
 if (baseUrl === undefined) {
@@ -415,8 +416,77 @@ if (channelRowCount === 1) {
     await page.screenshot({ path: `${outDir}/06-settings-open.png` })
     await reload()
     const after = await snapshot('settings-after-reload')
-    record('settings modal (open + active section)', { dialog: before.dom.dialog }, { dialog: after.dom.dialog },
-      after.dom.dialog !== null ? 'PRESERVED' : 'LOST')
+    record('settings modal (open + active section)', { dialog: before.dom.dialog, keys: before.keys }, {
+      dialog: after.dom.dialog,
+      settingsKeys: Object.entries(after.keys).filter(([key]) => key.startsWith('dsh.settings')),
+    },
+    after.dom.dialog !== null && after.dom.dialog.activeNav.length > 0 ? 'PRESERVED' : 'LOST')
+
+    // 7a. the CLOSED state must be remembered too: closing then reloading must
+    // not surprise-reopen the panel, and reopening must return to the section
+    // last seen rather than resetting to the first nav row.
+    {
+      // Reopen deliberately (whatever the reload left behind) so this step
+      // starts from a known open panel on a non-first section, then locate the
+      // close control INSIDE that dialog (the frame also has "Close details").
+      if (await page.getByRole('dialog').count() === 0) await trigger.click()
+      await page.getByRole('dialog').waitFor({ timeout: 10_000 })
+      if (await learn.count() === 1) await learn.click()
+      await page.waitForTimeout(300)
+      const closed = page.getByRole('dialog').getByRole('button', { name: 'Close' })
+      check('the dialog exposes exactly one close control', await closed.count() === 1, `${await closed.count()} controls`)
+      // The reading position has to be captured while the panel is still up:
+      // the reopen assertion compares against it after the reload.
+      const openOnSection = await snapshot('settings-open-before-close')
+      await closed.click()
+      await page.waitForTimeout(300)
+      const closedBefore = await snapshot('settings-closed')
+      await reload()
+      const closedAfter = await snapshot('settings-closed-after-reload')
+      record('settings modal (CLOSED state remembered)', {
+        dialog: closedBefore.dom.dialog,
+        settingsKeys: Object.entries(closedBefore.keys).filter(([key]) => key.startsWith('dsh.settings')),
+      }, {
+        dialogAfterReload: closedAfter.dom.dialog,
+        settingsKeys: Object.entries(closedAfter.keys).filter(([key]) => key.startsWith('dsh.settings')),
+      }, closedAfter.dom.dialog === null ? 'PRESERVED (stays closed)' : 'LOST (surprise-reopened)')
+      check('a reload with the modal closed does not reopen it',
+        closedAfter.dom.dialog === null, JSON.stringify(closedAfter.dom.dialog))
+
+      // 7b. reopening after that reload lands on the section last seen.
+      await trigger.click()
+      await page.getByRole('dialog').waitFor({ timeout: 10_000 })
+      await page.waitForTimeout(300)
+      const reopened = await snapshot('settings-reopened')
+      record('settings modal (reopen lands on the last section, not the first row)', {
+        sectionBeforeClose: openOnSection.dom.dialog?.activeNav ?? null,
+      }, { sectionAfterReopen: reopened.dom.dialog?.activeNav ?? null },
+      JSON.stringify(reopened.dom.dialog?.activeNav) === JSON.stringify(openOnSection.dom.dialog?.activeNav)
+        && (openOnSection.dom.dialog?.activeNav ?? []).length > 0
+        ? 'PRESERVED' : 'LOST (reset to another section)')
+      await page.screenshot({ path: `${outDir}/06b-settings-reopened.png` })
+
+      // 7c. the Plugins section's tab bar: is there a tab control to persist?
+      const plugins = page.getByRole('button', { name: 'Plugins' })
+      const pluginsCount = await plugins.count()
+      if (pluginsCount === 1) {
+        await plugins.click()
+        await page.waitForTimeout(600)
+        const tabFacts = await page.evaluate(() => ({
+          tabs: [...document.querySelectorAll('[role="dialog"] [role="tab"]')].map(node => (node.textContent ?? '').trim()),
+          tablists: document.querySelectorAll('[role="dialog"] [role="tablist"]').length,
+          tabpanels: [...document.querySelectorAll('[role="dialog"] [role="tabpanel"]')].map(node => node.getAttribute('aria-labelledby')),
+        }))
+        record('settings plugins tab (settings.plugins.tab)', { ...tabFacts }, null,
+          tabFacts.tabs.length === 0
+            ? 'UNREACHABLE — no tab control exists to persist: exactly one package registers a settings.plugins.tab entry (ui-settings-plugin-inventory, id "all"), and PluginsSettingsSection renders a lone page bare with no tablist when rows.length === 1 (PluginsSettingsSection.tsx:44-64). A persisted tab id here would be a key for a control no reader can press.'
+            : `${tabFacts.tabs.length} tabs rendered`)
+        await page.screenshot({ path: `${outDir}/06c-settings-plugins.png` })
+      }
+      const closeAgain = page.getByRole('button', { name: 'Close', exact: true })
+      if (await closeAgain.count() === 1) await closeAgain.click()
+      await page.waitForTimeout(200)
+    }
   }
 }
 
@@ -467,14 +537,200 @@ if (channelRowCount === 1) {
 }
 
 // ── 10. tool-card / plan / goal / jobs / deliverables disclosure ───────────
-record('tool-card / plan / goal / jobs / deliverables disclosure',
-  { toolCards: 0, planCards: 0, goalBar: 0, jobsAction: 0, deliverables: 0 }, null,
-  'UNMEASURED: every one of those surfaces renders from a conversation event (a tool call, a plan, a goal snapshot, a job row, a produced file), and a keyless fixture conversation has none — no model is called, so no such event exists to expand or re-observe.')
+// The disclosure family, one verdict per surface. The plan strip is measured in
+// section 12 (seeded real host state); the rest are judged on whether this
+// deployment can render the control at all, which is the test that decides
+// whether persistence is owed to them.
+record('tool-card disclosure (ui-tool ToolRow)', { rendered: 0 }, null,
+  'REACHABLE in a conversation that holds a tool call; NOT PERSISTED — the expansion is `useState` in ui-tool/src/client/tool/components/ToolRow.tsx:149, a package outside this ticket\'s file scope. Flagged for the coordinator rather than silently dropped: it is the canonical case, and persisting it needs a ui-tool change (a session-scoped store read by ToolRow) following the same pattern as the plan strip.')
+record('goal bar disclosure (ui-goal GoalBar)', { rendered: 0 }, null,
+  'UNMEASURED and not persisted: renders only when the session holds a goal snapshot, and its local state is an edit form (`editing` / `draft` / `pending` at GoalBar.tsx:35-39), not a disclosure a reader would expect a reload to restore. A half-typed goal objective is not viewing state.')
+record('jobs popover (ui-jobs JobListAction)', { rendered: 0 }, null,
+  'UNMEASURED and not persisted: renders only when the session has a background job (JobListAction.tsx:118 returns null with no jobs), and its `open` flag is a transient popover — a reload reopening a job list the reader never asked for is a surprise, not a restoration.')
+record('deliverables list (ui-deliverables ProducedFiles)', { rendered: 0 }, null,
+  'UNMEASURED and not persisted: renders only when a turn produced files; its `shownCount` (ProducedFiles.tsx:79) is a Show-more cursor, not a preference — restoring a cursor into a list whose contents changed is arbitrary.')
+record('plan mode control (ui-plan PlanModeControl)', { rendered: 0 }, null,
+  'NOT PERSISTED: its local state is `leaving` (an in-flight transition) and `error` (a failure message) at PlanModeControl.tsx:21-22. Neither is a viewing position; persisting them would restore a stuck transition or a stale error banner.')
 
 // ── 11. composer blocks ────────────────────────────────────────────────────
 record('composer blocks (conversation input blockers)',
   { blocked: false }, null,
   'UNMEASURED / not user state: a block is transient derived state another plugin raises (ui-conversation/src/client/input/blocks.ts:68 createSnapshotStore with no persist), not a choice a person made. Measured observation: the composer was editable in every snapshot above, so no block was raised to re-observe.')
+
+// ── 12. conversation disclosure: the plan strip, per conversation ──────────
+// Measured in THIS context (same origin, same localStorage) against the two
+// sessions seeded at fixture start (seed-disclosure-sessions.mjs). The host
+// computes the `todos` projection from a real todo/write event in each log, so
+// this is the shipped render path over real host state — not the `?fixture`
+// wire client, whose composer is taken over by its resident pending question
+// and whose only plan strip is the hidden chain-overlay fallback.
+{
+  /** Point the app at one conversation through its own persisted selection key. */
+  const openSession = async (sessionId) => {
+    await page.evaluate((id) => {
+      localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId: id }))
+    }, sessionId)
+    await page.reload({ waitUntil: 'load' })
+    const notice = page.getByRole('button', { name: 'Continue' })
+    if (await notice.count() > 0) await notice.click()
+    await page.waitForTimeout(2000)
+  }
+  const stripState = async () => page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="todo-panel"]')
+    if (panel === null) return { rendered: false }
+    const header = panel.querySelector('button')
+    const box = panel.getBoundingClientRect()
+    const disclosure = Object.fromEntries(Object.entries(localStorage)
+      .filter(([key]) => key.startsWith('dsh.conversation.disclosure')))
+    return {
+      rendered: true,
+      visible: box.width > 0 && box.height > 0,
+      expanded: header?.getAttribute('aria-expanded') ?? null,
+      items: panel.querySelectorAll('li').length,
+      summary: (panel.textContent ?? '').trim(),
+      disclosure,
+    }
+  })
+
+  await openSession(SEEDED_SESSIONS.alpha)
+  const seeded = await stripState()
+  check('the seeded conversation renders a live plan strip', seeded.rendered === true)
+  check('the plan strip is visible, not a hidden overlay copy', seeded.visible === true)
+
+  if (seeded.rendered === true && seeded.visible === true) {
+    // 12a. the expansion itself.
+    await page.locator('[data-testid="todo-panel"] button').click()
+    await page.waitForTimeout(400)
+    const expanded = await stripState()
+    check('clicking the strip header expands it', expanded.expanded === 'true', expanded.expanded)
+    await page.screenshot({ path: `${outDir}/09-todo-expanded.png` })
+    await reload()
+    await page.waitForTimeout(2000)
+    const afterReload = await stripState()
+    record('plan strip / todo dock disclosure (per conversation)', {
+      expanded: expanded.expanded,
+      items: expanded.items,
+      disclosureKeys: expanded.disclosure,
+    }, {
+      expanded: afterReload.expanded,
+      items: afterReload.items,
+      disclosureKeys: afterReload.disclosure,
+    }, afterReload.expanded === 'true'
+      ? 'PRESERVED'
+      : `LOST (expanded ${String(expanded.expanded)} -> ${String(afterReload.expanded)} after the reload)`)
+    await page.screenshot({ path: `${outDir}/09b-todo-after-reload.png` })
+
+    // 12b. scoping: conversation beta has its own plan and its own flag.
+    await openSession(SEEDED_SESSIONS.beta)
+    const beta = await stripState()
+    check('the second seeded conversation renders its own plan strip', beta.rendered === true)
+    record('plan strip disclosure scoping (two conversations)', {
+      alphaExpanded: expanded.expanded,
+      alphaDisclosureKeys: expanded.disclosure,
+    }, {
+      betaExpanded: beta.expanded,
+      betaItems: beta.items,
+      betaSummary: beta.summary,
+      betaDisclosureKeys: beta.disclosure,
+    }, beta.rendered !== true
+      ? 'UNMEASURED: beta did not render a strip'
+      : beta.expanded === 'false'
+        ? 'PRESERVED (beta keeps its own collapsed state; alpha\'s expansion did not travel)'
+        : 'LEAKED (beta inherited another conversation\'s expansion)')
+
+    // 12c. the stale-key case: a stored value for a conversation that no longer
+    // exists must not be read by the conversation that IS open.
+    // Plant ONLY the orphan's key: alpha's own flag has to be absent, or the
+    // measurement cannot tell the two apart (a value read from alpha's own key
+    // is correct behaviour, not a leak).
+    await page.evaluate((orphanId) => {
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index)
+        if (key !== null && key.startsWith('dsh.conversation.disclosure')) localStorage.removeItem(key)
+      }
+      localStorage.setItem(`dsh.conversation.disclosure.${orphanId}`, JSON.stringify({ planCollapsed: false }))
+    }, SEEDED_SESSIONS.orphan)
+    await openSession(SEEDED_SESSIONS.alpha)
+    const orphanEffect = await stripState()
+    record('plan strip disclosure: stale key from a cleared conversation', {
+      orphanKeyStored: JSON.stringify({ planCollapsed: false }),
+      orphanSessionId: SEEDED_SESSIONS.orphan,
+    }, {
+      alphaExpanded: orphanEffect.expanded,
+      alphaDisclosureKeys: orphanEffect.disclosure,
+    }, orphanEffect.expanded === 'false'
+      ? 'NO LEAK (only a cleared conversation\'s key was stored; the open conversation still started collapsed)'
+      : 'LEAKED (a stale conversation value reached another conversation)')
+  }
+
+  // 12d. reasoning / context-injection / compaction row disclosures: the one
+  // class of disclosure this ticket refuses for a structural reason.
+  record('reasoning / context-injection / compaction row disclosure', { rendered: 0 }, null,
+    'NOT PERSISTED, by structure rather than by scope: these rows mount by transcript INDEX (ReasoningRow in AssistantMarkdown.tsx:66 is `key={i}`), so a persisted expansion stored against an index re-expands whichever row later occupies that slot — the wrong row after a compaction or a truncated replay. They stay component-local until a row carries a stable identity. The plan strip covers the same reader need with an identity that is stable by construction (one strip per conversation).')
+  record('queue dock disclosure (collapsed queue strip)', { rendered: false }, null,
+    'NOT PERSISTED: the strip renders nothing while the queue is empty (QueueDock.tsx:47), and reaching a queued item needs a running turn plus a submitted prompt. It is also not at-rest state in this deployment: with an empty queue there is no control to persist for.')
+
+  // 12e. effort: host-owned, so measure it where a model advertises levels.
+  // A separate context keeps this origin\'s storage clean; `?fixture` swaps in
+  // the shipped FixtureApiClient, whose catalog carries Off/High/Max.
+  {
+    const effortContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US' })
+    const effortPage = await effortContext.newPage()
+    await effortPage.goto(`${baseUrl}/?fixture`, { waitUntil: 'load' })
+    const notice = effortPage.getByRole('button', { name: 'Continue' })
+    if (await notice.count() > 0) await notice.click()
+    await effortPage.waitForTimeout(2500)
+    const trigger = effortPage.locator('[data-testid="agent-effort-trigger"]')
+    const triggerCount = await trigger.count()
+    if (triggerCount === 0) {
+      record('effort selection (reasoning effort)', { trigger: null }, null,
+        'UNMEASURED: no effort trigger rendered in this composition')
+    } else {
+      const beforeLabel = await trigger.first().getAttribute('aria-label')
+      await trigger.first().click()
+      await effortPage.waitForTimeout(600)
+      const slider = effortPage.locator('input[type="range"]')
+      const levelCount = await slider.count()
+      if (levelCount === 0) {
+        record('effort selection (reasoning effort)', { beforeLabel, levels: 0 }, null,
+          'UNMEASURED: the menu opened with no selectable level')
+      } else {
+        const selected = Number(await slider.inputValue())
+        const max = Number(await slider.getAttribute('max'))
+        const target = selected === max ? 0 : max
+        await slider.fill(String(target))
+        // The menu commits the slider position on Enter (ModelSelect's keyDown
+        // calls choose(preview.id)); Escape would discard it.
+        await effortPage.waitForTimeout(300)
+        await slider.press('Enter')
+        await effortPage.waitForTimeout(1200)
+        await effortPage.waitForTimeout(300)
+        const chosenLabel = await trigger.first().getAttribute('aria-label')
+        const effortKeys = await effortPage.evaluate(() => Object.keys(localStorage).filter(key => /effort/i.test(key)))
+        await effortPage.reload({ waitUntil: 'load' })
+        await effortPage.waitForTimeout(2500)
+        const reloadedLabel = await effortPage.locator('[data-testid="agent-effort-trigger"]').first().getAttribute('aria-label')
+        record('effort selection (reasoning effort)', {
+          beforeLabel, chosenLabel, levels: max + 1, clientKeysWritten: effortKeys,
+        }, { reloadedLabel }, effortKeys.length === 0
+          ? 'NOT CLIENT-OWNED, so not this ticket\'s to persist: the choice is submitted to the host '
+            + '(select({ provider, model, reasoningEffort }) in ui-model-selection ModelSelect.tsx:57-60) and '
+            + 'wrote no dsh.* key. It is a host-held per-session setting, not client state, so localStorage '
+            + 'persistence would be a second mechanism beside the host\'s own. Limit: this measurement runs '
+            + 'against the ?fixture in-memory host, which resets on reload, so the reloaded label here says '
+            + 'nothing about host durability in the deployment.'
+          : 'CLIENT-SIDE: a dsh.* key carries the effort, which would make it this ticket\'s to persist')
+        notes.push(`effort: ${beforeLabel} -> ${chosenLabel} -> ${reloadedLabel} after reload (fixture host is in-memory; reload resets it)`)
+      }
+    }
+    await effortPage.screenshot({ path: `${outDir}/10-effort.png` })
+    await effortContext.close()
+  }
+
+  // Leave the app on the inbox conversation the earlier sections measured.
+  await openSession(ALPHA_SESSION)
+}
+
 
 // ── final: the whole key set, and any stray session ────────────────────────
 const final = await snapshot('final')

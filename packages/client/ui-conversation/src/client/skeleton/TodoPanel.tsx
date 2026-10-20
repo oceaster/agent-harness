@@ -5,21 +5,30 @@
 // dock adapter does the selecting, so the panel takes the plain list and stays
 // framework-free. Visual: figma 772:51905 / 772:52972 / 772:53419.
 
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 // The domain's client-namespace pure-type outlet: one import edge delivers
 // the `todos` projection-key merge (single source, no consumer-side restated
 // declare) and the payload type. Type-only by construction — the outlet is
 // free of host value imports, so no host Context merge enters this program.
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo/client'
 import { IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { createConversationDisclosureStore, type ConversationDisclosureStoreHandle } from '../disclosure-store.ts'
 import { NS } from '../locales.ts'
 import css from './TodoPanel.module.css'
 
 export interface TodoPanelProps {
   /** The session's current plan (empty renders nothing) — selected by the dock adapter. */
   todos: readonly TodoItem[]
+  /**
+   * Whether the reader has this conversation's plan strip collapsed. Owned by
+   * the dock adapter's disclosure store (per conversation, persisted), so the
+   * panel stays presentational and cannot hold a second copy of the state.
+   */
+  collapsed: boolean
+  /** Flip the reader's collapsed choice; the dock adapter writes it to the store. */
+  onToggle: () => void
   /** The dock entry's locale seat, passed down as a plain prop. */
   t: TodoDockProps['t']
 }
@@ -92,8 +101,7 @@ function progressLabel(todos: readonly TodoItem[], t: TodoPanelProps['t']): stri
   ].join('\u2002·\u2002')
 }
 
-export function TodoPanel({ todos, t }: TodoPanelProps) {
-  const [collapsed, setCollapsed] = useState(true)
+export function TodoPanel({ todos, collapsed, onToggle, t }: TodoPanelProps) {
   if (todos.length === 0) return null
 
   return (
@@ -103,7 +111,7 @@ export function TodoPanel({ todos, t }: TodoPanelProps) {
           type="button"
           className={css.header}
           aria-expanded={!collapsed}
-          onClick={() => { setCollapsed(v => !v) }}
+          onClick={onToggle}
         >
           <span className={css.lead} aria-hidden><IconChecklistOutline14 /></span>
           <span className={css.title}>{t('todo.title')}</span>
@@ -128,12 +136,20 @@ export function TodoPanel({ todos, t }: TodoPanelProps) {
 }
 
 /** Full props of a dock entry: InputZone owner share + session standard kit + global seat + the locale seat. */
-export type TodoDockProps = PropsRuntime<'conversation.input.dock'> & PropsLocale<'conversation'>
+export type TodoDockProps =
+  PropsRuntime<'conversation.input.dock'>
+  & PropsLocale<'conversation'>
+  & PropsStore<ConversationDisclosureStoreHandle>
 
-/** Dock adapter: reads the host-computed 'todos' projection (whole list; absent or null renders nothing). */
-export function TodoDock({ useProjection, t }: TodoDockProps) {
+/**
+ * Dock adapter: reads the host-computed 'todos' projection (whole list; absent
+ * or null renders nothing) and the disclosure store's collapsed flag. The
+ * store is session-scoped, so the flag it reads is this conversation's own.
+ */
+export function TodoDock({ useProjection, useStore, actions, t }: TodoDockProps) {
   const todos = useProjection('todos')
-  return <TodoPanel todos={todos ?? []} t={t} />
+  const collapsed = useStore(state => state.planCollapsed)
+  return <TodoPanel todos={todos ?? []} collapsed={collapsed} onToggle={actions.togglePlan} t={t} />
 }
 
 /**
@@ -148,7 +164,15 @@ export const todoDockEntry = {
    * @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
    */
   apply(ctx: Context): void {
-    ctx.slots.inject('conversation.input.dock', () =>
-      ctx.slots.register({ name: 'conversation.input.dock', id: 'todo', order: 0, locale: NS }, TodoDock))
+    ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+      name: 'conversation.input.dock',
+      id: 'todo',
+      order: 0,
+      locale: NS,
+      // Exclusive store: the factory itself — the framework instantiates one
+      // per session scope, so the plan strip's collapsed flag persists under
+      // this conversation's own key and cannot be read by another.
+      store: createConversationDisclosureStore,
+    }, TodoDock))
   },
 }

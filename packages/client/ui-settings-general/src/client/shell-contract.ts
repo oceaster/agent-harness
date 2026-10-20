@@ -6,12 +6,15 @@
  * reference graph closes a cycle through ui-sidebar → ui-layout → ui-theme.
  * The settings SLOT types (what registrants contribute) stay in ui-settings.
  */
-import type { HostObservable, InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls ui-sidebar's SlotMap merge (the 'sidebar.settings' entry)
 // into every program that sees this contract.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the settings slot declarations the shell renders into.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only: the shell's own store (declared with the registration in index.ts).
+import type { EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsShellActions, SettingsShellState } from './settings-shell-store.ts'
 
 /** One nav row projected from a settings.section registration's options. */
 export interface SettingsSectionRow {
@@ -41,10 +44,18 @@ export type SettingsRootInjected = {
 }
 
 /**
+ * The shell's own store handle: `createSettingsShellStore`'s return type, so the
+ * props share below and the registration in index.ts cannot drift apart.
+ */
+export type SettingsShellStoreHandle =
+  EngineStoreHandle<SettingsShellState, SettingsShellActions>
+
+/**
  * Full component props of the settings shell root: the sidebar owner share
- * (wide/rail state) plus the declared render shares and the injected face
- * (hooks compartment bound to useSections). No store is registered — modal
- * open state and active section id are component-local viewing state.
+ * (wide/rail state), the declared render shares, the injected face (hooks
+ * compartment bound to useSections), and the registration's store seat —
+ * modal open state and the active section id live in that store so a reload
+ * restores the reader's position instead of dropping it.
  */
 export type SettingsRootComponentProps =
   PropsRuntime<'sidebar.settings'>
@@ -57,3 +68,4 @@ export type SettingsRootComponentProps =
     | 'settings.onboarding'
   >
   & InjectFace<SettingsRootInjected>
+  & PropsStore<SettingsShellStoreHandle>

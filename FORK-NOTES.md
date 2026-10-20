@@ -628,6 +628,75 @@ re-applied on every upstream pull:
    the `persist` block in `ui-layout/src/client/stores.ts`, and the persisted
    selection store plus `restorePersisted` in `ui-inbox/src/client/` (with the
    restore effect in its `index.ts` that is armed exactly once per load).
+16. **Persistence: settings shell + per-conversation disclosure**
+   (`ui-settings-general`, `ui-conversation`) — Owen's reload rule, the half
+   that owns the modal and disclosure. A reload must land the reader where they
+   were, and must not invent a position they were not in. This is the second
+   half of entry 15 — same contract, different packages — written in parallel
+   with it and kept beside it.
+
+   Two states moved out of component `useState` into the engine's existing
+   `persist` option — no second mechanism, no direct `localStorage` calls:
+
+   - **Settings shell** (`settings-shell-store.ts`, root scope, key
+     `dsh.settings.shell`): `{ open, sectionId }`. The `sidebar.settings`
+     registration now declares `store: createSettingsShellStore`, so the store
+     instance rides the standard props seat into `SettingsRoot`.
+   - **Plan strip disclosure** (`disclosure-store.ts`, session scope, key
+     `dsh.conversation.disclosure.<sessionId>`): `{ planCollapsed }`, declared on
+     the session-scoped `conversation.input.dock` entry. The engine suffixes the
+     session id, which is what scopes the flag per conversation — a stored value
+     for a conversation that no longer exists stays under its own key and is
+     unreadable by any other session.
+
+   Two decisions are about what a reload is allowed to do, and both are
+   deliberate:
+
+   - **Closed is a remembered value.** `close()` writes `open: false` rather
+     than clearing state, so a reload with the modal closed comes back closed
+     instead of surprise-reopening it.
+   - **`sectionId` survives `close()`.** The last section the reader looked at is
+     what a reopen returns to. Before this, closing cleared the active id and a
+     reopen silently reset to the first nav row — measured: reopen went from
+     `Learn More` to `General`.
+
+   `TodoPanel` became presentational (`collapsed` + `onToggle` props) so the flag
+   has exactly one owner; `TodoDock` reads and writes the store.
+
+   Deliberately NOT persisted, each for a measured reason rather than by
+   omission:
+
+   - **The Plugins tab id.** Exactly one package registers a
+     `settings.plugins.tab` entry (`ui-settings-plugin-inventory`, id `all`), and
+     `PluginsSettingsSection` renders a lone page bare with no tablist when
+     `rows.length === 1`. Measured in the browser: 0 `[role=tab]` and 0
+     `[role=tablist]` inside the settings dialog. A persisted tab id would be a
+     key for a control no reader can press.
+   - **Effort.** The selection is not client state: it is submitted to the host
+     (`select({ provider, model, reasoningEffort })`) and writes no `dsh.*` key —
+     measured. Persisting it in localStorage would add a second mechanism beside
+     the host's own record.
+   - **Tool-card, reasoning, context-injection, compaction disclosures.** The
+     tool card's expansion is `useState` in `ui-tool` (`ToolRow.tsx:149`), and
+     the chat rows mount by transcript index (`key={i}` in
+     `AssistantMarkdown.tsx:66`), so a persisted expansion would re-expand
+     whichever row later occupies that index. Component-local until a row
+     carries a stable identity.
+   - **Goal edit form, jobs popover, deliverables Show-more, plan-mode
+     transition/error.** Transient or non-viewing state; restoring any of them
+     would restore a stuck transition, a stale error, or an arbitrary cursor.
+
+   Re-apply on an upstream pull: `settings-shell-store.ts` + the `store:` line on
+   the `sidebar.settings` registration + `SettingsRoot`'s store reads,
+   `disclosure-store.ts` + the `store:` line on the `conversation.input.dock`
+   `todo` entry + `TodoPanel`/`TodoDock`. The browser evidence is
+   `packages/client/ui-inbox/tests/fixture/reload-probe.mjs` — the BEFORE/AFTER
+   of every surface above, with the plan strip measured on two conversations
+   seeded as real session logs by `seed-disclosure-sessions.mjs` (the keyless
+   fixture calls no model, so a plan has to come from a log; the `?fixture` wire
+   client cannot serve this case, its composer is taken over by a resident
+   pending question and its only plan strip is the hidden chain-overlay
+   fallback).
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.

@@ -25,6 +25,7 @@ import { GeneralSection } from './GeneralSection.tsx'
 import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
 import { SettingsDocumentStore } from './settings-document-store.ts'
+import { createSettingsShellStore } from './settings-shell-store.ts'
 import { en, zh, type SettingsKey } from './locales.ts'
 
 export type {
@@ -35,6 +36,8 @@ export type {
 } from './GeneralSection.tsx'
 export type { SettingsDocumentActionInjected, SettingsDocumentActionProps } from './SettingsDocumentAction.tsx'
 export type { SettingsDocumentState } from './settings-document-store.ts'
+export type { SettingsShellActions, SettingsShellState } from './settings-shell-store.ts'
+export { createSettingsShellStore } from './settings-shell-store.ts'
 export { SettingsDocumentStore } from './settings-document-store.ts'
 export type { SettingsKey } from './locales.ts'
 
@@ -146,6 +149,11 @@ export function apply(ctx: ClientContext): void {
       'settings.section': { kind: 'list', scope: 'root' },
       'settings.onboarding': { kind: 'list', scope: 'root' },
     },
+    // Exclusive store: the factory itself — the framework instantiates it for
+    // this root-scope entry and delivers useStore/actions to SettingsRoot as
+    // standard props. The shell's persisted state (open + last section) rides
+    // there so a reload restores the reader's position.
+    store: createSettingsShellStore,
     inject: shellInjected,
   }, SettingsRoot))
 

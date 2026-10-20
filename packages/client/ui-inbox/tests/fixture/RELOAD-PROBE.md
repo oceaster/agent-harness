@@ -165,3 +165,94 @@ question the ticket says not to decide here.
   for this spike (it is covered by `portrait-probe.mjs`).
 - Avatars and the brand asset were not stubbed and answered from the fixture host;
   nothing in the measured surfaces depends on them.
+
+## Second pass: the settings modal and disclosure persistence
+
+The rows above marked **UNMEASURED / a keyless conversation holds no event** stopped
+being unmeasurable once the fixture could be given events without a model call, so
+this pass measures them and records what was persisted.
+
+### Method change: seeded session logs instead of "no event exists"
+
+`seed-disclosure-sessions.mjs` writes two real session logs into the fixture's
+isolated `DSH_HOME` before the host starts (`DSH_FIXTURE_SEED=<script>`,
+`start-dsh-fixture.sh:25-27`), each carrying a `todo/write` event. The host parses
+them and computes the `todos` projection, so the plan strip renders through its
+normal path over **real host state** — not a stub.
+
+Two shapes had to be right, and the reader refused the log until both were:
+`user/message` requires an identified message (`role` + `id`, else "lacks an
+identified message"), and a surface-eligible event requires its `surfaceOp`
+marker (else "requires a surfaceOp marker"). The compressed-log format is one
+independently-compressed zstd frame per JSONL line, newline included — the reader
+rejects a log whose first frame is not exactly one header line.
+
+The `?fixture` wire client was tried first and rejected for this measurement: its
+`fx-alpha` session is `running` with a resident pending question, so the composer
+is taken over and the only plan strip in the DOM is the hidden
+`data-chain-overlay-fallback` copy (0×0, `display:none`). Measuring that would
+have been evidence about a node no reader can see.
+
+### Measured, before and after the change
+
+Raw evidence: `reload-proof.before.json` and `reload-proof.after.json` — two
+runs of the same probe and fixture method, before and after the change, frozen
+beside the probe.
+
+One honest difference between the two artifacts: the stale-key check in the
+BEFORE artifact was recorded by the looser version of that step, which left the
+open conversation's own stored flag in place. That could not skew its result —
+nothing was persisted at all in that build, so no key existed — but the AFTER
+artifact and the committed probe use the tightened step, which wipes every
+disclosure key and plants only the cleared conversation's. The two verdicts are
+worded differently for that reason; the measured values agree.
+
+| Surface | Before | After | Storage |
+| --- | --- | --- | --- |
+| Settings modal open + active section | **LOST** (`[role=dialog]` gone) | **PRESERVED** (`Learn More` still active) | `dsh.settings.shell` = `{"open":true,"sectionId":"learn"}` |
+| Settings modal, left **closed** | stays closed (nothing was stored) | **PRESERVED** — stays closed | `dsh.settings.shell` = `{"open":false,"sectionId":"learn"}` |
+| Reopen after a close | **LOST** — reset to `General` | **PRESERVED** — returns to `Learn More` | same key (the id survives `close()`) |
+| Plan strip (todo dock) disclosure | **LOST** (`expanded true` → `false`, 3 items → 0) | **PRESERVED** (still expanded, 3 items) | `dsh.conversation.disclosure.<sessionId>` |
+| Two conversations, own flags | n/a (nothing stored) | **PRESERVED** — beta stays collapsed while alpha is expanded | per-session suffix |
+| Stale key from a cleared conversation | n/a (nothing stored) | **NO LEAK** — only the orphan's key stored, the open conversation still starts collapsed | per-session suffix |
+| Settings plugins tab | **UNREACHABLE** — 0 `[role=tab]`, 0 `[role=tablist]` in the dialog | same | none, deliberately |
+| Effort selection | lives on the host (`select({provider, model, reasoningEffort})`), **no `dsh.*` key written** | same | none, deliberately |
+
+Mutation checks (each makes the assertion fail, then restored): removing
+`persist` from the disclosure store fails 3 of its 6 tests; removing it from the
+settings shell store fails 3 of its 8; making `close()` forget the section (the
+old behaviour) fails the reopen test in both the store and the component spec.
+
+### Why the plugins tab gets no key
+
+Exactly one package registers a `settings.plugins.tab` entry
+(`ui-settings-plugin-inventory`, id `all`), and `PluginsSettingsSection` renders a
+lone page **bare** — no tablist — when `rows.length === 1`
+(`PluginsSettingsSection.tsx:44-64`). Measured in the browser: no tab control
+inside the dialog at all. A persisted tab id would encode a setting for a control
+this deployment cannot show.
+
+### Why the remaining disclosures get no key
+
+- **Tool card** (`ui-tool/src/client/tool/components/ToolRow.tsx:149`) — reachable
+  in any conversation holding a tool call, but it is `useState` in a package
+  outside this change's file scope; flagged rather than silently dropped.
+- **Reasoning / context-injection / compaction rows** — mount by transcript
+  index (`key={i}`, `AssistantMarkdown.tsx:66`), so a persisted expansion would
+  re-expand whichever row later occupies that index.
+- **Goal edit form, jobs popover, deliverables Show-more, plan-mode
+  transition/error** — transient or non-viewing state; restoring them would
+  restore a stuck transition, a stale error banner or an arbitrary cursor.
+
+### Validation limits of this pass
+
+- The settings and disclosure rows are measured on the **keyless host**, one
+  viewport (1280×900), Chromium only. Portrait re-verification belongs to
+  `portrait-probe.mjs`.
+- Effort is measured against the `?fixture` in-memory host, which resets on
+  reload; the reload result there therefore says nothing about host durability.
+  What it does establish is the fact this ticket needed: the choice is written to
+  the host and no `dsh.*` key is involved.
+- The two seeded conversations are hand-written logs. They carry the shapes the
+  reader validates (and were refused until they did), but they are not output of
+  a real model turn.
