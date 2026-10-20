@@ -15,6 +15,7 @@ import type {
   RpcError, SessionId, SubagentAddress, ToolCallView, ToolResultView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { PendingInteraction } from './pending.ts'
+import type { SessionReaction } from './reaction-notes.ts'
 import type { ContextProvenanceView, KnownContextForm } from './context-provenance.ts'
 import type {
   ChatConversationViewNode, ConversationTimelineSnapshot, ConversationViewSnapshotStore,
@@ -448,6 +449,15 @@ export interface ConversationSnapshot {
   pending: readonly PendingInteraction[]
   /** Authoritative transient inbox snapshot, including queued and steering placements. */
   queue: readonly QueuedMessage[]
+  /**
+   * The reaction each in-window message currently carries, keyed by the seq of
+   * the message it targets: a fold of the log-only `reaction/note` events in
+   * log order, so the last note for a target wins and a `removed` note drops
+   * the entry. Read-only and log-sourced — nothing here is optimistic, and a
+   * reload or replay rebuilds the identical map. Notes themselves are never
+   * Chat Nodes, so they paint no transcript row.
+   */
+  reactions: ReadonlyMap<number, SessionReaction>
   running: boolean
   /**
    * Catalog-discovered continuation address. Its parent availability controls

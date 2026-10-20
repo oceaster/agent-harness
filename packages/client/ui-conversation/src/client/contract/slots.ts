@@ -7,8 +7,8 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   CommandNode, CompactionSummaryNode, ConversationSnapshot, ConversationTurnDataMap,
-  ObservableSnapshot, PendingInteraction, PendingWait, SessionId, ToolCallBlock,
-  TurnLocation,
+  ObservableSnapshot, PendingInteraction, PendingWait, SessionId, SessionReaction, SessionReactionAction,
+  ToolCallBlock, TurnLocation,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -112,7 +112,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       owner: ChatNodeOwnerProps
       keyProps: { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }
       hookContext: string
-      inject: ChatNodeTurnDataInjected
+      inject: ChatNodeInjected
     }
     /** Optional renderer for one consecutive group of durable message images. */
     'conversation.message.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
@@ -354,10 +354,37 @@ export type UseChatNodeTurnData = <Key extends Extract<keyof ConversationTurnDat
   key: Key,
 ) => Readonly<ConversationTurnDataMap[Key]> | undefined
 
-/** Slot-level Hook factory used by renderers reading their Node's Turn data. */
-export interface ChatNodeTurnDataInjected {
+/** One row's reaction state: what the log records, and the note writer. */
+export interface ChatNodeReaction {
+  /**
+   * The reaction the log currently records for this row's target message, or
+   * undefined when no note applies. Sized from the reaction notes the host
+   * already streams — never from something the click itself claimed.
+   */
+  readonly reaction: SessionReaction | undefined
+  /**
+   * Post one note for this row's target message: fire and forget, exactly as
+   * the owner specified. Nothing is rendered optimistically; the badge moves
+   * when the appended note comes back in the log.
+   * @param emoji - the glyph to record.
+   * @param action - the act to record (`added`, `changed`, or `removed`).
+   * @returns rejection carrying the host's refusal text when nothing was appended.
+   */
+  readonly react: (emoji: string, action: SessionReactionAction) => Promise<void>
+}
+
+/**
+ * Hook constrained to one Chat Node's target-message reaction state.
+ * A row that carries no reactable message passes `undefined` and gets an
+ * empty face (the React affordance then has nothing to write to).
+ */
+export type UseChatNodeReaction = (targetSeq: number | undefined) => ChatNodeReaction
+
+/** Slot-level Hook factories used by renderers reading their Node's Turn data and reaction. */
+export interface ChatNodeInjected {
   hooks: {
     turnData: SlotHookFactory<'conversation.chat.node', UseChatNodeTurnData>
+    reaction: SlotHookFactory<'conversation.chat.node', UseChatNodeReaction>
   }
 }
 

@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ViewTab } from './contract/views.ts'
 import type {
-  ApprovalWait, ChatNodeTurnDataInjected, ChatScrollPosition, ChatViewInjected, ComposerBarInjected,
+  ApprovalWait, ChatNodeInjected, ChatScrollPosition, ChatViewInjected, ComposerBarInjected,
   ComposerChainProps, ConversationInjected, ConversationSessionHeaderInjected, ConversationSessionInjected,
   DetailsInjected,
 } from './contract/slots.ts'
@@ -75,18 +75,16 @@ const ABSENT_MENU_LAUNCHER = {
   subscribe: () => () => {},
 }
 
-const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
-  hooks: {
-    turnData: ({ useSession }, nodeKey) => function useTurnData(key) {
-      return useSession((snapshot) => {
-        const location = snapshot.chat.nodes.get(nodeKey)?.location
-        return location?.kind === 'turn' || location?.kind === 'step'
-          ? location.turn.data.get(key)
-          : undefined
-      })
-    },
-  },
-}
+/** The Turn-data hook factory (node-key addressed; no session coupling). */
+const TURN_DATA_HOOK: ChatNodeInjected['hooks']['turnData'] = ({ useSession }, nodeKey) =>
+  function useTurnData(key) {
+    return useSession((snapshot) => {
+      const location = snapshot.chat.nodes.get(nodeKey)?.location
+      return location?.kind === 'turn' || location?.kind === 'step'
+        ? location.turn.data.get(key)
+        : undefined
+    })
+  }
 
 /** Resolve the session-scoped conversation face (scope-addressed send/cancel), failing loud. */
 function scopedConversation(sessions: ISessions, id: SessionId): IConversation {
@@ -133,6 +131,36 @@ export function apply(ctx: Context): void {
   const submissionPolicy = new ComposerSubmissionPolicy(
     ctx.settingsScope.bind<ConversationSettings>({ namespace: CONVERSATION_SETTINGS_NAMESPACE }),
   )
+
+  // Reaction state for one keyed Chat Node: the log's own fold for the badge,
+  // plus a fire-and-forget note writer. Nothing is held here — the fold lives
+  // in the session snapshot (`reactions`), so a reload paints the same badge
+  // and a click never claims a success the log has not recorded.
+  const reactionHook: ChatNodeInjected['hooks']['reaction'] = ({ useSession, sessionId }) =>
+    function useReaction(targetSeq) {
+      const reaction = useSession((snapshot) =>
+        targetSeq === undefined ? undefined : snapshot.reactions.get(targetSeq))
+      return {
+        reaction,
+        react: async (emoji, action) => {
+          if (targetSeq === undefined) {
+            throw new Error('ui-conversation: this row carries no reactable message')
+          }
+          const session = sessions.binding(sessionId)?.session
+          if (session === undefined) {
+            throw new Error(`ui-conversation: session "${sessionId}" resolved no binding`)
+          }
+          const result = await session.react({ targetSeq, emoji, action })
+          if (result.ok) return
+          // The host's own refusal text, never a claimed success.
+          throw new Error(result.error.message)
+        },
+      }
+    }
+
+  const chatNodeInject: ChatNodeInjected = {
+    hooks: { turnData: TURN_DATA_HOOK, reaction: reactionHook },
+  }
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -355,7 +383,7 @@ export function apply(ctx: Context): void {
     label: () => t('view.chat'),
     locale: NS,
     children: {
-      'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: CHAT_NODE_INJECT },
+      'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: chatNodeInject },
       'conversation.message.images': { kind: 'single', scope: 'session' },
     },
     store: chatStore,

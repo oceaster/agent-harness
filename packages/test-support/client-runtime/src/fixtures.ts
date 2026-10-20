@@ -57,6 +57,7 @@ export function conversationSnapshot(sessionId: SessionId): ConversationSnapshot
     runningCalls: [],
     pending: [],
     queue: [],
+    reactions: new Map(),
     running: false,
     subagent: null,
     composerPhase: 'active',

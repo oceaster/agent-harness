@@ -27,6 +27,8 @@ import { ProjectionValueStore } from './projection-store.ts'
 import type { ProjectionsBaseline } from './projection-store.ts'
 import { resolvedClientTimeZone } from '../time-zone.ts'
 import { SessionQueueMirror } from './queue-mirror.ts'
+import { SessionReactionNotes } from './reaction-notes.ts'
+import type { SessionReaction, SessionReactionAction } from './reaction-notes.ts'
 
 /** Messages requested per history page. */
 export const PAGE_MESSAGES = 50
@@ -83,6 +85,8 @@ export class Session implements SessionFace {
   private pendingCache: { rev: number; value: PendingInteraction[] } | null = null
   /** Authoritative stream-only inbox snapshot; pending work never hits history. */
   private readonly queueMirror = new SessionQueueMirror()
+  /** Log-derived badge map: the latest reaction note per target message seq. */
+  private readonly reactionNotes = new SessionReactionNotes()
   /** Session-owned business Context engine over the contiguous raw window. */
   private readonly conversation: ConversationNodeAssembler
   private running = false
@@ -346,6 +350,29 @@ export class Session implements SessionFace {
     try {
       const { result } = await this.api.sessions.rename({ sessionId: this.sessionId, title })
       if (result.ok) this.projections.apply('title', result.value.title, result.value.seq)
+      return result
+    } catch (error) {
+      return transportError(error)
+    }
+  }
+
+  /**
+   * Record one human reaction to a logged message: `session.react` 1:1, one
+   * log-only note and nothing else. Deliberately not optimistic — the badge is
+   * the log's own fold ({@link ConversationSnapshot.reactions}), so the caller
+   * renders nothing until the note streams back. The appended note's seq
+   * returns only so a caller can correlate the write with the push frame.
+   * @param request - target message seq, glyph, and the act to record.
+   * @returns the appended note's seq, or the business/transport error.
+   */
+  async react(request: {
+    targetSeq: number
+    emoji: string
+    action?: SessionReactionAction
+    actor?: string
+  }): Promise<RpcResult<{ seq: number }>> {
+    try {
+      const { result } = await this.api.sessions.react({ sessionId: this.sessionId, ...request })
       return result
     } catch (error) {
       return transportError(error)
@@ -661,6 +688,7 @@ export class Session implements SessionFace {
     this.hasMore = hasMore
     if (this.events.some(event => event.type === 'turn/start')) this.firstPromptPendingTurn = false
     this.conversation.replaceWindow(entries.map(conversationInput), hasMore)
+    this.reactionNotes.replace(this.events)
     if (projections !== undefined) this.projections.seed(projections)
     const buffered = this.liveBuffer
     this.liveBuffer = []
@@ -676,8 +704,9 @@ export class Session implements SessionFace {
     this.views.push(view)
     if (event.type === 'turn/start') this.firstPromptPendingTurn = false
     const queueChanged = this.queueMirror.acceptDurable(event)
+    const reactionChanged = this.reactionNotes.accept(event)
     const publication = this.conversation.append({ event, view })
-    return queueChanged ? 'immediate' : publication
+    return queueChanged || reactionChanged ? 'immediate' : publication
   }
 
   /** Land a live session/event (open/repair in flight -> buffer; overlapping seq -> drop;
@@ -749,6 +778,7 @@ export class Session implements SessionFace {
       runningCalls: legacy.runningCalls,
       pending: this.pendingCache.value,
       queue: this.queueMirror.snapshot(),
+      reactions: this.reactionNotes.snapshot(),
       running: this.running,
       subagent: this.address === undefined
         ? null

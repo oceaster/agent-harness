@@ -64,3 +64,31 @@
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
 }
+
+/* The reaction the log records for this message: chrome, not a transcript row. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 11px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Anchors the emoji table to the React button. */
+.reactionAnchor {
+  position: relative;
+  display: inline-flex;
+}
+
+/* An honest refusal: the write did not land, so nothing about the message changed. */
+.reactError {
+  max-width: 240px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-state-error-primary);
+}

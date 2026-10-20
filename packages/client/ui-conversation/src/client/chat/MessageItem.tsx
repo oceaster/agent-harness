@@ -1,6 +1,6 @@
 // MessageItem: simple chat nodes — user and consumed-steering bubbles
-// (right-aligned, with clock + copy IconActions; branch lives only under
-// assistant answers), pending steering (copy only), context injection,
+// (right-aligned, with clock + copy + react IconActions), pending steering
+// (copy only: it has no durable message to react to), context injection,
 // compaction marker, retry disclosure, and unknown-surface JSON rows.
 
 import { memo, useEffect, useMemo, useState } from 'react'
@@ -294,9 +294,11 @@ export function PendingSteeringBubble({ content, renderMessageImages, t }: {
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, t,
+  node, renderMessageImages, useReaction, t,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
+  // The bubble's own log seq is the message a reaction targets.
+  const reaction = useReaction(data.seq)
   return (
     <UserStyleBubble
       content={data.content}
@@ -308,6 +310,7 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           text={text}
           time={data.time}
           clock="start"
+          reaction={reaction}
           className={css.actions}
           t={t}
         />

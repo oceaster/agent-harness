@@ -10,14 +10,18 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, renderSlotChain, t,
+  node, openFile, renderSlotChain, useReaction, t,
 }: TurnTailNodeViewProps) {
   const data = node.data
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
     ? node.location.turn
     : undefined
-  if (turn === undefined) return null
   const closing = data.closing
+  // The closing Assistant's own log seq is the message a reaction targets; the
+  // tail row carries no message of its own, so a turn with no closing Assistant
+  // offers no React affordance.
+  const reaction = useReaction(closing?.finalNode.seq)
+  if (turn === undefined) return null
   const owner: TurnTailOwnerProps = { turn, seq: closing?.finalNode.seq ?? data.seq, openFile }
   const tail = renderSlotChain('conversation.chat.turnTail', owner)
   if (closing === null) return tail === null ? null : <div className={css.root}>{tail}</div>
@@ -34,6 +38,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         ttftMs={data.ttftMs}
         tokensPerSecond={data.tokensPerSecond}
         clock="end"
+        reaction={reaction}
         className={css.actions}
         t={t}
       />

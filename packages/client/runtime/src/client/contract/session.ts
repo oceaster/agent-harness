@@ -13,6 +13,7 @@ import type {
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConversationSnapshot } from '../sessions/conversation.ts'
+import type { SessionReactionAction } from '../sessions/reaction-notes.ts'
 import type { ObservableSnapshot } from './store.ts'
 
 /** Key-addressed projection read face (the useProjection resolution path; see ProjectionValueStore). */
@@ -71,6 +72,20 @@ export interface ISession {
    * @returns the normalized accepted title and its event seq, or the business error.
    */
   rename(title: string): Promise<RpcResult<{ title: string; seq: number }>>
+  /**
+   * Record one human reaction to a logged message (`session.react`): appends
+   * one log-only note and nothing else — no turn, no title, no transcript row.
+   * The badge is the log's own fold (see `ConversationSnapshot.reactions`), so
+   * a caller renders nothing until the note arrives on the stream.
+   * @param request - target message seq, the glyph, and the act to record.
+   * @returns the appended note's seq, or the business/transport error.
+   */
+  react(request: {
+    targetSeq: number
+    emoji: string
+    action?: SessionReactionAction
+    actor?: string
+  }): Promise<RpcResult<{ seq: number }>>
   /**
    * Extend the history window backwards (older messages pagination).
    * @returns completion; failures land in snapshot.openState/loadingOlder.
