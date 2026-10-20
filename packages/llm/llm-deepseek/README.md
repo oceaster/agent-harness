@@ -28,9 +28,10 @@ The package root exposes the Cordis plugin contract and `DeepSeekAdapter`; wire 
         maxDelayMs: 10000
         jitterRatio: 0.1
     defaultContextWindow: 1000000 # optional positive-integer fallback; this is the default
-    models:                  # optional; defaults to V4 Flash and V4 Pro
-      - id: deepseek-v4-flash
-        name: DeepSeek-V4-Flash
+    catalogRefreshMs: 900000 # optional; minimum interval between provider catalog refreshes; 0 disables
+    models:                  # optional; omission derives the catalog from the provider's own listing
+      - id: deepseek-flash
+        name: DeepSeek-V4.1-Flash
       - id: private-vision
         name: Private Vision
         inputModalities: [text, image]
@@ -39,7 +40,7 @@ The package root exposes the Cordis plugin contract and `DeepSeekAdapter`; wire 
         contextWindow: 512000
 ```
 
-The plugin registers the single provider route `deepseek-official` together with its resolved `retryPolicy`; omission resolves to normal mode with five retries. A request selects it with `provider: deepseek-official`; its `model` is passed through as the wire `model` string, so changing DeepSeek models does not require lifecycle-time registration. Omitting `models` advertises `deepseek-v4-flash` and `deepseek-v4-pro`, each with a 1,000,000-token context window; an explicit list replaces those defaults, while `models: []` advertises none. Vision models are not advertised by default until their endpoint rollout is complete, but a deployment can add one with `inputModalities: [text, image]`. Catalog entries are exposed through `ctx.llm.listModels('deepseek-official')` for clients such as ACP editors and the Web selector, but remain advisory: unlisted model ids still pass through unchanged. An omitted entry name defaults to its id, and omitted `inputModalities` means `text` only.
+The plugin registers the single provider route `deepseek-official` together with its resolved `retryPolicy`; omission resolves to normal mode with five retries. A request selects it with `provider: deepseek-official`; its `model` is passed through as the wire `model` string, so changing DeepSeek models does not require lifecycle-time registration. Omitting `models` advertises the built-in catalog — `deepseek-flash` (`DeepSeek-V4.1-Flash`, 1,048,576-token context, 393,216-token output cap, text and image input) and `deepseek-v4-pro` (`DeepSeek-V4-Pro`, the same capacities, text input only) — which the provider's own listing replaces while no list is pinned; see Provider catalog discovery below. An explicit list replaces the built-in one wholesale and stops discovery from running, while `models: []` advertises none. A deployment's own model adds its capabilities with `inputModalities: [text, image]`. Catalog entries are exposed through `ctx.llm.listModels('deepseek-official')` for clients such as ACP editors and the Web selector, but remain advisory: unlisted model ids still pass through unchanged. An omitted entry name defaults to its id, and omitted `inputModalities` means `text` only.
 
 An image-capable catalog entry may declare `inputModalities: [text, image]`. The adapter resolves user and tool-result `ImageBlock` references through `ctx.attachments`, verifies the stored bytes, and sends transient `data:<media-type>;base64,...` `image_url` parts without changing the durable session message. Text-only and unlisted models reject image input before credential, attachment, or network I/O. System and assistant history remain image-free; tool-result images follow their string-only `tool` messages in a separate `user` message.
 
@@ -54,6 +55,18 @@ The same exact-model result exposes ordered `off`, `low`, `high`, and `max` effo
 `thinking: disabled` is a deployment lock that publishes only `off` with `off` as its default. Omitting `reasoningEffort` or configuring it as `off` is valid; configuring `low`, `high`, or `max` fails plugin loading, and a direct per-request attempt to enable thinking fails before network I/O. A request with `GenerateOptions.purpose: 'session-title'` also forces thinking disabled and omits the already-resolved effort, reserving its bounded output for visible title text without changing conversation or compaction defaults.
 
 `streamIdleTimeoutMs` bounds each outstanding provider read, including the initial `fetch`, without counting time the consumer spends between chunks. DeepSeek SSE comments rearm an outstanding read as transport activity but never become `StreamChunk` values or session-log events. One stable abort signal reaches the request and body reader for the whole call; expiry stops the transport and throws `LlmError('TIMEOUT')`, while an earlier caller abort throws `LlmError('ABORTED')`. The adapter makes exactly one provider request per `stream()` call; it registers the configured policy as provider metadata, and `dsh-llm-retry` separately executes it at durable agent-step boundaries.
+
+## Provider catalog discovery
+
+The advisory catalog tracks the provider instead of a literal. `listModels` and `resolveModel` serve the catalog this route already holds and start a background refresh behind them, so a turn never waits for the network: the read that starts a refresh still answers from the cached catalog, and the refreshed result applies from the next read. A refresh is one `GET ${baseURL}/models` carrying this route's own bearer credential, bounded by a five-second budget and a 4 MiB reply ceiling. One runs at a time, and at most one is attempted per `catalogRefreshMs`.
+
+The refresh reads `id` plus `name`/`display_name`, `context_window`/`context_length`, `max_output_tokens`/`max_tokens`, and `input_modalities`. A row without a usable id is skipped rather than failing the refresh, a repeated id keeps its first position, and a withheld field keeps the value the built-in catalog already knew for that id: a listing that stops sending `input_modalities` must not silently turn image input off for `deepseek-flash`. An id the built-in catalog never described falls back per field to `defaultContextWindow`, `maxTokens`, and text-only input.
+
+Precedence is explicit. A `models` list pinned in the `llm-deepseek` settings section, or one that differs from the built-in catalog, wins wholesale and stops discovery from running at all; without one the last good provider listing serves; without one of those the built-in catalog serves. A missing credential, an unreachable endpoint, a gateway without the route (404), a refusal (401), a malformed or oversized reply, and a 200 that advertises no models all keep the last good catalog, are reported once rather than per read, and widen the wait before the next attempt — four doublings, so a listing route that stays broken costs a handful of requests a day instead of one per turn.
+
+Discovery moves the advisory catalog only. It decides which ids, display names, capacities, and modalities the route advertises, and it never re-points a configured selection: an id the listing does not advertise is reported once per process, naming the id and what the provider does advertise, and is still served unchanged — a gateway with a partial listing and a provider alias both remain servable.
+
+Configuration surfaces interrogate the same endpoint through `ctx.llm.registerModelDiscovery('llm-deepseek', ...)`. The Models page's fetch action asks the endpoint the draft names, with the one-shot key the form carries or else this route's stored key, honors caller cancellation, and stores nothing: a probe never changes what a turn serves.
 
 ## Dynamic configuration (settings + credentials)
 
@@ -119,6 +132,8 @@ Loop-retained response blocks append to the next request and preserve its earlie
 ## Known Limitations and Deferred Work
 
 - **A settings `models` list replaces the composition list wholesale** — settings-layer merging is per-field, and arrays are one field; per-entry catalog merging would need a keyed shape.
+- **The provider listing is the only discovery input** — a deployment's endpoint must answer `GET /models` in the OpenAI-compatible shape to contribute anything; an endpoint that answers with an empty `data` array keeps the catalog this route already serves rather than emptying it.
+- **A discovered entry inherits the built-in value of a field the listing withholds** — capacities and modalities follow the fallback described above, so a provider that never discloses a field cannot correct the built-in value for an id the built-in catalog already describes.
 - **`tool_choice` is not mapped** — not part of the core vocabulary (MVP cut, shared with the pi-ai twin).
 - **Requests use raw `fetch`, not `@cordisjs/plugin-http`** — no shared proxy/interception configuration; adoption is deferred until a second adapter wants it (`TODO(http)`).
 - **Plugin-added content block types are skipped** — core text and supported image blocks are serialized, and empty tool output crosses the wire as the literal `(no output)`.

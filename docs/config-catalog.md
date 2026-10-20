@@ -928,8 +928,17 @@ export interface Config {
   maxTokens?: number
   /** Positive context capacity used when the selected model has no exact value (default 1,000,000). */
   defaultContextWindow?: number
-  /** Advisory models shown by discovery consumers; defaults to V4 Flash and V4 Pro. */
+  /**
+   * Advisory models shown by discovery consumers; defaults to the built-in
+   * catalog, which the provider's own listing replaces while no list is pinned.
+   */
   models?: DeepSeekCatalogModel[]
+  /**
+   * Minimum interval between two background refreshes of the catalog from the
+   * provider's `GET /models` listing (default 15 minutes); `0` disables the
+   * refresh, and a configured `models` list disables it by definition.
+   */
+  catalogRefreshMs?: number
   /** Maximum provider idle time while one stream read is outstanding (default five minutes). */
   streamIdleTimeoutMs?: number
   /** Maximum accumulated base64 image payload per request (default 20 MiB). */
@@ -957,7 +966,7 @@ export interface DeepSeekCatalogModel {
 
 Depends on: [`ModelModality`](../packages/llm/llm/src/index.ts) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts)
 
-Source: [`packages/llm/llm-deepseek/src/index.ts:66`](../packages/llm/llm-deepseek/src/index.ts)
+Source: [`packages/llm/llm-deepseek/src/index.ts:73`](../packages/llm/llm-deepseek/src/index.ts)
 
 <a id="deepseek-aidsh-llm-pi-ai"></a>
 

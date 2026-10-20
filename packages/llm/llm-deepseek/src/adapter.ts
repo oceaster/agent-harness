@@ -68,6 +68,13 @@ export interface DeepSeekConnectionOptions {
   defaultContextWindow: number
   /** Advisory models exposed to discovery consumers; requests remain unrestricted. */
   models: readonly DeepSeekCatalogModel[]
+  /**
+   * Minimum interval between two background refreshes of {@link models} from the
+   * provider's listing, in milliseconds; `0` disables the refresh. The adapter
+   * never reads it — it rides with the generation so a settings change reaches
+   * the plugin's own refresh schedule.
+   */
+  catalogRefreshMs: number
   /** Maximum provider idle time while one stream read is outstanding. */
   streamIdleTimeoutMs: number
   /** Maximum accumulated base64 image payload in one request. */
@@ -91,6 +98,14 @@ export interface DeepSeekAdapterOptions {
   resolveUserId: () => AnonymousUserId
   /** Resolve the current durable attachment service; absence rejects image input. */
   resolveAttachments?: () => AttachmentStore | undefined
+  /**
+   * Observe one served catalog read: `model` names the id a
+   * {@link DeepSeekAdapter.resolveModel} call asked about, and is absent for a
+   * whole-catalog read. Never awaited and never allowed to change the reply; the
+   * plugin starts its background catalog refresh and reports advisory facts
+   * about the selection here.
+   */
+  observeCatalog?: (model?: string) => void
 }
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
@@ -182,7 +197,9 @@ export class DeepSeekAdapter extends LlmAdapter {
   }
 
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve(this.config.options().models.map(model => modelInfo(provider, model)))
+    const connection = this.config.options()
+    this.config.observeCatalog?.()
+    return Promise.resolve(connection.models.map(model => modelInfo(provider, model)))
   }
 
   override resolveModel(
@@ -191,6 +208,7 @@ export class DeepSeekAdapter extends LlmAdapter {
     _signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
     const connection = this.config.options()
+    this.config.observeCatalog?.(model)
     const configured = connection.models.find(entry => entry.id === model)
     const contextWindow = configured?.contextWindow
       ?? connection.defaultContextWindow

@@ -28,9 +28,10 @@ harness LLM（大语言模型）seam 的 DeepSeek chat-completions 适配器：�
         maxDelayMs: 10000
         jitterRatio: 0.1
     defaultContextWindow: 1000000 # optional positive-integer fallback; this is the default
-    models:                  # optional; defaults to V4 Flash and V4 Pro
-      - id: deepseek-v4-flash
-        name: DeepSeek-V4-Flash
+    catalogRefreshMs: 900000 # optional; minimum interval between provider catalog refreshes; 0 disables
+    models:                  # optional; omission derives the catalog from the provider's own listing
+      - id: deepseek-flash
+        name: DeepSeek-V4.1-Flash
       - id: private-vision
         name: Private Vision
         inputModalities: [text, image]
@@ -39,7 +40,7 @@ harness LLM（大语言模型）seam 的 DeepSeek chat-completions 适配器：�
         contextWindow: 512000
 ```
 
-该插件注册唯一提供方路由 `deepseek-official`，并一同注册解析后的 `retryPolicy`；省略时会解析为 normal 模式并重试五次。请求使用 `provider: deepseek-official` 选择该路由；其 `model` 会作为协议 `model` 字符串原样传递，因此更改 DeepSeek 模型不需要生命周期时注册。省略 `models` 会公布 `deepseek-v4-flash` 和 `deepseek-v4-pro`，两者的上下文窗口均为 1,000,000 token；显式列表会替换这些默认值，`models: []` 则不公布任何模型。在视觉模型端点完成发布前，默认目录不会公布视觉模型，但部署方可以通过 `inputModalities: [text, image]` 主动添加。Catalog 配置项通过 `ctx.llm.listModels('deepseek-official')` 公开给 ACP（Agent Client Protocol）编辑器和 Web 选择器等客户端，但仍只提供建议：未列出模型 id 仍原样传递。省略配置项 name 默认为其 id，省略 `inputModalities` 则表示仅支持 `text`。
+该插件注册唯一提供方路由 `deepseek-official`，并一同注册解析后的 `retryPolicy`；省略时会解析为 normal 模式并重试五次。请求使用 `provider: deepseek-official` 选择该路由；其 `model` 会作为协议 `model` 字符串原样传递，因此更改 DeepSeek 模型不需要生命周期时注册。省略 `models` 会公布内置目录——`deepseek-flash`（`DeepSeek-V4.1-Flash`，1,048,576 token 上下文、393,216 token 输出上限，支持文本与图片输入）和 `deepseek-v4-pro`（`DeepSeek-V4-Pro`，容量相同，仅支持文本输入）——在没有任何列表被钉死时，该目录会被提供方自己的列表替换；详见下文“提供方 catalog 发现”一节。显式列表会整体替换内置目录并停止发现，`models: []` 则不公布任何模型。部署方自己的模型通过 `inputModalities: [text, image]` 声明其能力。Catalog 配置项通过 `ctx.llm.listModels('deepseek-official')` 公开给 ACP（Agent Client Protocol）编辑器和 Web 选择器等客户端，但仍只提供建议：未列出模型 id 仍原样传递。省略配置项 name 默认为其 id，省略 `inputModalities` 则表示仅支持 `text`。
 
 支持图片的 catalog 配置项可以声明 `inputModalities: [text, image]`。适配器通过 `ctx.attachments` 解析 user 和工具结果中的 `ImageBlock` 引用，校验已存储字节，再发送瞬态 `data:<media-type>;base64,...` `image_url` 部分，不改变持久会话消息。纯文本模型与未列出模型会在凭据、附件或网络 I/O 前拒绝图片输入。System 和 assistant 历史仍不能包含图片；工具结果图片会在仅含字符串的 `tool` 消息后，通过单独的 `user` 消息发送。
 
@@ -54,6 +55,18 @@ harness LLM（大语言模型）seam 的 DeepSeek chat-completions 适配器：�
 `thinking: disabled` 是部署锁定：它只公布 `off`，并以 `off` 为默认值。省略 `reasoningEffort` 或将其配置为 `off` 均有效；配置 `low`、`high` 或 `max` 会使插件加载失败，直接按请求启用思考也会在网络 I/O 前失败。携带 `GenerateOptions.purpose: 'session-title'` 的请求也会强制禁用思考并省略已解析的推理强度，将有界输出保留给可见标题文本，不改变会话或压缩（compaction）默认值。
 
 `streamIdleTimeoutMs` 会限制每次未完成提供方读取，包括初始 `fetch`，但不计入消费方在分片间花费的时间。DeepSeek SSE 注释会作为传输活动使尚未完成的读取重新布防，但绝不会成为 `StreamChunk` 值或会话日志事件。同一个稳定的 abort 信号会在整个调用期间传递给请求与 body reader；过期会停止传输并抛出 `LlmError('TIMEOUT')`，较早的调用方 abort 则抛出 `LlmError('ABORTED')`。适配器每次 `stream()` 调用恰好发起一次提供方请求；它把已配置策略注册为提供方元数据，再由 `dsh-llm-retry` 在持久化的 agent（智能体）步骤边界单独执行该策略。
+
+## 提供方 catalog 发现
+
+建议 catalog 跟随提供方，而不是跟随某段字面量。`listModels` 与 `resolveModel` 从本路由当前持有的 catalog 作答，并在其后启动后台刷新，因此回合永远不会等待网络：启动刷新的那次读取仍以缓存 catalog 作答，刷新结果从下一次读取开始生效。一次刷新就是一条携带本路由自身 bearer 凭据的 `GET ${baseURL}/models`，受五秒预算与 4 MiB 应答上限约束。同一时刻只运行一次，且每个 `catalogRefreshMs` 最多尝试一次。
+
+刷新读取 `id` 以及 `name`/`display_name`、`context_window`/`context_length`、`max_output_tokens`/`max_tokens` 与 `input_modalities`。没有可用 id 的行会被跳过，而不是让整次刷新失败；重复的 id 保留首次出现的位置；提供方未披露的字段则保留内置目录已为该 id 已知的值：列表停止发送 `input_modalities` 时，绝不能悄然关闭 `deepseek-flash` 的图片输入。内置目录从未描述过的 id 按字段回退到 `defaultContextWindow`、`maxTokens` 与仅文本输入。
+
+优先级是显式的。在 `llm-deepseek` settings 段中钉死的 `models` 列表，或与内置目录不同的列表，整体胜出并完全停止发现；没有此类列表时，使用最近一次成功的提供方列表；连它也没有时，使用内置目录。缺少凭据、端点不可达、网关没有该路由（404）、拒绝（401）、应答格式错误或超出上限，以及返回 200 却未公布任何模型——这些情况都会保留最近一次成功的 catalog，只报告一次而不是每次读取都报告，并延长下一次尝试前的等待（四次倍增），因此长期损坏的列表路由一天只会花费少数几次请求，而不是每个回合一次。
+
+发现只移动建议 catalog。它决定本路由公布的 id、显示名、容量与模态，绝不会把已配置的选择改指向别处：列表中未公布的 id 每个进程只报告一次，报告会指明该 id 以及提供方实际公布的 id，而该选择仍原样提供——只提供部分列表的网关与提供方别名都仍然可用。
+
+配置界面通过 `ctx.llm.registerModelDiscovery('llm-deepseek', ...)` 查询同一端点。Models 页的抓取动作会询问草稿所指的端点，使用表单携带的一次性密钥，或本路由已存储的密钥，遵守调用方取消，且不存储任何内容：探测永远不会改变回合实际使用的目录。
 
 ## 动态配置（settings + credentials）
 
@@ -119,6 +132,8 @@ loop 保留的响应块会追加到下一个请求，并保留其较早可复用
 ## 已知限制与暂缓事项
 
 - **settings 的 `models` 列表会整体替换组合列表**：settings 层按字段合并，而数组是单个字段；按条目合并 catalog 需要带键的形状。
+- **提供方列表是唯一的发现输入**：部署的端点必须以 OpenAI 兼容形状应答 `GET /models` 才能有所贡献；返回空 `data` 数组的端点会保留本路由当前提供的 catalog，而不是把它清空。
+- **被发现的条目会继承列表未披露字段的内置值**：容量与模态按上文回退，因此从不披露某字段的提供方无法更正内置目录已描述的那个 id 的内置值。
 - **未映射 `tool_choice`**：它不属于核心词汇（MVP 取舍，与 pi-ai twin 共享）。
 - **请求使用原始 `fetch`，而非 `@cordisjs/plugin-http`**：没有共享 proxy／拦截配置；采用暂缓到第二个适配器需要该功能时（`TODO(http)`）。
 - **会跳过插件添加的内容块类型**：核心文本与支持的图片块会被序列化，空工具输出会以字面 `(no output)` 通过协议发送。

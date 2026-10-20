@@ -14,7 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { assertUsableApiKey, LlmError, resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
-import type { ModelModality, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
+import type { RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { deepEqualJson, installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -28,6 +28,14 @@ import {
   DeepSeekAdapter,
 } from './adapter.ts'
 import type { DeepSeekCatalogModel, DeepSeekConnectionOptions } from './adapter.ts'
+import {
+  DEFAULT_CATALOG_REFRESH_MS,
+  discoverModels,
+  MODEL_MODALITIES,
+  ProviderCatalog,
+  STATIC_CATALOG,
+} from './catalog.ts'
+import type { CatalogConnection } from './catalog.ts'
 
 export {
   DEFAULT_CONTEXT_WINDOW,
@@ -37,6 +45,7 @@ export {
   DeepSeekAdapter,
 } from './adapter.ts'
 export type { DeepSeekAdapterOptions, DeepSeekCatalogModel, DeepSeekConnectionOptions } from './adapter.ts'
+export { DEFAULT_CATALOG_REFRESH_MS, STATIC_CATALOG } from './catalog.ts'
 export type { RequestDefaults } from './serialize.ts'
 export type * from './types.ts'
 
@@ -47,28 +56,11 @@ const NS = settingsNamespace('llm-deepseek')
 const DEFAULT_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 /** The single provider route this plugin owns. */
 const PROVIDER = 'deepseek-official'
-
 /**
- * Advisory catalog for discovery consumers. V4.1 Flash carries `inputModalities`
- * because an omitted value defaults to `['text']`, which gates image input off.
+ * The built-in advisory catalog as the schema default. A copy, because the
+ * exported {@link STATIC_CATALOG} is read-only and a schema default is not.
  */
-const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
-  {
-    id: 'deepseek-flash',
-    name: 'DeepSeek-V4.1-Flash',
-    contextWindow: 1_048_576,
-    maxTokens: 393_216,
-    inputModalities: ['text', 'image'],
-  },
-  {
-    id: 'deepseek-v4-pro',
-    name: 'DeepSeek-V4-Pro',
-    contextWindow: 1_048_576,
-    maxTokens: 393_216,
-  },
-]
-
-const MODEL_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModality[]
+const DEFAULT_MODELS: DeepSeekCatalogModel[] = STATIC_CATALOG.map(model => ({ ...model }))
 
 /**
  * Plugin config, validated by the same-named schemastery schema and doubling
@@ -91,8 +83,17 @@ export interface Config {
   maxTokens?: number
   /** Positive context capacity used when the selected model has no exact value (default 1,000,000). */
   defaultContextWindow?: number
-  /** Advisory models shown by discovery consumers; defaults to V4 Flash and V4 Pro. */
+  /**
+   * Advisory models shown by discovery consumers; defaults to the built-in
+   * catalog, which the provider's own listing replaces while no list is pinned.
+   */
   models?: DeepSeekCatalogModel[]
+  /**
+   * Minimum interval between two background refreshes of the catalog from the
+   * provider's `GET /models` listing (default 15 minutes); `0` disables the
+   * refresh, and a configured `models` list disables it by definition.
+   */
+  catalogRefreshMs?: number
   /** Maximum provider idle time while one stream read is outstanding (default five minutes). */
   streamIdleTimeoutMs?: number
   /** Maximum accumulated base64 image payload per request (default 20 MiB). */
@@ -118,6 +119,7 @@ export const Config: z<Config> = z.object({
   maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_TOKENS),
   defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW),
   models: z.array(catalogModel).default(DEFAULT_MODELS),
+  catalogRefreshMs: z.number().step(1).min(0).max(MAX_TIMER_DELAY_MS).default(DEFAULT_CATALOG_REFRESH_MS),
   streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS),
   maxRequestImageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_REQUEST_IMAGE_BYTES),
   retryPolicy: RetryPolicySchema,
@@ -183,6 +185,21 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
 }
 
 /**
+ * Resolve the advisory-catalog refresh interval.
+ * @param value - configured interval in milliseconds, or `undefined` for the default.
+ * @returns the interval; `0` means discovery never runs.
+ */
+export function resolveCatalogRefreshMs(value: number | undefined): number {
+  const interval = value ?? DEFAULT_CATALOG_REFRESH_MS
+  if (!Number.isSafeInteger(interval) || interval < 0 || interval > MAX_TIMER_DELAY_MS) {
+    throw new Error(
+      `llm-deepseek: catalogRefreshMs must be a non-negative safe integer no greater than ${MAX_TIMER_DELAY_MS}`,
+    )
+  }
+  return interval
+}
+
+/**
  * The one explicit resolve step from raw config to validated connection
  * facts. Programmatic construction may bypass Schemastery normalization, so
  * every default and bound is re-judged here — for the composition entry at
@@ -232,6 +249,7 @@ export function resolveAdapterOptions(config: Config, environment?: LaunchEnviro
     maxTokens: config.maxTokens ?? DEFAULT_MAX_TOKENS,
     defaultContextWindow: config.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
     models: resolveModels(config.models),
+    catalogRefreshMs: resolveCatalogRefreshMs(config.catalogRefreshMs),
     streamIdleTimeoutMs,
     maxRequestImageBytes,
     retryPolicy: resolveRetryPolicy(config.retryPolicy, 'llm-deepseek: retryPolicy'),
@@ -242,7 +260,7 @@ export function apply(ctx: Context, config: Config): void {
   let current: () => Config = () => config
   let lastRaw: Config | undefined
   let lastGood: ResolvedDeepSeekOptions | undefined
-  const options = (): ResolvedDeepSeekOptions => {
+  const facts = (): ResolvedDeepSeekOptions => {
     const raw = current()
     if (raw === lastRaw && lastGood !== undefined) return lastGood
     try {
@@ -261,7 +279,7 @@ export function apply(ctx: Context, config: Config): void {
       return lastGood
     }
   }
-  options()
+  facts()
 
   const resolveApiKey = async (connection: ResolvedDeepSeekOptions): Promise<string> => {
     // Every credential fact comes from the caller's snapshot, so a rejected
@@ -286,6 +304,75 @@ export function apply(ctx: Context, config: Config): void {
     )
   }
 
+  /**
+   * The bearer token for one connection snapshot, or `undefined` when this route
+   * holds none. Discovery is advisory: browsing models before storing a key is
+   * the documented first-run state, and a probe of an endpoint that authenticates
+   * some other way may legitimately have no key at all. A malformed stored key
+   * still throws, because correcting it is actionable.
+   */
+  const discoveryApiKey = async (connection: CatalogConnection): Promise<string | undefined> => {
+    try {
+      return await resolveApiKey({ ...facts(), ...connection })
+    } catch (error: unknown) {
+      if (error instanceof LlmError && error.code === 'MISSING_CREDENTIAL') return undefined
+      throw error
+    }
+  }
+
+  const builtInModels = resolveModels(DEFAULT_MODELS)
+  let pinnedGeneration: ResolvedDeepSeekOptions | undefined
+  let pinnedModels: readonly DeepSeekCatalogModel[] | undefined
+  /**
+   * The operator's pinned catalog, or `undefined` when this route derives its
+   * own. The schema defaults `models`, so a list pinned to exactly the built-in
+   * catalog and no list at all resolve to the same value; the stored settings
+   * section is what separates them, and a pin equal to the built-in catalog only
+   * asks the provider to confirm the catalog it already advertises.
+   *
+   * Judged once per resolved generation rather than per read: a settings change
+   * produces a new generation, and re-reading every namespace descriptor on the
+   * request path would buy nothing.
+   */
+  const readPinnedModels = (): readonly DeepSeekCatalogModel[] | undefined => {
+    const resolved = facts()
+    if (resolved === pinnedGeneration) return pinnedModels
+    pinnedGeneration = resolved
+    const stored = ctx.get('settings')?.describe({ redactSecrets: true }).find(entry => entry.ns === NS)?.user
+    pinnedModels = typeof stored === 'object' && stored !== null && Object.hasOwn(stored, 'models')
+      ? resolved.models
+      : deepEqualJson(resolved.models, builtInModels) ? undefined : resolved.models
+    return pinnedModels
+  }
+
+  const catalog = new ProviderCatalog({
+    connection: facts,
+    resolveApiKey: discoveryApiKey,
+    pinned: readPinnedModels,
+    refreshIntervalMs: () => facts().catalogRefreshMs,
+    warn: (message) => {
+      ctx.logger.warn(message)
+    },
+  })
+
+  /** Connection facts of this generation plus the catalog it currently serves. */
+  const options = (): ResolvedDeepSeekOptions => ({ ...facts(), models: catalog.current() })
+  // Nothing has been discovered yet, and later settings generations give up what
+  // an earlier one discovered: the endpoint or the credential may have moved, so
+  // that catalog no longer describes this route. The pin decision is re-judged on
+  // the next read, and the stored section is one of the two inputs deciding it.
+  catalog.invalidate()
+  // A stored section can pin a list whose resolved value equals the built-in
+  // catalog, and `settings/updated` never fires for a value that did not move.
+  // The raw-document event is the one that knows a field went from inherited to
+  // overridden, which is exactly the difference between "derive from the
+  // provider" and "use the list this operator wrote".
+  ctx.on('settings/document-updated', (ns) => {
+    if (ns !== NS) return
+    pinnedGeneration = undefined
+    catalog.invalidate()
+  })
+
   let userId: AnonymousUserId | undefined
   const resolveUserId = (): AnonymousUserId => userId ??= getOrCreateAnonymousUserId()
   const adapter = new DeepSeekAdapter({
@@ -293,10 +380,24 @@ export function apply(ctx: Context, config: Config): void {
     resolveApiKey,
     resolveUserId,
     resolveAttachments: () => ctx.get('attachments'),
+    observeCatalog: (model) => {
+      // Both hooks are advisory and off the request path: the refresh settles in
+      // the background and applies from the next catalog read, and a selection
+      // the listing does not advertise is reported without being changed.
+      catalog.refresh()
+      if (model !== undefined) catalog.noteSelection(model)
+    },
   })
   ctx.llm.registerConfigurableProviders([
     { provider: PROVIDER, displayName: 'DeepSeek', settingsNs: NS, settingsPath: [] },
   ])
+  // A configuration surface interrogates the draft it is editing, with the
+  // one-shot credential that draft carries; nothing is stored and this route's
+  // refresh cache is untouched, so a probe cannot re-point what a turn serves.
+  ctx.llm.registerModelDiscovery(NS, request => discoverModels(request, {
+    connection: facts,
+    resolveApiKey: discoveryApiKey,
+  }))
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below.
   const registration = ctx.llm.registerAdapter([PROVIDER], adapter)
@@ -317,6 +418,11 @@ export function apply(ctx: Context, config: Config): void {
     setSource: (source) => {
       current = source
     },
-    onChange: ensureRegistrationFacts,
+    onChange: () => {
+      // A settings change may have moved the endpoint, its credential, or the
+      // pin; either way, what was discovered no longer describes this route.
+      catalog.invalidate()
+      ensureRegistrationFacts()
+    },
   })
 }

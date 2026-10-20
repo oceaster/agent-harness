@@ -163,6 +163,44 @@ describe('llm-deepseek real dynamic composition', () => {
     expect(second.headers[0]?.authorization).toBe('Bearer rotated-after-restart')
   })
 
+  it('serves the catalog its composed endpoint advertises without disturbing a chat request', async () => {
+    // The real Loader composition, not a hand-built context: the composed route
+    // starts on the built-in catalog, takes the endpoint's own listing from the
+    // next read, and still streams a scripted turn through the same adapter.
+    vi.stubEnv('DEEPSEEK_API_KEY', 'entry-key')
+    const listing = JSON.stringify({
+      object: 'list',
+      data: [
+        {
+          id: 'deepseek-flash',
+          name: 'DeepSeek-V4.1-Flash',
+          context_window: 1_048_576,
+          max_output_tokens: 393_216,
+          input_modalities: ['text', 'image'],
+        },
+        { id: 'gateway-extra', name: 'Gateway Extra' },
+      ],
+    })
+    const server = await mockServer([{ kind: 'sse', events: textEvents }], [{ kind: 'listing', body: listing }])
+    const { ctx } = await loadComposition({ withDynamic: false, baseURL: server.url })
+
+    expect((await ctx.llm.listModels('deepseek-official')).map(model => model.id))
+      .toEqual(['deepseek-flash', 'deepseek-v4-pro'])
+    await vi.waitFor(async () => {
+      expect((await ctx.llm.listModels('deepseek-official')).map(model => model.id))
+        .toEqual(['deepseek-flash', 'gateway-extra'])
+    }, { timeout: 5000 })
+    await expect(ctx.llm.resolveModelInfo('deepseek-official', 'gateway-extra')).resolves.toMatchObject({
+      name: 'Gateway Extra',
+      context: { contextWindow: 1_000_000 },
+    })
+
+    const result = await assemble(ctx, { model: 'deepseek-flash', messages: [] })
+    expect(result.finish).toMatchObject({ kind: 'stop' })
+    expect(server.requests).toHaveLength(1)
+    expect(server.listingRequests).toHaveLength(1)
+  })
+
   it('boots the same adapter on entry config alone, resolving the reference from the environment', async () => {
     // No settings and no credentials provider: configuration carries only the
     // reference, so the environment is the whole credential plane here.
