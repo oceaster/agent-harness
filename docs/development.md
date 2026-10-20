@@ -91,6 +91,18 @@ pnpm run build
 
 `pnpm run hygiene` includes `publint`, which validates package entrypoints against the built `lib/*.js` files, and `verify-node-next-types`, which validates built declarations against a temporary NodeNext consumer. A fresh worktree has no bundled JS or declarations until `pnpm run build` runs; ordinary commits and pushes do not require that build unless their selected checks consume it.
 
+### Building in a fresh worktree
+
+`pnpm run build` in the live checkout is the artifact of record and exits 0. A *fresh* worktree fails it for three environment reasons that look like product breakage and are not — three separate workers hit them and one concluded the fork could not build:
+
+- Per-package `node_modules` do not exist there. Hardlink the whole tree (`find . -name node_modules -prune` over `packages/`, `vendor/`, `apps/` and the repo root), not just the root, or `zod` and friends fail to resolve.
+- If you copy per-package `node_modules` by `mkdir -p` first, you resurrect `packages/client/ui-permission-presets`, a deleted package that keeps only a stale `node_modules/` in the live tree. tsdown then aborts with `Cannot find entry: [...] @deepseek-ai/dsh-root` — delete that directory and the build succeeds.
+- The root project's entries come from the host face, so run `pnpm run build:lib:host` before anything that typechecks or bundles the root project; a worktree that has never built lacks them.
+
+### Host sandbox failures
+
+When required `gh`, `pnpm`, build, test, or generator commands fail because the agent sandbox blocks credentials, network, IPC, file watching, or nested `sandbox-exec`, retry unchanged with the narrowest host escalation before diagnosing authentication or project failure. Require sandbox evidence; never bypass genuine test failures or the product sandbox under test.
+
 ### Environment variables
 
 The real DeepSeek adapter and key-backed agent demos read credentials from the environment or from a gitignored `.env` at the repo root:

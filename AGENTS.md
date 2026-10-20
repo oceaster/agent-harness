@@ -80,28 +80,9 @@ pnpm run demo:cordis    # the agent modifies its own runtime (needs key)
 pnpm run demo:acp       # ACP automation server (needs DEEPSEEK_API_KEY)
 ```
 
-### Host sandbox failures
-
-When required `gh`, `pnpm`, build, test, or generator commands fail because the agent sandbox blocks credentials, network, IPC, file watching, or nested `sandbox-exec`, retry unchanged with the narrowest host escalation before diagnosing authentication or project failure. Require sandbox evidence; never bypass genuine test failures or the product sandbox under test.
-
 ### Building in a fresh worktree
 
-`pnpm run build` in the live checkout is the artifact of record and exits 0. A
-*fresh* worktree fails it for two environment reasons that look like product
-breakage and are not — three separate workers hit both and one concluded the
-fork could not build:
-
-- Per-package `node_modules` do not exist there. Hardlink the whole tree
-  (`find . -name node_modules -prune` over `packages/`, `vendor/`, `apps/` and
-  the repo root), not just the root, or `zod` and friends fail to resolve.
-- If you copy per-package `node_modules` by `mkdir -p` first, you resurrect
-  `packages/client/ui-permission-presets`, a deleted package that keeps only a
-  stale `node_modules/` in the live tree. tsdown then aborts with
-  `Cannot find entry: [...] @deepseek-ai/dsh-root` — delete that directory and
-  the build succeeds.
-- The root project's entries come from the host face, so run
-  `pnpm run build:lib:host` before anything that typechecks or bundles the root
-  project; a worktree that has never built lacks them.
+A fresh worktree's first build fails on environment gaps that look like product breakage. [development.md](docs/development.md#building-in-a-fresh-worktree) owns the three traps and their fixes.
 
 ### Run relevant checks locally
 
@@ -110,6 +91,7 @@ Run checks before pushes via [dsh-pre-push-checks](.agents/skills/dsh-pre-push-c
 - Match evidence to the surface: focused tests for behavior, snapshots for model or user output, `doc-sync` for docs, build/hygiene and built smokes for published paths, and real-API e2e for provider behavior.
 - Never default to the full suite or repeat a passing check for commit or push. CI owns exhaustive coverage and the platform matrix; rehearse all locally only by explicit request, for CI diagnosis, or for an irreducibly repository-wide change.
 - `test:coverage`, not `test`, is the CI coverage gate ([why](docs/testing.md)).
+- When the sandbox itself blocks a required command, retry unchanged with the narrowest host escalation before diagnosing ([rule](docs/development.md#host-sandbox-failures)).
 
 ## Secrets / .env
 

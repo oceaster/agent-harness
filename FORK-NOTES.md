@@ -1076,6 +1076,20 @@ re-applied on every upstream pull:
      (`ui-inbox` disabled, `ui-workspace` enabled); the committed aria goldens
      under `apps/web/tests/snapshots/` still name the two removed controls and
      cannot be re-recorded until that composition question is answered.
+23. **Locale dictionary parity floor follows the fork's shipped corpus**
+   (`scripts/locale-dictionary-parity.spec.ts`) — upstream asserts
+   `comparedPairs > 25`, a discovery floor rather than a key-parity rule; key
+   parity is the separate `problems` assertion, which stays empty. Five
+   zh/en pairs left this fork with their UI and their namespaces:
+   `ui-settings-learn`, `ui-settings-plugins`, `ui-settings-plugin-inventory`
+   and `ui-message-feedback` (each deleted whole), and
+   `packages/client/locale/src/locales/settings.ts`, the `settings.locale`
+   `language.title` pair that left with the settings Language row
+   (`1698de83a4`). The shipped count went 30 → 25, so the constant is now a
+   documented `SHIPPED_PAIR_FLOOR = 25` compared with `toBeGreaterThanOrEqual`
+   — zero slack, and every discovered pair is verified key-symmetric in both
+   directions. Re-apply after an upstream pull, which will restore the larger
+   corpus and the stricter comparison.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.

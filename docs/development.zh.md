@@ -91,6 +91,18 @@ pnpm run build
 
 `pnpm run hygiene` 包含 `publint`（用构建出的 `lib/*.js` 文件校验包入口点）和 `verify-node-next-types`（用一个临时的 NodeNext 消费方校验构建出的声明文件）。新 worktree 在 `pnpm run build` 运行之前没有打包的 JS 和声明文件；普通提交和推送无需构建，除非所选检查会使用这些产物。
 
+### 在全新 worktree 中构建
+
+线上 checkout 中的 `pnpm run build` 是权威产物并且退出码为 0。*全新* worktree 上它会因为三个环境原因失败，而这些原因看起来像产品损坏，实际并非如此 —— 三个不同的 worker 都遇到过，其中一个还据此断定本 fork 无法构建：
+
+- 那里不存在各包自己的 `node_modules`。要整树硬链接（对 `packages/`、`vendor/`、`apps/` 和仓库根目录执行 `find . -name node_modules -prune`），而不是只链接根目录，否则 `zod` 之类的依赖无法解析。
+- 如果先 `mkdir -p` 再复制各包的 `node_modules`，你会复活 `packages/client/ui-permission-presets`——一个已删除的包，它只在线上树里留着一份过期的 `node_modules/`。tsdown 随后会以 `Cannot find entry: [...] @deepseek-ai/dsh-root` 中止；删除该目录后构建即可成功。
+- 根 project 的入口来自 host face，因此在任何会做类型检查或打包根 project 的操作之前先运行 `pnpm run build:lib:host`；从未构建过的 worktree 缺少这些入口。
+
+### 宿主机沙箱失败
+
+当必需的 `gh`、`pnpm`、构建、测试或生成器命令失败的原因是 agent 沙箱屏蔽了凭证、网络、IPC、文件监视或嵌套的 `sandbox-exec` 时，请以最窄的宿主机提权原样重试，然后再诊断认证或项目失败。要求提供沙箱证据；绝不绕过真实的测试失败，也不绕过被测的产品沙箱。
+
 ### 环境变量
 
 真实的 DeepSeek 适配器和需要密钥的 agent 演示从环境变量或仓库根目录一个被 gitignore 的 `.env` 文件读取凭证：
