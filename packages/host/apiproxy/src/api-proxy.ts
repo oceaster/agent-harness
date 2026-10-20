@@ -9,7 +9,7 @@ import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection, resolveAgentDefaultModel } from '@deepseek-ai/dsh-agent'
-import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
 import { AttachmentError, admitEncodedImages } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -1070,6 +1070,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   const presetSwitches = new Map<SessionId, Promise<unknown>>()
   /** Client-chosen identity creation/resume, deduplicated across concurrent retries. */
   const sessionCreations = new Map<SessionId, Promise<Agent>>()
+  /**
+   * Agent lifecycles this gateway created (`session.create`, `session.fork`),
+   * keyed by session id. `session.destroy` disposes only through a handle it
+   * holds: an Agent created elsewhere has an owner with its own teardown, and
+   * releasing it from here would be a second authority over one lifecycle.
+   */
+  const ownedAgentHandles = new Map<SessionId, AgentHandle>()
   /** Serializes path ownership and explicit title checks with Workspace mutations. */
   let workspaceCreationChain = Promise.resolve()
   const pendingQuestions = new Map<RpcId, PendingQuestion>()
@@ -1209,11 +1216,101 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   // composition, and the header is written once at creation. Reading the
   // header here would silently undo the switch on the next restart and
   // restore that history under the old tool set.
-  const agentFor = createApiRemoteAgentResolver(ctx, {
+  const { agentFor, release: releaseResumedAgent } = createApiRemoteAgentResolver(ctx, {
     agentOptions,
     setup: async ({ meta, events }) =>
       (await composeAgent(resolveSessionPreset({ header: meta, events }))).setup,
   })
+
+  /** Remember one Agent lifecycle this gateway created. */
+  function rememberOwnedAgent(handle: AgentHandle): Agent {
+    ownedAgentHandles.set(handle.agent.id, handle)
+    return handle.agent
+  }
+
+  /**
+   * Dispose the Agent lifecycle this gateway owns for `id`, whether it created
+   * the Agent directly or through the shared resolver.
+   * @param id - the live session identity to release.
+   * @returns whether this gateway owned and released a live lifecycle.
+   */
+  async function releaseOwnedAgent(id: SessionId): Promise<boolean> {
+    const handle = ownedAgentHandles.get(id)
+    if (handle === undefined) return releaseResumedAgent(id)
+    ownedAgentHandles.delete(id)
+    // A handle whose Agent already left the registry is stale: it names a
+    // lifecycle that ended, not the one a caller can see now.
+    if (ctx.agents.get(id) !== handle.agent) return false
+    await handle.dispose()
+    return true
+  }
+
+  /**
+   * Every subagent descendant of one session, nearest first, read from durable
+   * lineage merged with the live registries.
+   *
+   * A session-backed subagent belongs to the conversation that started it, so
+   * destroying the parent destroys the child with it; an ordinary fork is not a
+   * descendant here, because `parentSession` on a fork is coarse provenance and
+   * the fork is its own conversation. Lineage cycles (a malformed log) terminate
+   * because a visited id is never expanded twice.
+   * @param rootSessionId - the session being destroyed.
+   * @returns the descendant ids to destroy with it, nearest first.
+   */
+  async function subagentDescendants(rootSessionId: SessionId): Promise<SessionId[]> {
+    const parentOf = new Map<SessionId, SessionId | undefined>()
+    const subagentIds = new Set<SessionId>()
+    const absorb = (header: SessionHeader): void => {
+      parentOf.set(header.id, header.parentSession)
+      if (header.origin === 'subagent') subagentIds.add(header.id)
+    }
+    for (const session of ctx.sessions.list()) absorb(session.header)
+    const persistence = ctx.get('sessionPersistence')
+    if (persistence !== undefined) {
+      for (const header of await persistence.list()) absorb(header)
+    }
+    const reached = new Set<SessionId>([rootSessionId])
+    const descendants: SessionId[] = []
+    for (;;) {
+      const next: SessionId[] = []
+      for (const [id, parentId] of parentOf) {
+        if (parentId === undefined || reached.has(id)) continue
+        if (parentId !== rootSessionId && !reached.has(parentId)) continue
+        if (!subagentIds.has(id)) continue
+        reached.add(id)
+        next.push(id)
+      }
+      if (next.length === 0) return descendants
+      descendants.push(...next)
+    }
+  }
+
+  /**
+   * Drop the records that described a session whose stored log is now deleted:
+   * its persisted projection checkpoint and its workspace accounting. Runs
+   * AFTER the log deletion, so a failure here is reported but never withholds
+   * the destruction — neither record can resurrect the id, since the projection
+   * row is bound to the log identity it was written for and the workspace
+   * registry rebuilds its index from persistence on the next boot.
+   * @param ids - the destroyed session ids, parents and descendants.
+   */
+  async function dropDerivedSessionState(ids: readonly SessionId[]): Promise<void> {
+    const cache = ctx.get('sessionProjectionCache')
+    for (const id of ids) {
+      if (cache !== undefined) {
+        try {
+          await cache.destroy(id)
+        } catch (error: unknown) {
+          ctx.logger.warn(`api-proxy: session "${id}" is destroyed but its projection cache row survived: ${String(error)}`)
+        }
+      }
+      try {
+        await ctx.workspaceRegistry.forgetSession(id)
+      } catch (error: unknown) {
+        ctx.logger.warn(`api-proxy: session "${id}" is destroyed but its workspace accounting survived: ${String(error)}`)
+      }
+    }
+  }
 
   /** Send one transient frame to every connected mux consumer. */
   function broadcast(payload: MuxFrame): void {
@@ -1599,11 +1696,11 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           // session's history was produced under that composition, and
           // rebuilding it differently would replay tool calls the model can no
           // longer make.
-          return (await ctx.agents.resume({
+          return rememberOwnedAgent(await ctx.agents.resume({
             resumeSessionId: sessionId,
             agentOptions: agentOptions(),
             setup: (await composeAgent(storedPreset)).setup,
-          })).agent
+          }))
         }
 
         try {
@@ -1612,7 +1709,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
         }
         const composition = await composeAgent(presetId)
-        return (await ctx.agents.create({
+        return rememberOwnedAgent(await ctx.agents.create({
           sessionId,
           agentOptions: agentOptions(),
           meta: {
@@ -1620,7 +1717,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             ...composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset },
           },
           setup: composition.setup,
-        })).agent
+        }))
       })().catch((error: unknown) => {
         // Another Host entry path may have published the same identity while
         // this operation crossed an asynchronous persistence/filesystem step.
@@ -2336,7 +2433,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         // plane, composing nothing would leave the child with no tools at all.
         const forkComposition = await composeAgent(resolveSessionPreset(source))
         try {
-          await ctx.agents.create({
+          rememberOwnedAgent(await ctx.agents.create({
             sessionId: childId,
             seed: events.slice(0, cut),
             meta: {
@@ -2349,7 +2446,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             },
             agentOptions: agentOptions(),
             setup: forkComposition.setup,
-          })
+          }))
         } catch (error: unknown) {
           return err(request, {
             code: 'internal',
@@ -2546,6 +2643,105 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
         agent.cancel({ kind: 'user' }, { keepInbox: true })
         return Promise.resolve(ok(request, { accepted: true as const }))
+      },
+
+      async destroy(request) {
+        const { sessionId } = request.payload
+        const persistence = ctx.get('sessionPersistence')
+        if (persistence === undefined) {
+          return err(request, {
+            code: 'internal',
+            message: 'cannot destroy a session: this deployment mounts no session persistence backend',
+            details: {},
+          })
+        }
+        if (!persistence.supportsDestroy) {
+          return err(request, {
+            code: 'internal',
+            message: `cannot destroy a session: the composed persistence backend ("${persistence.name}") cannot delete stored sessions`,
+            details: {},
+          })
+        }
+        const attached = ctx.sessions.get(sessionId)
+        const live = ctx.agents.get(sessionId)
+        if (attached !== undefined && hasSubagentOwner(attached, live)) {
+          return err(request, subagentOwnershipError(sessionId))
+        }
+        // Existence is proven by a live lifecycle OR a stored log: a blank
+        // session that never appended has no log yet, and an unknown id must
+        // not be reported as destroyed.
+        const stored = (await persistence.list()).some(header => header.id === sessionId)
+        if (attached === undefined && live === undefined && !stored) {
+          return err(request, {
+            code: 'session-not-found',
+            message: `session "${sessionId}" not found`,
+            details: { sessionId },
+          })
+        }
+        const descendants = await subagentDescendants(sessionId)
+        // Parents first for cancellation, children first for release, so no
+        // teardown ever outlives the conversation that owns it.
+        const targets = [sessionId, ...descendants]
+        const liveTargets = targets
+          .map(id => ctx.agents.get(id))
+          .filter((agent): agent is Agent => agent !== undefined)
+        for (const target of liveTargets) target.cancel({ kind: 'user' })
+        for (const target of liveTargets) await target.whenIdle()
+        // Continuable subagents are Activations, not turn work: they outlive the
+        // turn that started them, so their forest is drained explicitly rather
+        // than left holding a runtime whose parent is going away.
+        if (live !== undefined) {
+          try {
+            await ctx.get('subagents')?.drainContinuableDescendants([live])
+          } catch (error: unknown) {
+            ctx.logger.warn(`api-proxy: continuable subagent teardown for "${sessionId}" failed: ${String(error)}`)
+          }
+        }
+        for (const id of [...targets].reverse()) {
+          if (ctx.agents.get(id) === undefined) continue
+          let released: boolean
+          try {
+            released = await releaseOwnedAgent(id)
+          } catch (error: unknown) {
+            return err(request, {
+              code: 'internal',
+              message: `cannot destroy session "${sessionId}": disposing "${id}" failed: ${String(error)}`,
+              details: {},
+            })
+          }
+          if (!released) {
+            return err(request, {
+              code: 'internal',
+              message: `cannot destroy session "${sessionId}": "${id}" is live but its lifecycle belongs to another owner in this process, so this host cannot dispose it`,
+              details: {},
+            })
+          }
+        }
+        for (const id of targets) {
+          if (ctx.sessions.get(id) !== undefined) {
+            return err(request, {
+              code: 'internal',
+              message: `cannot destroy session "${sessionId}": "${id}" is still attached after teardown`,
+              details: {},
+            })
+          }
+        }
+        // The log deletion is the commit point: below it, a destroyed
+        // conversation is one whose stored log is gone, and nothing above
+        // reports success.
+        for (const id of targets) {
+          try {
+            await persistence.destroy(id)
+          } catch (error: unknown) {
+            return err(request, {
+              code: 'internal',
+              message: `cannot destroy session "${sessionId}": deleting the stored log of "${id}" failed: ${String(error)}`,
+              details: {},
+            })
+          }
+        }
+        await dropDerivedSessionState(targets)
+        return ok(request, { sessionId, descendants })
       },
     },
 

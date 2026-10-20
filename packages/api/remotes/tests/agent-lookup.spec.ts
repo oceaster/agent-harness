@@ -48,7 +48,7 @@ describe('API Remote Agent resolver races', () => {
       events: [],
     }))
 
-    const result = await createApiRemoteAgentResolver(ctx, {})(sessionId)
+    const result = await createApiRemoteAgentResolver(ctx, {}).agentFor(sessionId)
 
     expect(result).toMatchObject({ error: { code: 'session-not-found', details: { sessionId } } })
     await ctx.fiber.dispose()
@@ -68,7 +68,7 @@ describe('API Remote Agent resolver races', () => {
       return { agent: stubAgent(ctx, published), dispose: () => Promise.resolve() }
     })
 
-    const result = await createApiRemoteAgentResolver(ctx, {})(sessionId)
+    const result = await createApiRemoteAgentResolver(ctx, {}).agentFor(sessionId)
 
     expect(result).toMatchObject({ agent: { id: sessionId } })
     expect(resume).toHaveBeenCalledWith({ resumeSessionId: sessionId })
@@ -85,7 +85,7 @@ describe('API Remote Agent resolver races', () => {
     })
     const resume = vi.spyOn(ctx.agents, 'resume')
 
-    const result = await createApiRemoteAgentResolver(ctx, {})(sessionId)
+    const result = await createApiRemoteAgentResolver(ctx, {}).agentFor(sessionId)
 
     expect(result).toMatchObject({ error: { code: 'agent-busy' } })
     expect(resume).not.toHaveBeenCalled()
@@ -104,7 +104,7 @@ describe('API Remote Agent resolver races', () => {
         throw new Error('session id already published')
       })
 
-      const result = await createApiRemoteAgentResolver(ctx, {})(sessionId)
+      const result = await createApiRemoteAgentResolver(ctx, {}).agentFor(sessionId)
 
       expect(result).toMatchObject({ error: { code: 'agent-busy' } })
       await ctx.fiber.dispose()

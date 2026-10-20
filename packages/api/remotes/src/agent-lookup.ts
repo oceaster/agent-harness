@@ -1,7 +1,7 @@
 /** Host BFF policy for resolving Remote Agent and Session identities. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent, AgentOptions, AgentSetup } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, AgentOptions, AgentSetup } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { TypertLookupFailure } from '@deepseek-ai/dsh-typert-protocol'
@@ -111,6 +111,32 @@ export async function inspectApiRemoteSession(
 }
 
 /**
+ * The Host's shared Agent resolver. This function is the one that resumes cold
+ * identities, so it also holds the lifecycles it created: an owner that can
+ * resume an Agent but never release it can stop a session but not destroy it.
+ */
+export interface ApiRemoteAgentResolver {
+  /**
+   * Resolve one identity to its live Agent, resuming a cold session at most once.
+   * @param sessionId - session identity to resolve.
+   * @returns the live Agent or a caller-facing lookup error.
+   */
+  agentFor(sessionId: SessionId): Promise<ApiRemoteAgentResult>
+
+  /**
+   * Release the Agent this resolver resumed for `id`: its documented
+   * whole-session teardown (cancellation, quiescence, unregistration, session
+   * detach, scope unwind). Callers cancel and await idle FIRST — disposal is the
+   * last step, not the way to stop work. A live Agent this resolver did not
+   * create stays untouched: resurrection of a different owner's lifecycle is not
+   * this resolver's to perform.
+   * @param id - the session whose lifecycle this resolver created.
+   * @returns whether this resolver owned and released a live lifecycle.
+   */
+  release(id: SessionId): Promise<boolean>
+}
+
+/**
  * Create the Host's shared Agent resolver and configure Agent/Session Typert lookups.
  * Live Agents are reused, ordinary cold sessions resume once per identity, and
  * subagent-owned identities retain the legacy `agent-busy` fence.
@@ -121,8 +147,14 @@ export async function inspectApiRemoteSession(
 export function createApiRemoteAgentResolver(
   ctx: Context,
   options: ApiRemoteAgentOptions,
-): (sessionId: SessionId) => Promise<ApiRemoteAgentResult> {
+): ApiRemoteAgentResolver {
   const resumes = new Map<SessionId, Promise<Agent>>()
+  /**
+   * AgentHandles this resolver created, keyed by identity. An entry is dropped
+   * once its Agent leaves the registry, so a later identity reusing the id is
+   * never torn down through a stale handle.
+   */
+  const handles = new Map<SessionId, AgentHandle>()
 
   const fencedLiveAgent = (sessionId: SessionId): ApiRemoteAgentResult | undefined => {
     const live = ctx.agents.get(sessionId)
@@ -164,6 +196,7 @@ export function createApiRemoteAgentResolver(
             ...options.agentOptions === undefined ? {} : { agentOptions: options.agentOptions() },
             ...setup === undefined ? {} : { setup },
           })
+          handles.set(sessionId, handle)
           return handle.agent
         } finally {
           resumes.delete(sessionId)
@@ -207,5 +240,17 @@ export function createApiRemoteAgentResolver(
     typeCtx.typert.contexts.configureHost('agent', async sessionId => (await resolveAgent(sessionId)).ctx)
   })
 
-  return agentFor
+  return {
+    agentFor,
+    async release(id: SessionId): Promise<boolean> {
+      const handle = handles.get(id)
+      if (handle === undefined) return false
+      handles.delete(id)
+      // A handle whose Agent already left the registry is stale: the lifecycle
+      // it disposed is not the one a caller is looking at now.
+      if (ctx.agents.get(id) !== handle.agent) return false
+      await handle.dispose()
+      return true
+    },
+  }
 }

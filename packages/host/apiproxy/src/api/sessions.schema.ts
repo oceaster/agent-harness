@@ -138,6 +138,17 @@ export const sessionForkValueSchema = z.object({
   sessionId: sessionIdSchema,
 }) satisfies z.ZodType<Wire<ResponseValue<'session.fork'>>>
 
+/** session.destroy request payload (one session, permanently). */
+export const sessionDestroyRequestSchema = z.object({
+  sessionId: sessionIdSchema,
+}) satisfies z.ZodType<Wire<RequestPayload<'session.destroy'>>>
+
+/** session.destroy response value (the destroyed id and the subagent descendants destroyed with it). */
+export const sessionDestroyValueSchema = z.object({
+  sessionId: sessionIdSchema,
+  descendants: z.array(sessionIdSchema),
+}) satisfies z.ZodType<Wire<ResponseValue<'session.destroy'>>>
+
 /** session.history request payload (beforeSeq/maxMessages page backwards from the window tail). */
 export const sessionHistoryRequestSchema = z.object({
   sessionId: sessionIdSchema,

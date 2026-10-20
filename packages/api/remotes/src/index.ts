@@ -24,6 +24,7 @@ export {
 } from './agent-lookup.ts'
 export type {
   ApiRemoteAgentOptions,
+  ApiRemoteAgentResolver,
   ApiRemoteAgentResult,
   ApiRemoteLookupError,
 } from './agent-lookup.ts'

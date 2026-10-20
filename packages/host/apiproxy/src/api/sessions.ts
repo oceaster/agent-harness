@@ -338,6 +338,38 @@ export interface SessionsApi {
   Promise<RpcResponse<{ sessionId: SessionId }>>
 
   /**
+   * Permanently destroys one session — the conversation, its stored log, and
+   * every record derived from it — so a surface can reset an agent to a fresh
+   * conversation. Destruction is ordered so it cannot lie: a running turn is
+   * cancelled and awaited, the live Agent is disposed (see below), then the
+   * stored log is deleted, and that deletion is the commit point — a failure
+   * before it returns an error instead of reporting the session destroyed.
+   * Derived state that would otherwise keep the id addressable is dropped
+   * afterwards: the persisted projection checkpoint and the workspace registry
+   * accounting (including archive membership).
+   *
+   * A live turn, a live Agent, and a cold session are all destroyable. A live
+   * Agent whose lifecycle this host does not own cannot be disposed — this host
+   * releases only the Agents it created or resumed — so that case fails rather
+   * than half-deleting. An unknown or already-destroyed id fails with
+   * `session-not-found`.
+   *
+   * Subagent children (`origin: 'subagent'`) are destroyed with the parent,
+   * recursively, and are reported in `descendants`. Ordinary forks survive: a
+   * fork is its own conversation, and its `parentSession` lineage is coarse
+   * provenance, not ownership. Image attachment objects are left in place: they
+   * are content-addressed and may be shared, so a deployment that wants them
+   * collected must collect them itself.
+   *
+   * Authorisation belongs to the caller. Like every other session method this is
+   * loopback/trusted-host behaviour, and the harness has no identity concept, so
+   * whoever may clear this conversation — the profile proxy in front of this
+   * host — decides that before calling.
+   */
+  destroy(request: RpcRequest<{ sessionId: SessionId }>):
+  Promise<RpcResponse<{ sessionId: SessionId; descendants: SessionId[] }>>
+
+  /**
    * Sends text and temporary image bytes to an ordinary session Agent after durable host admission.
    * Browser callers attach their current IANA zone;
    * the Host validates, canonicalizes, and records it on that exact user message. Omission remains

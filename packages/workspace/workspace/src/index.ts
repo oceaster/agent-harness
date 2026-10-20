@@ -255,6 +255,38 @@ export class WorkspaceRegistry extends Service {
   }
 
   /**
+   * Drop every trace of one session this registry holds: archive membership, the
+   * header/canonical-path index entry, and each workspace record that accounted
+   * for it. Called after the session's stored log is gone, so the registry must
+   * not keep serving the id as a groupable, archived, or attachable session.
+   * Idempotent: an id this registry never saw resolves without writing.
+   * @param sessionId - The destroyed session whose accounting is dropped.
+   * @returns resolution after durability.
+   */
+  forgetSession(sessionId: SessionId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      const state = this.requireState()
+      if (state.archivedSessionIds.includes(sessionId)) {
+        await this.setState({
+          ...state,
+          archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+        })
+      }
+      // Read the stored records, not the entities' filtered `sessionIds`: the
+      // index entry below is dropped in this same slot, so the filtered view
+      // could already disagree with what is durably accounted.
+      for (const id of [...this.entities.keys()]) {
+        const record = this.requireTable().get(id)
+        if (record === undefined || !record.sessionIds.includes(sessionId)) continue
+        await (this.entities.get(id) as WorkspaceEntity).detachSession(sessionId)
+      }
+      this.headers.delete(sessionId)
+      this.sessionPaths.delete(sessionId)
+      this.invalidSessionPaths.delete(sessionId)
+    })
+  }
+
+  /**
    * Whether a session is live, header-indexed, or present in a fresh
    * persistence listing. Only a definite miss returns false — a failing
    * `sessionPersistence.list()` propagates so storage faults never
