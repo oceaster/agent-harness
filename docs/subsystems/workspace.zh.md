@@ -213,6 +213,17 @@ insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly Workspac
 archiveSession(sessionId: SessionId): Promise<void>
 
 /**
+ * Drop every trace of one session this registry holds: archive membership, the
+ * header/canonical-path index entry, and each workspace record that accounted
+ * for it. Called after the session's stored log is gone, so the registry must
+ * not keep serving the id as a groupable, archived, or attachable session.
+ * Idempotent: an id this registry never saw resolves without writing.
+ * @param sessionId - The destroyed session whose accounting is dropped.
+ * @returns resolution after durability.
+ */
+forgetSession(sessionId: SessionId): Promise<void>
+
+/**
  * Resolve by canonical directory path without creating or mutating a
  * workspace. A missing path rejects during `realpath`; an existing unowned
  * directory returns `undefined`.

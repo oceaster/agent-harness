@@ -318,19 +318,6 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
       }
     })
 
-    it('destroy refuses a session whose identity is live', async () => {
-      const { persistence, dispose } = await make()
-      try {
-        const id = SessionId('live-destroy')
-        const session = persistence.ctx.sessions.create(id, { meta: { cwd: '/proj' } })
-        session.append('turn/start', { turn: 1 })
-        await persistence.append(id, [{ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }])
-        await expect(persistence.destroy(id)).rejects.toThrow(/while it is live/)
-      } finally {
-        await dispose()
-      }
-    })
-
     it('readFrom returns exactly the stored suffix from the requested seq, without mutating the log', async () => {
       const { persistence, dispose } = await make()
       try {

@@ -277,6 +277,19 @@ abstract locate(meta: SessionHeader): SessionLocation | undefined
 readRaw(_id: SessionId, signal?: AbortSignal): Promise<SessionRawArtifact | undefined>
 
 /**
+ * Permanently delete one stored session: its header and every stored event.
+ * The deletion is the backend's own transaction, so a half-deleted session
+ * rejects instead of reporting success. Image attachment objects the deleted
+ * log referenced are NOT part of this seam: they are content-addressed and
+ * shared between sessions, so a deployment that wants them collected must
+ * collect them itself.
+ * @param _id - the persisted session to delete.
+ * @returns whether a stored session with this id existed.
+ * @throws when this backend cannot delete stored sessions.
+ */
+destroy(_id: SessionId): Promise<boolean>
+
+/**
  * Register a new session's metadata. A backend MAY defer the physical write
  * until the first {@link append} (lazy materialization), in which case a
  * created-but-never-appended session is absent from {@link list}

@@ -132,6 +132,16 @@ cachedSnapshot(meta: SessionHeader): ProjectionSnapshot | undefined
 async write(session: Session): Promise<void>
 
 /**
+ * Drop one session's stored checkpoint. The session is gone (its log was
+ * deleted), so the row is dead weight that would otherwise outlive the log it
+ * describes; a later session reusing the id cannot adopt it, because a record
+ * is bound to the log identity (`createdAt`+`cwd`) it was written for.
+ * @param id - the session whose record is dropped.
+ * @returns whether a record was removed.
+ */
+async destroy(id: SessionId): Promise<boolean>
+
+/**
  * Cold-read one persisted session's projections with zero full-log load:
  * cached rows + a persistence `readFrom` tail from the registry's restore
  * floor, refolded by the registry and written back (fail-soft) so the next

@@ -1127,6 +1127,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['when this backend does not expose per-session raw artifacts.'],
       },
       {
+        signature: 'readonly supportsDestroy: boolean = false',
+        description: 'Whether this backend can permanently delete a stored session. A backend that declares `true` must override destroy.',
+        parameters: [],
+      },
+      {
+        signature: 'destroy(_id: SessionId): Promise<boolean>',
+        description: 'Permanently delete one stored session: its header and every stored event. The deletion is the backend\'s own transaction, so a half-deleted session rejects instead of reporting success. Image attachment objects the deleted log referenced are NOT part of this seam: they are content-addressed and shared between sessions, so a deployment that wants them collected must collect them itself.',
+        parameters: [{ name: '_id', description: 'the persisted session to delete.' }],
+        returns: 'whether a stored session with this id existed.',
+        throws: ['when this backend cannot delete stored sessions.'],
+      },
+      {
         signature: 'abstract create(meta: SessionHeader): Promise<void>',
         description: 'Register a new session\'s metadata. A backend MAY defer the physical write until the first append (lazy materialization), in which case a created-but-never-appended session is absent from list — abandoned sessions leave nothing behind.',
         parameters: [{ name: 'meta', description: 'the immutable header (id, version, cwd, lineage) to record.' }],
@@ -1190,6 +1202,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Durably checkpoint one live session NOW (both mandatory points call this; tests and carriers may too). The registry cut is snapshotted at this boundary (states are live references), then the whole record is replaced. NOT fail-soft — callers on the fail-soft paths contain it.',
         parameters: [{ name: 'session', description: 'the live session to checkpoint.' }],
         returns: 'resolution after durability and event emission.',
+      },
+      {
+        signature: 'async destroy(id: SessionId): Promise<boolean>',
+        description: 'Drop one session\'s stored checkpoint. The session is gone (its log was deleted), so the row is dead weight that would otherwise outlive the log it describes; a later session reusing the id cannot adopt it, because a record is bound to the log identity (`createdAt`+`cwd`) it was written for.',
+        parameters: [{ name: 'id', description: 'the session whose record is dropped.' }],
+        returns: 'whether a record was removed.',
       },
       {
         signature: 'async coldSnapshot(id: SessionId, signal?: AbortSignal): Promise<ProjectionSnapshot>',
@@ -2254,6 +2272,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'archiveSession(sessionId: SessionId): Promise<void>',
         description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. An already archived id resolves without writing.',
         parameters: [{ name: 'sessionId', description: 'The session to archive.' }],
+        returns: 'resolution after durability.',
+      },
+      {
+        signature: 'forgetSession(sessionId: SessionId): Promise<void>',
+        description: 'Drop every trace of one session this registry holds: archive membership, the header/canonical-path index entry, and each workspace record that accounted for it. Called after the session\'s stored log is gone, so the registry must not keep serving the id as a groupable, archived, or attachable session. Idempotent: an id this registry never saw resolves without writing.',
+        parameters: [{ name: 'sessionId', description: 'The destroyed session whose accounting is dropped.' }],
         returns: 'resolution after durability.',
       },
       {

@@ -2600,6 +2600,29 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         }
         return ok(request, { accepted: true as const })
       },
+      destroy: (request) => {
+        const { sessionId } = request.payload
+        const at = sessions.findIndex(summary => summary.sessionId === sessionId)
+        if (at < 0) {
+          return err(request, {
+            code: 'session-not-found',
+            message: `session "${sessionId}" not found`,
+            details: { sessionId },
+          })
+        }
+        const replay = replays.get(sessionId)
+        if (replay !== undefined) {
+          clearTimeout(replay.timer)
+          replay.finish(true)
+        }
+        replays.delete(sessionId)
+        logs.delete(sessionId)
+        sessions.splice(at, 1)
+        const archiveAt = archivedSessionIds.indexOf(sessionId)
+        if (archiveAt >= 0) archivedSessionIds.splice(archiveAt, 1)
+        emitHost({ type: 'host/session-removed', sessionId })
+        return ok(request, { sessionId, descendants: [] as SessionId[] })
+      },
     },
     subagents: {
       list: request => ok(request, { entries: [], parentAvailable: true }),
@@ -3187,6 +3210,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'session.attachment': return this.api.sessions.attachment(request)
       case 'session.updateQueue': return this.api.sessions.updateQueue(request)
       case 'session.cancel': return this.api.sessions.cancel(request)
+      case 'session.destroy': return this.api.sessions.destroy(request)
       case 'subagent.list': return this.api.subagents.list(request)
       case 'subagent.history': return this.api.subagents.history(request)
       case 'subagent.prompt': return this.api.subagents.prompt(request, signal)

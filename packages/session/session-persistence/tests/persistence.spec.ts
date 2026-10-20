@@ -296,6 +296,28 @@ runCoordinatorContract('memory', async (): Promise<CoordinatorFixture> => {
   }
 })
 
+describe('PersistenceCoordinator destroy', () => {
+  it('refuses to delete an identity a live Session still owns', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const fiber = await ctx.plugin(MemoryPersistence)
+    try {
+      const persistence = ctx.sessionPersistence
+      const id = SessionId('live-identity')
+      const session = ctx.sessions.create(id)
+      session.append('turn/start', { turn: 1 })
+      await ctx.sessions.flush(session)
+      // The live log is the authority: deleting underneath it would silently
+      // discard whatever the session appends next.
+      await expect(persistence.destroy(id)).rejects.toThrow(/while it is live/)
+      await expect(persistence.destroy(SessionId('never-stored'))).resolves.toBe(false)
+    } finally {
+      await fiber.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
 describe('PersistenceCoordinator seed ownership', () => {
   it('retains the immutable session seed without cloning it', async () => {
     const ctx = new Context()
