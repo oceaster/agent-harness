@@ -881,6 +881,59 @@ re-applied on every upstream pull:
     1280x800 and 390x844: one nav row (`General`), no `Learn More`, no
     `Plugins`, no tablist, no console error, no failed request. No merge, no
     deploy.
+20. **The Language preference row is gone; the dictionaries stay**
+   (`packages/client/locale`, `ui-settings` slot prose, web e2e goldens) — the
+   owner asked for the Settings Language selector to be removed as broken and
+   unsupported. Only the SELECTOR is gone: the locale service, the `t` seat, the
+   `zh`/`en` dictionaries and the `<html lang>` sync are untouched, because every
+   other package renders its copy through them. A missing key would still fail
+   loud in the UI, so translating a new surface is unchanged work.
+
+   **What was actually deleted**, all owned by the locale package itself (it,
+   not `ui-settings-general`, registered the row): `LanguageRow.tsx` + its
+   `LanguageRow.module.css`, the row's snapshot-mirror store
+   (`settings-store.ts`), the row's `settings.locale` dictionaries
+   (`locales/settings.ts`, key `language.title`), the
+   `ctx.slots.register({ name: 'settings.general.item', id: 'language' })`
+   registration together with the store projection, the action-binding face and
+   the `LanguageRowInjected`/`LanguageRowState`/`LanguageOptionRow` exports, and
+   the `SETTINGS_NS` export plus the `'settings.locale'` entry in the
+   `LocaleNamespaceMap` declaration merge. The row's two spec files are deleted,
+   not skipped, and `apply.client.spec.ts` now asserts the plugin contributes no
+   General row at all. The generated client slot catalogue
+   (`pnpm run gen-client-catalog`) drops `client-locale LanguageRow id
+   'language'` from the `settings.general.item` occupants, and the slot's own
+   doc prose no longer names a locale → Language registrant.
+
+   **What the row did before it was removed** (measured on this build, not
+   assumed): on the loopback origin it worked. Switching English → 中文
+   translated the visible app — settings dialog title, nav (通用设置/模型/插件),
+   the Appearance and busy-Enter rows, the sidebar and its inbox copy — moved
+   `<html lang>` from `en` to `zh-CN`, wrote `locale:
+  preference: zh` to
+   `$DSH_HOME/settings.yaml`, and survived a reload and a second browser on the
+   same home; switching back restored English the same way. It is not broken on
+   this machine. The honest reason it can still read as broken to its owner is
+   the transport: the browser half writes the preference through the privileged
+   settings wire, so a page that cannot reach the Host document keeps a
+   process-local choice that a reload discards (the `memory` fallback in
+   `ui-settings`, see entry 18). Either way the removal is the owner's call.
+
+   **Consequences worth keeping on an upstream pull:**
+
+   - The plugin still binds the durable `locale` settings namespace and still
+     adopts `locale.preference`, so a stored preference keeps deciding the
+     surface language — it is now settable only by editing `settings.yaml`
+     (delete the key to hand the choice back to the browser). Keep that
+     adoption; it is what makes a household-wide language choice possible
+     without a per-browser selector.
+   - `LocaleRuntime.setLocale()` remains the service-level write entry and stays
+     covered by `locale.client.spec.ts`; no shipped surface calls it.
+   - `apps/web/tests/settings-chrome.e2e.ts` no longer clicks a language pill:
+     the scenario asserts the row's absence and that a seeded
+     `locale: preference: en` home still governs the surface across a reload,
+     and the dialog goldens (`dialog.expected.md`, `dialog-en.expected.md`) are
+     refreshed without the row.
 
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.

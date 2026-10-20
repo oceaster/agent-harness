@@ -66,8 +66,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * One preference row inside the General section — the additive seat for a
      * single setting that needs no page of its own (a whole page is
      * `settings.section`), contributed by the feature plugin that owns the
-     * preference (locale → Language, ui-theme → Appearance, ui-conversation →
-     * Composer Enter). Options: `id` (row key), `order` (row position). The
+     * preference (ui-theme → Appearance, ui-conversation → Composer Enter).
+     * Options: `id` (row key), `order` (row position). The
      * section column only stacks rows, so a row draws its own internals,
      * including its label: nothing projects a `label` here and the owner passes
      * no props at all — copy, current value, and the write path are all yours,

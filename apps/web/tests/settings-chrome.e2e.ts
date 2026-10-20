@@ -3,16 +3,19 @@
 // real theme gesture — click 深色 and the whole cascade runs: ThemeRuntime preference -> Host settings
 // -> theme/change -> ui-layout's presenter -> body attribute -> alias token +
 // browser theme-color metadata)
-// the Language row and busy-state Enter preference (both Host-backed), plus
-// Permission as the persisted default for subsequently created sessions.
+// the busy-state Enter preference (both Host-backed), plus Permission as the
+// persisted default for subsequently created sessions. The Language selector
+// row is gone (FORK-NOTES: removed as broken and unsupported), so the language
+// scenarios assert its absence and that the stored preference still governs.
 // Zero model calls: everything is pure client + persistence state on a blank
 // frame, so there is no fixture and a stray stream would fail loud on the
 // open llm seam.
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -60,10 +63,9 @@ describe('web e2e: settings modal and General preferences', () => {
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.waitFor({ timeout: 10_000 })
     expect(await trigger.getAttribute('aria-expanded')).toBe('true')
-    // General is active by default; Permission, Language and Appearance are functional.
+    // General is active by default; Permission and Appearance are functional.
     expect(await dialog.getByRole('button', { name: '通用设置' }).getAttribute('aria-current')).toBe('true')
     await dialog.getByRole('button', { name: 'Workspace Write' }).waitFor({ timeout: 10_000 })
-    await expect.poll(() => dialog.getByText('语言', { exact: true }).count(), { timeout: 5_000 }).toBe(1)
     await expect.poll(() => dialog.getByText('外观', { exact: true }).count(), { timeout: 5_000 }).toBe(1)
     const openDocument = dialog.getByRole('button', { name: '打开配置文件' })
     await openDocument.waitFor({ timeout: 10_000 })
@@ -404,70 +406,58 @@ describe('web e2e: settings modal and General preferences', () => {
     expect(tripwire.pageErrors).toEqual([])
   }, 90_000)
 
-  it('persists the settings language across reload and a distinct port', async () => {
+  it('offers no language selector and keeps a stored Host preference authoritative', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-settings-language'))
+    // The General section carried a Language selector row; the owner removed it
+    // as broken and unsupported (FORK-NOTES). What must survive the removal is
+    // the machinery: the dialog copy resolves through the locale dictionaries
+    // from the browser or the stored Host preference, and no row offers a
+    // switch inside the surface.
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const zhDialog = page.getByRole('dialog', { name: '设置' })
     await zhDialog.waitFor({ timeout: 10_000 })
-    // The document language follows the active locale in the assembled app, not
-    // only on a directly-mounted plugin. This is a zh browser, so the served
-    // markup's `en` must already have been replaced — asserting it here (rather
-    // than only in an English scenario) is what makes the check discriminating.
+    // A zh browser: the assembled app still points the document tag at the
+    // active locale, and the localised copy still resolves.
     expect(await page.evaluate(() => document.documentElement.lang)).toBe('zh-CN')
-    // The Language selector pill shows the active locale's own name.
-    const selector = zhDialog.getByRole('button', { name: '中文' })
-    expect(await selector.getAttribute('aria-haspopup')).toBe('menu')
-    await selector.click()
-    await page.getByRole('menuitem', { name: 'English' }).click()
-    // The settings-owned copy re-registers localized: dialog title, nav,
-    // Appearance labels. (Only the settings namespaces are localized —
-    // the rest of the app's copy is intentionally out of this row's scope.)
-    const enDialog = page.getByRole('dialog', { name: 'Settings' })
-    await enDialog.waitFor({ timeout: 10_000 })
-    // ...and the attribute follows that switch, in the assembled app.
-    await expect.poll(() => page.evaluate(() => document.documentElement.lang), { timeout: 5_000 }).toBe('en')
-    expect(await enDialog.getByRole('button', { name: 'General' }).getAttribute('aria-current')).toBe('true')
-    await expect.poll(() => enDialog.getByText('Appearance', { exact: true }).count(), { timeout: 5_000 }).toBe(1)
+    expect(await zhDialog.getByText('语言', { exact: true }).count()).toBe(0)
+    expect(await zhDialog.getByRole('button', { name: '中文' }).count()).toBe(0)
+    expect(await zhDialog.getByRole('button', { name: 'English' }).count()).toBe(0)
+    await expect.poll(() => zhDialog.getByText('外观', { exact: true }).count(), { timeout: 5_000 }).toBe(1)
     expect(await page.evaluate(() => localStorage.getItem('dsh.locale'))).toBeNull()
-    await expect.poll(async () => readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8'), { timeout: 5_000 })
-      .toMatch(/locale:\n\s+preference: en/)
-    // Reload keeps English; then restore zh so shared page state (and the
-    // other specs' 设置-anchored selectors + goldens) see the default again.
-    const warningStart = tripwire.warnings.length
-    await page.reload({ waitUntil: 'load' })
-    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
-    acknowledgeReloadConnectionLoss(tripwire, warningStart)
-    const enTrigger = page.getByRole('button', { name: 'Settings' })
-    await enTrigger.waitFor({ timeout: 10_000 })
-
-    // A Chinese browser on another port still receives the explicit English
-    // preference from the shared Host settings document.
-    const second = await launchWebScaffold({ harnessHome: scaffold.harnessHome })
-    const secondPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
-    const secondTripwire = watchConsole(secondPage)
-    try {
-      expect(second.baseUrl).not.toBe(scaffold.baseUrl)
-      await secondPage.goto(second.baseUrl, { waitUntil: 'load' })
-      await secondPage.waitForSelector('[class*="frame"]', { timeout: 30_000 })
-      await secondPage.getByRole('button', { name: 'Settings', exact: true }).click()
-      await secondPage.getByRole('dialog', { name: 'Settings' })
-        .getByRole('button', { name: 'English' }).waitFor({ timeout: 10_000 })
-      expect(await secondPage.evaluate(() => localStorage.getItem('dsh.locale'))).toBeNull()
-      expect(secondTripwire.pageErrors).toEqual([])
-      expect(secondTripwire.warnings).toEqual([])
-    } finally {
-      await secondPage.close()
-      await second.close()
-    }
-
-    await enTrigger.click()
-    await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'English' }).click()
-    await page.getByRole('menuitem', { name: '中文' }).click()
-    await page.getByRole('dialog', { name: '设置' }).waitFor({ timeout: 10_000 })
-    expect(await page.evaluate(() => localStorage.getItem('dsh.locale'))).toBeNull()
-    await expect.poll(async () => readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8'), { timeout: 5_000 })
-      .toMatch(/locale:\n\s+preference: zh/)
     await page.keyboard.press('Escape')
+
+    // A stored Host preference still decides the surface for a browser that
+    // asks for the other language, and still survives a reload — the half of
+    // the old row's behavior that is not the selector itself.
+    const seededHome = await mkdtemp(join(tmpdir(), 'dsh-web-e2e-locale-'))
+    await writeFile(join(seededHome, 'settings.yaml'), 'locale:\n  preference: en\n')
+    const seeded = await launchWebScaffold({ harnessHome: seededHome })
+    const seededPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    const seededTripwire = watchConsole(seededPage)
+    try {
+      await seededPage.goto(seeded.baseUrl, { waitUntil: 'load' })
+      await seededPage.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+      await seededPage.getByRole('button', { name: 'Settings', exact: true }).click()
+      const enDialog = seededPage.getByRole('dialog', { name: 'Settings' })
+      await enDialog.waitFor({ timeout: 10_000 })
+      await expect.poll(() => seededPage.evaluate(() => document.documentElement.lang), { timeout: 5_000 }).toBe('en')
+      expect(await enDialog.getByText('Language', { exact: true }).count()).toBe(0)
+      expect(await enDialog.getByText('Appearance', { exact: true }).count()).toBe(1)
+      await seededPage.keyboard.press('Escape')
+
+      const warningStart = seededTripwire.warnings.length
+      await seededPage.reload({ waitUntil: 'load' })
+      await seededPage.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+      acknowledgeReloadConnectionLoss(seededTripwire, warningStart)
+      await seededPage.getByRole('button', { name: 'Settings', exact: true }).waitFor({ timeout: 10_000 })
+      expect(await seededPage.evaluate(() => document.documentElement.lang)).toBe('en')
+      expect(seededTripwire.pageErrors).toEqual([])
+      expect(seededTripwire.warnings).toEqual([])
+    } finally {
+      await seededPage.close()
+      await seeded.close()
+      await rm(seededHome, { recursive: true, force: true })
+    }
     expect(tripwire.pageErrors).toEqual([])
   }, 90_000)
 
@@ -487,7 +477,8 @@ describe('web e2e: settings modal and General preferences', () => {
       await enPage.getByRole('button', { name: 'Settings', exact: true }).click()
       const dialog = enPage.getByRole('dialog', { name: 'Settings' })
       await dialog.waitFor({ timeout: 10_000 })
-      await dialog.getByRole('button', { name: 'English' }).waitFor({ timeout: 10_000 })
+      await dialog.getByRole('button', { name: 'General' }).waitFor({ timeout: 10_000 })
+      expect(await dialog.getByText('Language', { exact: true }).count()).toBe(0)
       // This page has no closing inventory spec to sweep its console, so the
       // scenario clears both tripwire channels itself.
       expect(enTripwire.pageErrors).toEqual([])
@@ -513,7 +504,8 @@ describe('web e2e: settings modal and General preferences', () => {
       await frPage.getByRole('button', { name: 'Settings', exact: true }).click()
       const dialog = frPage.getByRole('dialog', { name: 'Settings' })
       await dialog.waitFor({ timeout: 10_000 })
-      await dialog.getByRole('button', { name: 'English' }).waitFor({ timeout: 10_000 })
+      await dialog.getByRole('button', { name: 'General' }).waitFor({ timeout: 10_000 })
+      expect(await dialog.getByText('Language', { exact: true }).count()).toBe(0)
       // The markup already ships `en`, so this alone cannot prove the sync ran
       // — the zh scenario above is the discriminating half. Asserted here too
       // so a future change that resolves en but writes the wrong tag is caught.
