@@ -72,6 +72,12 @@ export interface InboxAgentRow {
   presence?: 'online' | 'offline' | 'running' | 'unread' | 'error'
   /** Durable completed-turn event sequence used by read receipts. */
   completion?: number
+  /**
+   * Delegations waiting for a worker slot, from the server's own queue —
+   * server knowledge the browser cannot derive. Absent means none are waiting,
+   * so an older server (and an agent that never delegates) reads as zero.
+   */
+  queuedWorkers?: number
 }
 
 /** The signed-in person the server resolved from the profile cookie. */
@@ -177,6 +183,18 @@ function nullableStringField(source: Record<string, unknown>, key: string): stri
 }
 
 /**
+ * Read an optional non-negative whole-number field. Absent and null both read
+ * as `null` ("the server said nothing"), a count reads as itself, and any other
+ * shape is refused rather than coerced: a queue the server misspelled must not
+ * become a number this page made up.
+ */
+function optionalCountField(source: Record<string, unknown>, key: string): number | null | undefined {
+  const value = source[key]
+  if (value === null || value === undefined) return null
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+/**
  * Parse one agent row. A row the server did not spell out is refused rather
  * than guessed at: inventing a row would invent an agent for a person.
  * @param raw - one entry of the list body's `agents` array.
@@ -198,10 +216,18 @@ function parseAgentRow(raw: unknown): InboxAgentRow | undefined {
   const disabled = booleanField(raw, 'disabled')
   const presence = raw['presence']
   const completion = raw['completion']
+  const queuedWorkers = optionalCountField(raw, 'queuedWorkers')
   if (enabled === undefined || disabled === undefined
     || (presence !== 'online' && presence !== 'offline' && presence !== 'running' && presence !== 'unread' && presence !== 'error')
-    || typeof completion !== 'number' || !Number.isSafeInteger(completion) || completion < 0) return undefined
-  return { agent, name, hasConversation, sessionId, blank, lastActivityAt, running, enabled, disabled, presence, completion }
+    || typeof completion !== 'number' || !Number.isSafeInteger(completion) || completion < 0
+    || queuedWorkers === undefined) return undefined
+  return {
+    agent, name, hasConversation, sessionId, blank, lastActivityAt, running, enabled, disabled, presence, completion,
+    // An absent (or null) queue is stored as no field at all, so a row without
+    // it is byte-identical to the row this client parsed before the field
+    // existed: every consumer reads it as zero.
+    ...queuedWorkers === null ? {} : { queuedWorkers },
+  }
 }
 
 /** Parse the list body. */

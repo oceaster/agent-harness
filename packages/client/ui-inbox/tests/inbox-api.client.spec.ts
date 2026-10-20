@@ -114,6 +114,37 @@ describe('inbox api payloads', () => {
     expect(outcome.ok && outcome.value.sessionId).toBe('s-1')
   })
 
+  it('carries the server queue count on the row, and reads an absent field as no field', async () => {
+    const base = {
+      person: { id: 'p', name: 'P' },
+      agents: [
+        { ...listBody.agents[0], queuedWorkers: 2 },
+        listBody.agents[1],
+      ],
+    }
+    const { fetchImpl } = stubFetch(200, base)
+    const outcome = await createInboxApi(fetchImpl).list()
+    expect(outcome.ok).toBe(true)
+    const rows = outcome.ok ? outcome.value.agents : []
+    expect(rows[0]?.queuedWorkers).toBe(2)
+    // Absent stays absent: a row from a server that does not know the field is
+    // exactly the row this client parsed before the field existed.
+    expect(rows[1]?.queuedWorkers).toBeUndefined()
+    expect(Object.hasOwn(rows[1] ?? {}, 'queuedWorkers')).toBe(false)
+  })
+
+  it('refuses a queue count the server did not spell as a whole count', async () => {
+    for (const queuedWorkers of ['2', -1, 1.5, true, { n: 2 }]) {
+      const body = { person: { id: 'p', name: 'P' }, agents: [{ ...listBody.agents[0], queuedWorkers }] }
+      const { fetchImpl } = stubFetch(200, body)
+      expect(await createInboxApi(fetchImpl).list()).toEqual({ ok: false, status: 200, code: 'malformed' })
+    }
+    // An explicit null says "nothing waiting" and is not a malformed count.
+    const nulled = { person: { id: 'p', name: 'P' }, agents: [{ ...listBody.agents[0], queuedWorkers: null }] }
+    const outcome = await createInboxApi(stubFetch(200, nulled).fetchImpl).list()
+    expect(outcome.ok && outcome.value.agents[0]?.queuedWorkers).toBeUndefined()
+  })
+
   it('refuses to invent a row the server did not spell out', async () => {
     const rows = [
       { person: { id: 'p', name: 'P' }, agents: [{ agent: 'a', name: 'A' }] },

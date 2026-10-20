@@ -54,15 +54,37 @@ function ageLabel(at: number, now: number, t: Translate): string {
 }
 
 /**
+ * How many delegations the row's payload says are waiting for a worker slot.
+ * Absent means none, and a value that is not a whole non-negative count reads
+ * as none too: the panel renders server numbers, it never repairs them.
+ * @param row - the row as the server described it.
+ * @returns the queued count, zero when the payload carries none.
+ */
+function queuedOf(row: InboxAgentRow): number {
+  const queued = row.queuedWorkers
+  return typeof queued === 'number' && Number.isSafeInteger(queued) && queued > 0 ? queued : 0
+}
+
+/**
  * The working copy, count included. The state line and the dot's accessible
  * label both come from here, so the row never reports two different verbs for
  * the same work.
+ *
+ * One number while nothing waits (`Working... (3)`); a working/total pair once
+ * the server reports a queue behind them (`Working... (3/4)` — three working,
+ * four in flight). The denominator is working + queued, not a slot limit, and
+ * it is only shown when there is a queue: the count never reads `(0)` and never
+ * carries a bare `/`, so zero working workers keep the bare verb.
  * @param active - running conversations below this row, at any depth.
+ * @param queued - delegations the server reports waiting for a worker slot.
  * @param t - the locale seat.
- * @returns the working copy, with the count only when there is at least one.
+ * @returns the working copy.
  */
-function workingLabel(active: number, t: Translate): string {
-  return active > 0 ? t('row.workingSubagents', { n: active }) : t('row.working')
+function workingLabel(active: number, queued: number, t: Translate): string {
+  if (active <= 0) return t('row.working')
+  return queued > 0
+    ? t('row.workingQueued', { working: active, total: active + queued })
+    : t('row.workingSubagents', { n: active })
 }
 
 /**
@@ -71,12 +93,13 @@ function workingLabel(active: number, t: Translate): string {
  * the bare verb, so the dot never claims a count it does not have.
  * @param status - the status the dot shows.
  * @param active - running conversations below this row, at any depth.
+ * @param queued - delegations the server reports waiting for a worker slot.
  * @param t - the locale seat.
  * @returns the label text.
  */
-function presenceLabel(status: InboxPresence, active: number, t: Translate): string {
+function presenceLabel(status: InboxPresence, active: number, queued: number, t: Translate): string {
   if (status !== 'running') return t(`presence.${status}`)
-  return active > 0 ? workingLabel(active, t) : t('presence.working')
+  return active > 0 ? workingLabel(active, queued, t) : t('presence.working')
 }
 
 /**
@@ -89,7 +112,7 @@ function presenceLabel(status: InboxPresence, active: number, t: Translate): str
  */
 function stateLine(row: InboxAgentRow, now: number, t: Translate, active: number): string {
   if (row.enabled === false) return t(row.disabled === true ? 'row.disabled' : 'presence.offline')
-  if (row.running || active > 0) return workingLabel(active, t)
+  if (row.running || active > 0) return workingLabel(active, queuedOf(row), t)
   if (row.presence === 'error') return t('presence.error')
   if (row.presence === 'unread') return t('presence.unread')
   if (!row.hasConversation) return t('row.fresh')
@@ -164,7 +187,7 @@ export function InboxPanel({
               }}
             >
               <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-              <PresenceDot status={status} label={presenceLabel(status, active, t)} />
+              <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), t)} />
             </button>
           )
         })}
@@ -256,7 +279,7 @@ export function InboxPanel({
                   >
                     <span className={css.avatarStatus}>
                       <AgentAvatar agents={[row.agent]} label={monogram(row.name)} />
-                      <PresenceDot status={status} label={presenceLabel(status, active, t)} />
+                      <PresenceDot status={status} label={presenceLabel(status, active, queuedOf(row), t)} />
                     </span>
                     <span className={css.rowText}>
                       <span className={css.name}>{row.name}</span>

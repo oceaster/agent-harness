@@ -472,6 +472,24 @@ describe('inbox controller: running subagents keep the parent row working', () =
     expect(b.state().activeSubagents).toEqual({})
   })
 
+  it('keeps the server queue count on the row while frames move the running count', async () => {
+    const queued: InboxListPayload = {
+      person: { id: 'p-1', name: 'Person One' },
+      agents: [{ ...listPayload.agents[0]!, queuedWorkers: 1 }],
+    }
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions, list: { ok: true, value: queued } })
+    await b.controller.load()
+    b.controller.followSessions()
+    // The queued count is the payload's, and a live frame never edits it.
+    expect(b.state().rows[0]?.queuedWorkers).toBe(1)
+    spawn(sessions, 'sub-1', 's-a', true)
+    await settle()
+    const row = b.state().rows[0]
+    expect(row?.queuedWorkers).toBe(1)
+    expect(b.state().activeSubagents).toEqual({ 'agent-a': 1 })
+  })
+
   it('walks a corrupt lineage once instead of hanging on a cycle', async () => {
     const sessions = sessionList(['s-a'])
     // A lineage the walk must survive: one of the row's sessions claims the row as its child.
