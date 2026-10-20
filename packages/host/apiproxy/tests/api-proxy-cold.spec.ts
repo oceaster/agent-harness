@@ -598,8 +598,9 @@ describe('subagent ownership fence', () => {
     ctx.agents.register({
       id: childSession.id, session: childSession, ctx, status: 'running', inbox: childInbox, cancel: vi.fn(), steer: vi.fn(),
     } as unknown as Agent)
+    const humanSteer = vi.fn()
     const human = {
-      id: humanSession.id, session: humanSession, ctx, status: 'running', inbox: humanInbox, cancel: vi.fn(), steer: vi.fn(),
+      id: humanSession.id, session: humanSession, ctx, status: 'running', inbox: humanInbox, cancel: vi.fn(), steer: humanSteer,
     } as unknown as Agent
     ctx.agents.register(human)
     const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
@@ -622,7 +623,7 @@ describe('subagent ownership fence', () => {
       sessionId: humanSession.id, itemId: humanFirst.id, action: { kind: 'steer' },
     }))
     expect(steered.result.ok).toBe(true)
-    expect(human.steer).toHaveBeenCalledTimes(1)
+    expect(humanSteer).toHaveBeenCalledTimes(1)
     const removed = await api.sessions.updateQueue(request({
       sessionId: humanSession.id, itemId: humanSecond.id, action: { kind: 'remove' },
     }))
