@@ -14,6 +14,8 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply as nodeApply } from '../src/index.ts'
 import { apply as invariantApply, inject as invariantInject, name as invariantName } from '../src/invariant.ts'
 import { apply, inject } from '../src/client/index.ts'
+import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
+import type { PanelActions } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
 import type { InboxInjected } from '../src/client/slots.ts'
 
 const sid = (id: string): SessionId => id as SessionId
@@ -50,6 +52,10 @@ function sessionList() {
  * Boot the plugin over a real slot ledger and a fake sessions service.
  * @param listBody - what the stubbed inbox list endpoint answers.
  * @param options - the channel list the origin offers, when a test needs one.
+ * @param options.realLayout - provide ui-layout's own LayoutController as
+ *   `ctx.layout` instead of a bare spy, so a test can reproduce the composed
+ *   boot order (the face exists; its panel actions do not until the root entry
+ *   renders) rather than a face that can never be asked too early.
  */
 async function bench(listBody: unknown = {
   person: { id: 'p-1', name: 'Person One' },
@@ -58,15 +64,24 @@ async function bench(listBody: unknown = {
     sessionId: 's-a', blank: false, lastActivityAt: 100, running: false,
     enabled: true, disabled: false, presence: 'online', completion: 0,
   }],
-}, options: { channels?: readonly unknown[] } = {}) {
+}, options: { channels?: readonly unknown[]; realLayout?: boolean } = {}) {
   const sessions = sessionList()
   const opened: string[] = []
   let cleared = false
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   ctx.provide('locale', new LocaleRuntime(ctx))
-  const openPage = vi.fn()
-  ctx.provide('layout', { openPage })
+  // The layout face a composed boot has: ui-layout provides LayoutController
+  // before any plugin's apply runs, and its panel actions exist only once the
+  // root entry (AppFrame) renders — see ui-layout/src/client/service.ts.
+  const layout = new LayoutController()
+  const panels = {
+    setSidebar: vi.fn(), setDetails: vi.fn(), toggleSidebar: vi.fn(), setNarrow: vi.fn(),
+    setPortrait: vi.fn(), collapseOnSelection: vi.fn(), openDetails: vi.fn(),
+    closeDetails: vi.fn(), openPage: vi.fn(),
+  }
+  const openPage = options.realLayout === true ? panels.openPage : vi.fn()
+  ctx.provide('layout', options.realLayout === true ? layout : { openPage })
   ctx.provide('sessions', {
     list: sessions.store,
     // The concrete runtime's wire-pump verb: the fixture answers it the way the
@@ -102,6 +117,9 @@ async function bench(listBody: unknown = {
   const fiber = ctx.plugin({ inject: [...inject], apply })
   return {
     ctx, fiber, sessions, opened, fetches, openPage,
+    // The root entry's first render, which is what hands the layout store's
+    // bound actions to the face (ui-layout/src/client/index.ts's inject hook).
+    mountFrame: () => { layout.attachPanels(panels as unknown as PanelActions) },
     clearedFlag: () => cleared,
     entry: () => ctx.slots.entries('sidebar.workspaces')[0],
   }
@@ -231,6 +249,25 @@ describe('ui-inbox channel restore (where you were, channel half)', () => {
     // agent conversation first and corrects itself a frame later.
     expect(face.hooks.channels.getSnapshot().selected?.id).toBe(channelRow.id)
     expect(b.openPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('restores the channel page when the rows arrive before the frame has mounted', async () => {
+    // The composed boot order, measured in the real browser: the channel list
+    // is a network read that lands in a few milliseconds, while the root
+    // entry's first render (which is what wires ctx.layout's panel actions)
+    // happens later. A restore that only works when the frame happens to be up
+    // is not a restore — it selected the channel and lost the page, leaving the
+    // conversation painted and the channel row highlighted.
+    localStorage.setItem('dsh.inbox.channel', JSON.stringify({ channelId: channelRow.id }))
+    const b = await bench(undefined, { channels: [channelRow], realLayout: true })
+    await b.fiber.await()
+    const face = b.entry()?.inject?.() as unknown as InboxInjected
+    // The restore resolved while nothing was mounted: no throw, no lost intent.
+    await vi.waitFor(() => { expect(face.hooks.channels.getSnapshot().selected?.id).toBe(channelRow.id) })
+    expect(b.openPage).not.toHaveBeenCalled()
+    b.mountFrame()
+    expect(b.openPage).toHaveBeenCalledTimes(1)
+    expect(b.openPage).toHaveBeenCalledWith('agent-channel')
   })
 
   it('leaves the conversation default in place when the persisted channel is gone', async () => {

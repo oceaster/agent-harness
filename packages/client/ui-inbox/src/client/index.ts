@@ -80,6 +80,14 @@ export function apply(ctx: ClientContext): void {
   // refresh can never re-navigate the person; an id the server no longer offers
   // is dropped by the controller and the ordinary conversation default stands,
   // silently, because nothing failed.
+  //
+  // Triggers are the notification AND the state that is already there, in that
+  // order: a rows write that happened before this effect installed is caught by
+  // the immediate read, one that happens after it by the subscription. Reading
+  // only on the notification is a restore that works when the data happens to
+  // arrive while we are watching, which is not a restore. The frame's own boot
+  // order is not a dependency either: openPage before the root entry mounts is
+  // held by ctx.layout and applied at mount (ui-layout's LayoutController).
   ctx.effect(() => {
     let armed = true
     const restore = (): void => {
@@ -87,8 +95,8 @@ export function apply(ctx: ClientContext): void {
       armed = false
       void channels.restorePersisted(() => { ctx.layout.openPage('agent-channel') })
     }
-    restore()
     const stop = channels.store.subscribe(() => { restore() })
+    restore()
     return () => { stop() }
   }, 'ui-inbox: channel restore')
   // The navigation seam, assembled explicitly. `list`, `open` and `clear` are

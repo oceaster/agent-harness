@@ -698,6 +698,62 @@ re-applied on every upstream pull:
    pending question and its only plan strip is the hidden chain-overlay
    fallback).
 
+17. **The channel restore must not race the frame's mount** (`ui-inbox`,
+   `ui-layout`) — entry 15's channel half, repaired where the composed app
+   actually broke it. Measured in a real Chromium through the composed origin
+   (owen profile) after entry 15 was in the bundle: with
+   `dsh.inbox.channel = {"channelId":"delta-diana"}` the rows loaded, the
+   channel was selected (its row carried `aria-current`, and the open-channel
+   poll ran), and `agent-channel-page` was still count 0 while
+   `conversation-empty` = 1 stayed painted.
+
+   `restorePersisted` ran and did its own job. What failed was the page write,
+   and the composed-only reason is the ORDER of two boots — invisible to a unit
+   test whose `ctx.layout` is a bare spy:
+
+   - `ctx.layout` (ui-layout's `LayoutController`) exists from ui-layout's
+     apply, but its panel actions exist only once the root entry RENDERS:
+     `attachPanels(actions)` runs in the registration's `inject` hook, which the
+     renderer calls in the entry's first render
+     (`ui-renderer/src/client/scoped-slots.tsx`, `runInject`).
+   - The channel list is a network read and can land first. Measured boot: the
+     rows wrote at t+48ms, the frame's first render attached at t+110ms.
+   - So `openPage` reached `#require()` with `#panels === undefined` and THREW
+     ("layout: panel actions not wired"). It threw inside the
+     `void channels.restorePersisted(...)` promise, so nothing observed it: the
+     selection stayed, the page write was lost.
+
+   The fix is in the layer that owns the wiring. `LayoutController.openPage`
+   now holds a request that arrives before the frame mounted (`#pendingPage`)
+   and `attachPanels` applies it inside that first render — the frame reads its
+   store snapshot after the hook runs, so the first painted frame is already the
+   channel and nothing corrects itself a frame later. Being early is no longer a
+   failure for this one transition; the gestures (`toggleSidebar`,
+   `openDetails`, `closeDetails`) keep their fail-loud contract, because a
+   gesture cannot precede the frame. In `ui-inbox` the restore effect now
+   subscribes BEFORE reading the rows that are already there, so its two
+   triggers are the notification and the state as it stands: a restore that only
+   fires while the data happens to arrive under our eyes is not a restore. Both
+   invariants hold — armed exactly once per load, so a later rows refresh cannot
+   re-navigate the person, and an unresolvable id is dropped silently.
+
+   Evidence, and why the old unit test was not enough: the new
+   `ui-inbox/tests/browser-plugin.client.spec.tsx` case boots with ui-layout's
+   REAL `LayoutController` and attaches the panels afterwards — the composed
+   order — so it fails at the buggy commit (`openPage` never lands) and passes
+   now; `ui-layout/tests/service.client.spec.ts` pins the hold-then-apply
+   contract and consumed-once behaviour. A fake `{ openPage: vi.fn() }` can
+   never be early, which is exactly why the browser found this and the suite did
+   not.
+
+   Re-apply on an upstream pull: `#pendingPage` plus `openPage`/`attachPanels`
+   in `ui-layout/src/client/service.ts`, and the subscribe-then-read restore
+   effect in `ui-inbox/src/client/index.ts`. The composed proof is e-server's
+   `tests/harness_inbox_browser.mjs` reload block: conversation restored to
+   Darwin, channel restored as the main view when unfolded, folded sidebar still
+   folded with the channel still the main view, and the row highlight agreeing
+   with the painted surface.
+
 Everything else should ship as **plugins**, which stay upstream-agnostic and
 are the candidates for open-sourcing.
 

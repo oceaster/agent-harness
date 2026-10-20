@@ -36,16 +36,27 @@ export interface ILayout {
 /** Cross-plugin panel-action face (ctx.layout). */
 export class LayoutController implements ILayout {
   #panels: PanelActions | undefined
+  /** A page asked for before the root entry mounted (see openPage). */
+  #pendingPage: string | null | undefined
 
   /**
    * Adopt the root entry's bound store actions. Called from the root
    * registration's inject hook (a sanctioned assembly side effect), so the
    * face is live from the entry's first render; on entry re-register the
    * fresh actions overwrite the stale set.
+   *
+   * A page requested before this point is applied here, inside that first
+   * render: the frame reads its store snapshot after this hook runs, so the
+   * page it paints is already the requested one and no frame paints the
+   * conversation first.
    * @param actions - bound actions of the entry's layout store instance.
    */
   attachPanels(actions: PanelActions): void {
     this.#panels = actions
+    const pending = this.#pendingPage
+    if (pending === undefined) return
+    this.#pendingPage = undefined
+    actions.openPage(pending)
   }
 
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
@@ -67,7 +78,15 @@ export class LayoutController implements ILayout {
    * @param id - registered page id, or null for the conversation.
    */
   openPage(id: string | null): void {
-    this.#require().openPage(id)
+    // The one transition with a boot-time caller: the inbox restores the
+    // channel it had open as soon as the server answers the channel list,
+    // which can be before the root entry has rendered (the fetch is a real
+    // network read; the frame's first render is a later task). The request is
+    // the reader's intent, not a write that must land this instant, so it is
+    // held and applied by attachPanels — being early is not a failure here.
+    // Every other action below stays a gesture, which cannot precede the frame.
+    if (this.#panels === undefined) { this.#pendingPage = id; return }
+    this.#panels.openPage(id)
   }
 
   #require(): PanelActions {
