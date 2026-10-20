@@ -314,7 +314,7 @@ describe('QueueDock', () => {
     expect(rendered.getByLabelText('插话发送').getAttribute('title')).toBe('仅运行中可插话发送')
   })
 
-  it('renders a session-backed subagent Queue without unsupported actions', () => {
+  it('removes a queued subagent follow-up without offering edit or steer', async () => {
     const snap = {
       ...snapshotWith([row('i-subagent', 'pending child follow-up')]),
       subagent: {
@@ -327,14 +327,59 @@ describe('QueueDock', () => {
       },
     }
     const source = liveSession(snap)
+    const updateQueue = vi.fn(() => Promise.resolve())
     const view = render(
-      <QueueDock {...kitFor(snap)} useSession={source.useSession} />,
+      <QueueDock {...kitFor(snap, { updateQueue })} useSession={source.useSession} />,
     )
 
     expect(view.getByText('pending child follow-up')).toBeTruthy()
     expect(view.queryByLabelText('编辑排队消息')).toBeNull()
-    expect(view.queryByLabelText('删除排队消息')).toBeNull()
     expect(view.queryByLabelText('插话发送')).toBeNull()
+    fireEvent.click(view.getByLabelText('删除排队消息'))
+    await waitFor(() => {
+      expect(updateQueue).toHaveBeenCalledWith(iid('i-subagent'), { kind: 'remove' })
+    })
+  })
+
+  it('retires a removed subagent occurrence only when the authoritative snapshot says so', async () => {
+    const first = row('i-child-1', 'First queued message to delete')
+    const second = row('i-child-2', 'Second queued message to delete')
+    const snap = {
+      ...snapshotWith([first, second]),
+      subagent: {
+        address: {
+          parentSessionId: 'parent' as SessionId,
+          childSessionId: SID,
+          mode: 'continuable' as const,
+        },
+        parentAvailable: true,
+      },
+    }
+    const source = liveSession(snap)
+    const updateQueue = vi.fn(() => Promise.resolve())
+    const view = render(
+      <QueueDock {...kitFor(snap, { updateQueue })} useSession={source.useSession} />,
+    )
+
+    fireEvent.click(view.getByRole('button', { name: '2 条排队消息' }))
+    // The child offers deletion and nothing else: its continuation transport
+    // carries no edit or steer, so those buttons are absent, not disabled.
+    expect(view.queryByLabelText('编辑排队消息')).toBeNull()
+    expect(view.queryByLabelText('插话发送')).toBeNull()
+    fireEvent.click(view.getAllByLabelText('删除排队消息')[0]!)
+    await waitFor(() => {
+      expect(updateQueue).toHaveBeenCalledWith(iid('i-child-1'), { kind: 'remove' })
+    })
+
+    // The dock never removes a row optimistically: the exact occurrence stays
+    // until the Host's authoritative queue snapshot drops it.
+    expect(updateQueue).toHaveBeenCalledTimes(1)
+    expect(view.getByText('First queued message to delete')).toBeTruthy()
+    expect(view.getByText('Second queued message to delete')).toBeTruthy()
+
+    act(() => { source.push({ ...snap, queue: [second] }) })
+    expect(view.queryByText('First queued message to delete')).toBeNull()
+    expect(view.getByText('Second queued message to delete')).toBeTruthy()
   })
 
   it('keeps the row and reports a genuine steer failure', async () => {
