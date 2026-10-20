@@ -237,6 +237,13 @@
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
 
+    # SPIKE ROW (branch spike/inbox-ui, never merged): the inbox panel that
+    # occupies `sidebar.workspaces` in place of the workspace browser. Both
+    # rows are present here on purpose so the spike can compose either side
+    # with a --patch overlay instead of rebuilding per experiment.
+    - id: ui-inbox
+      name: '@deepseek-ai/dsh-client-ui-inbox'
+
     # Input triggers: the '/' | '@' pipeline (ui-input-trigger), the command surface over
     # it (ui-commands), and the reference sources (ui-skill / ui-reference).
     - id: ui-input-trigger
