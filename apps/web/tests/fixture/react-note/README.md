@@ -21,8 +21,8 @@ it is about the wire a client will actually call.
 | --- | --- |
 | `start-react-note-fixture.sh` | boots `apps/cli/lib/bin.js --profile web` with an isolated home, the mock provider, and the observation plugin as a home patch row |
 | `mock-llm.mjs` | OpenAI-compatible stand-in that records every request body; SSE lines copied from `packages/llm/llm-deepseek/tests/mock-server.ts` |
-| `observe-plugin.mjs` | observation-only host route (`/react-note-observe`): event counts, the derived message list, agent status, inbox depth, surface nodes |
-| `drive-react-note.mjs` | the measurement: negative, projection index, compaction |
+| `observe-plugin.mjs` | observation-only host route (`/react-note-observe`): event counts, the derived message list, the live reaction notes, agent status, inbox depth, surface nodes |
+| `drive-react-note.mjs` | the measurement: negative, the next request body, the UI projection, compaction |
 | `restart-check.sh` / `restart-check.mjs` | stop the host, start the same build on the same `DSH_HOME`, prove the conversation still opens |
 | `evidence/` | the dumps from the run recorded in the ticket submission (`react-note-drive.json`, `react-note-restart.json`); long assembled prompt bodies are truncated in the drive dump and the truncation is stated inside the file |
 
@@ -51,14 +51,21 @@ and print a `summary` of every check.
 
 - **Host + wire (real):** the note is one log-only event with the envelope
   `ignorable` marker, no turn, no model request, no title, no goal/retry/queue
-  record, idle agent, empty inbox, unchanged surface.
-- **Provider request body (real):** the note is in the NEXT turn's recorded
-  request at a stated index and is the only addition to it.
+  record, idle agent, empty inbox, unchanged surface — and the host's derived
+  history (`Session.deriveMessages()`, the array the loop hands the provider) is
+  element-for-element what it was before the append.
+- **Provider request body (real):** the note appears NOWHERE in the next turn's
+  recorded request. The request is the previous one's messages plus the reply and
+  the new prompt, which is the prompt-cache property in measured form.
+- **UI projection (real):** `Session.reactionNotes()` reports the note on the
+  message it targets, and it lapses when a compaction shadows that message while
+  the durable log keeps the record.
 - **Compaction (real):** a `/compact` whose span covers the note's seq carries no
-  reaction text in the summarisation request or the durable checkpoint, and the
-  note still reaches the model afterwards.
-- **Restart (real process, same build, same home):** the conversation reopens and
-  the note is still there.
+  reaction text in the summarisation request, the durable checkpoint, or the
+  later request.
+- **Restart (real process, same build, same home):** the conversation reopens,
+  the note is still there, and the reopened session's model history still carries
+  no note at any index.
 
 Not established here: the browser transcript. Its byte-identity is pinned by
 `packages/client/ui-conversation/tests/reaction-note-transcript.client.spec.ts`

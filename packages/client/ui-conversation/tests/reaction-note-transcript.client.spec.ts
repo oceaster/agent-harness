@@ -23,6 +23,7 @@ import type {
   ConversationNodeDefinition, ConversationViewDefinition,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { ConversationNodeAssembler } from '@deepseek-ai/dsh-client-runtime/client'
+import { deriveEventMessage } from '@deepseek-ai/dsh-session/surface'
 import { assistantDefinition } from '../src/client/conversation-nodes/assistant.ts'
 import { chatViewDefinition } from '../src/client/conversation-nodes/chat-snapshot-builder.ts'
 import { commandDefinition } from '../src/client/conversation-nodes/command.ts'
@@ -130,6 +131,26 @@ function painted(snapshot: ChatSnapshot): unknown[] {
   const nodes: ChatConversationViewNode[] = [...snapshot.nodes.values()]
   return nodes.map(node => ({ kind: node.kind, key: node.key, data: node.data }))
 }
+
+describe('the reaction stays where the human left it, and out of the model', () => {
+  it('names a message the model does see, while projecting to no message itself', () => {
+    const events = conversation(true)
+    const note = events.at(-1)!.event
+    // The target the badge paints on IS a model message: everything before the
+    // note is unchanged history.
+    const target = events.find(entry => entry.event.seq === 1)!.event
+    expect(deriveEventMessage(target)?.role).toBe('user')
+    // The note itself projects to NOTHING. This is the rule every request
+    // builder folds, so a reaction can never insert text mid-conversation and
+    // invalidate the provider's cached prefix — while the UI half below still
+    // shows it on the row it names.
+    expect(deriveEventMessage(note)).toBeNull()
+    expect(JSON.stringify(deriveEventMessage(target))).not.toContain('👍')
+    // And the window the browser renders carries the note, so the badge has a
+    // source: the client fold is the UI's own read of the log, not history.
+    expect(events.map(entry => entry.event.type)).toContain('reaction/note')
+  })
+})
 
 describe('a reaction note paints no transcript node', () => {
   it('leaves the chat snapshot identical', () => {

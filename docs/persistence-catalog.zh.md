@@ -543,12 +543,14 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 ```ts persistence-catalog
 /**
- * A human reaction to an earlier message. Log-only and prose-free: it never
- * enters the ordered surface, so it is invisible in the transcript and
- * excluded from compaction, and it is always written with the envelope's
- * `ignorable: true` marker. It reaches the model only through
- * `deriveEventMessage`, which appends one user-role line per note to the next
- * request.
+ * A human reaction to an earlier message. Log-only and UI-only, and
+ * prose-free: it never enters the ordered surface, so it is invisible in the
+ * transcript and excluded from compaction, and it never enters the
+ * model-bound history either — `deriveMessages` projects surface nodes only,
+ * so a note can never insert text into a request and invalidate a provider's
+ * cached prefix. It is always written with the envelope's `ignorable: true`
+ * marker, and the UI reads it through `reactionNotes`, which keeps a note
+ * while the message it targets is still on the surface.
  */
 'reaction/note': ReactionNoteEventData
 ```

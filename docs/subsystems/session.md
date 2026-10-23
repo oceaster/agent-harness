@@ -93,12 +93,14 @@ interface SessionEventMap {
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }
   /**
-   * A human reaction to an earlier message. Log-only and prose-free: it never
-   * enters the ordered surface, so it is invisible in the transcript and
-   * excluded from compaction, and it is always written with the envelope's
-   * `ignorable: true` marker. It reaches the model only through
-   * `deriveEventMessage`, which appends one user-role line per note to the next
-   * request.
+   * A human reaction to an earlier message. Log-only and UI-only, and
+   * prose-free: it never enters the ordered surface, so it is invisible in the
+   * transcript and excluded from compaction, and it never enters the
+   * model-bound history either — `deriveMessages` projects surface nodes only,
+   * so a note can never insert text into a request and invalidate a provider's
+   * cached prefix. It is always written with the envelope's `ignorable: true`
+   * marker, and the UI reads it through `reactionNotes`, which keeps a note
+   * while the message it targets is still on the surface.
    */
   'reaction/note': ReactionNoteEventData
   /**
@@ -506,46 +508,64 @@ declare class Session {
    */
   requestContext(): RequestContext | undefined;
   /**
-   * Derive the LLM message history by walking the ordered sequences of
-   * message-producing events maintained by `surfaceOp` markers. The
-   * surface is the single source of derived history: every message-producing
-   * append records its `surfaceOp`, so a raw event with no marker (a chunk, a
-   * turn boundary) is correctly absent, and a compaction `replace` deletes the
+   * Derive the LLM message history by walking the ordered sequence of
+   * message-producing events maintained by `surfaceOp` markers. The surface is
+   * the single source of derived history: every message-producing append
+   * records its `surfaceOp`, so a raw event with no marker (a chunk, a turn
+   * boundary) is correctly absent, and a compaction `replace` deletes the
    * shadowed nodes from the derivation. The projection rules are
    * {@link deriveEventMessage}, folded per node.
    *
-   * Model notes ({@link isModelNoteEvent}) are the one exception, and it is
-   * one-directional: they are log-only — absent from {@link Session.surface},
-   * so absent from the client transcript and from every compaction span — but
-   * they do reach the model. Each note is INTERLEAVED at its log position: it
-   * is projected just before the first current surface node whose seq is
-   * greater (so a note sits where the human reacted, not at the tail of every
-   * later request), and any note left over after the last node follows it. The
-   * surface's own node order is preserved, including a replacement copy that
-   * took an earlier node's place at a later seq.
-   *
-   * A note lives exactly as long as its target: it projects only while
-   * `targetSeq` is still a current surface node. Owen's rule — once the message
-   * leaves the context, so does the reaction to it — falls out of that, because
-   * a compaction `replace` deletes the shadowed node and the note's target seq
-   * stops being one. The lifetime is a PURE FUNCTION OF THE LOG: it reads only
-   * the log's `surfaceOp` markers and the note's own `targetSeq`, never a clock,
-   * a counter, or a client-side reaction map, so replay, a resume, and a
-   * post-compaction rebuild derive the identical array.
+   * A reaction note ({@link isReactionNoteEvent}) is NOT in this history — not
+   * at its own log position, not at the tail, not anywhere. It is a UI signal:
+   * the human's own act, recorded for the transcript's badge and for nothing
+   * the model needs to answer. Keeping it out of the history is what makes a
+   * reaction free: this array is exactly what the agent loop hands the provider,
+   * so a note that never enters it can never insert text mid-conversation and
+   * invalidate the provider's cached prefix. Appending a reaction therefore
+   * leaves this method's return value element-for-element identical, at any log
+   * position — the property `reaction-note.spec.ts` asserts rather than assumes.
+   * The UI reads reactions from {@link Session.reactionNotes}, which owns the
+   * target-liveness rule; the durable log keeps every note either way.
    *
    * CACHED: each surface node is projected exactly once, when first seen — a
    * call costs O(new events), and a surface rewrite (a `replace`;
    * {@link SessionSurface.replaceGeneration}) rebuilds. Only appends can happen
-   * between rebuilds, and an appended event's seq exceeds every already-derived
-   * entry's seq, so appending in log order keeps the interleaved array sorted
-   * exactly as the rebuild would place it. The returned array is
-   * a fresh snapshot per call (later appends never grow an array a caller
-   * already holds); the `Message` objects in it are SHARED and **deep-frozen**.
-   * Their content reuses the already frozen durable event data, so the cache
-   * needs no second deep clone and consumers still cannot mutate the log.
+   * between rebuilds, and an append only ever grows the surface tail, so
+   * projecting the new nodes in surface order keeps the cached array exactly as
+   * the rebuild would place it. The returned array is a fresh snapshot per call
+   * (later appends never grow an array a caller already holds); the `Message`
+   * objects in it are SHARED and **deep-frozen**. Their content reuses the
+   * already frozen durable event data, so the cache needs no second deep clone
+   * and consumers still cannot mutate the log.
    * @returns a fresh array of the shared, frozen derived history.
    */
   deriveMessages(): Message[];
+  /**
+   * The reaction notes still worth showing, in log order — the UI's own
+   * projection, and the only place a note is projected anywhere.
+   *
+   * A note is live exactly while the message it reacts to is still part of the
+   * conversation's surface: `targetSeq` names a current surface node and lies
+   * earlier in the log than the note. Owen's rule — once the message leaves the
+   * context, so does the reaction to it — falls out of that, because a
+   * compaction `replace` deletes the shadowed node and the note's target seq
+   * stops being one. Liveness is a PURE FUNCTION OF THE LOG (its `surfaceOp`
+   * markers plus the note's own `targetSeq`), never a clock, a counter, or a
+   * client-side reaction map, so a replay, a resume and a post-compaction
+   * rebuild return the identical notes. The notes themselves stay in the
+   * durable log either way: a lapse is a projection decision, not a delete.
+   *
+   * NOT on the request path: {@link Session.deriveMessages} never contains a
+   * note, so nothing here can reach the provider or its cache. This read is
+   * memoized per (log length, surface replacement generation), so a caller that
+   * reads it once per render after an append rescans the log once; a UI that
+   * needs a per-frame badge keeps folding the raw events itself (the browser's
+   * `SessionReactionNotes` does).
+   * @returns the live notes, frozen, oldest first — `targetSeq`, `emoji`,
+   *   `actor` and `action` are on `event.data`.
+   */
+  reactionNotes(): readonly SessionEvent<'reaction/note'>[];
   /**
    * Instance face of the pure per-node `deriveEventMessage` export from
    * `surface.ts`.
@@ -565,7 +585,7 @@ declare class Session {
 - `tool/result` → a user message carrying a `tool-result` block.
 - `user/message` (injected context, i.e. non-`user` source) → a user-role message carrying its `content` verbatim at its chronological position; its typed source names the producer and carries any producer-specific data.
 
-Everything else (`turn/*`, `step/*`, plugin-owned `llm/retry`) is structural and does not project into a message. Token accounting reads per-step `assistant/chunk { type: 'usage' }` records and treats `assistant/message.usage` as the committed-step fallback when no usage chunk exists; failed model-request attempts have no assistant message, so their usage chunk is the durable accounting record. Because this unreleased format intentionally has no compatibility promise, seed/load validation rejects request headers and assistant messages that omit provider/model instead of guessing a route for historical data.
+Everything else (`turn/*`, `step/*`, plugin-owned `llm/retry`) is structural and does not project into a message. A `reaction/note` is structural in exactly this sense: it is a log-only UI record, `deriveEventMessage` projects it to `null`, and `Session.deriveMessages()` therefore returns an element-for-element identical array before and after a reaction is appended anywhere in the log. That identity is the point — this array is what the agent loop hands the provider, so a note that never enters it cannot rewrite a cached prefix mid-conversation. Owen's rule survives as a UI rule instead: `Session.reactionNotes()` returns the notes whose `targetSeq` is still a current surface node, so a compaction `replace` that shadows the reacted-to message takes the reaction with it while the durable log keeps the record, and the browser badge (`ConversationSnapshot.reactions`, folded by `SessionReactionNotes`) paints the reaction on the message it targets. If the model ever genuinely needs to hear about a reaction, the only cache-safe shape is a NEW event appended in a later turn — never a note spliced into history that was already sent. Token accounting reads per-step `assistant/chunk { type: 'usage' }` records and treats `assistant/message.usage` as the committed-step fallback when no usage chunk exists; failed model-request attempts have no assistant message, so their usage chunk is the durable accounting record. Because this unreleased format intentionally has no compatibility promise, seed/load validation rejects request headers and assistant messages that omit provider/model instead of guessing a route for historical data.
 
 ## Live-session fork API
 
@@ -784,7 +804,7 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 Types: [CreateSessionOptions](persistence.md) · [PrepareSessionOptions](persistence.md) · [SessionId](core.md)
 
-Source: [`packages/core/session/src/index.ts:916`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:902`](../../packages/core/session/src/index.ts)
 
 <a id="session-events"></a>
 

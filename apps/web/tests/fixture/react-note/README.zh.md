@@ -19,8 +19,8 @@ host，因为那时没有可用的 RPC，所以它那条「追加不会启动任
 | --- | --- |
 | `start-react-note-fixture.sh` | 用隔离 home、mock provider，并把观察插件作为 home patch 行，启动 `apps/cli/lib/bin.js --profile web` |
 | `mock-llm.mjs` | 兼容 OpenAI 的替身，记录每个请求体；SSE 行复制自 `packages/llm/llm-deepseek/tests/mock-server.ts` |
-| `observe-plugin.mjs` | 只做观察的 host 路由（`/react-note-observe`）：事件计数、派生消息列表、agent 状态、inbox 深度、surface 节点 |
-| `drive-react-note.mjs` | 度量本体：负向、投影索引、compaction |
+| `observe-plugin.mjs` | 只做观察的 host 路由（`/react-note-observe`）：事件计数、派生消息列表、存活的反应笔记、agent 状态、inbox 深度、surface 节点 |
+| `drive-react-note.mjs` | 度量本体：负向、下一请求体、UI 投影、compaction |
 | `restart-check.sh` / `restart-check.mjs` | 停掉 host，在同一 `DSH_HOME` 上启动同一构建，证明会话仍能打开 |
 | `evidence/` | 工单提交中记录的那次运行的转储（`react-note-drive.json`、`react-note-restart.json`）；drive 转储里过长的组装 prompt 体被截断，且截断事实写在文件内部 |
 
@@ -48,12 +48,17 @@ RESTART_OUT=/tmp/react-note-proof \
 
 - **Host + 线上路径（真实）：** 笔记是一个带信封 `ignorable` 标记的 log-only 事件，
   不启动回合、不产生模型请求、不生成标题、不写 goal/retry/queue 记录，agent 保持
-  空闲，inbox 为空，surface 不变。
-- **Provider 请求体（真实）：** 笔记出现在下一回合被记录的请求中的指定索引处，且是
-  该请求唯一的增量。
-- **Compaction（真实）：** 一次覆盖笔记 seq 的 `/compact`，其摘要请求与持久化检查点
-  都不含反应文本，而笔记在此之后仍能抵达模型。
-- **重启（真实进程、同一构建、同一 home）：** 会话重新打开，笔记仍在。
+  空闲，inbox 为空，surface 不变；并且 host 的派生历史（`Session.deriveMessages()`，
+  即循环交给 provider 的那个数组）与追加之前逐元素相同。
+- **Provider 请求体（真实）：** 笔记在下一回合被记录的请求中**任何位置都不出现**。
+  该请求就是上一次请求的消息加上回复与新 prompt——这就是以实测量形式给出的 prompt
+  缓存性质。
+- **UI 投影（真实）：** `Session.reactionNotes()` 把笔记报在它所指向的那条消息上；
+  一旦 compaction 遮蔽了那条消息，笔记随之消失，而持久日志仍然保留该记录。
+- **Compaction（真实）：** 一次覆盖笔记 seq 的 `/compact`，其摘要请求、持久化检查点
+  以及之后的请求都不含反应文本。
+- **重启（真实进程、同一构建、同一 home）：** 会话重新打开，笔记仍在，且重开后的
+  模型历史在任何索引处都不含笔记。
 
 此处未确立的是浏览器 transcript。它的字节一致性由
 `packages/client/ui-conversation/tests/reaction-note-transcript.client.spec.ts` 钉住

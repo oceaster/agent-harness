@@ -16,7 +16,7 @@ import { SESSION_FORMAT_VERSION, SessionId } from './types.ts'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
 import type { CreateSessionOptions, EnvelopeIntent, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SurfaceIntent, SurfaceEventType } from './types.ts'
 import { snapshotJsonValue } from './json.ts'
-import { deriveEventMessage, isModelNoteEvent, isSurfaceEligibleType, SurfaceManager } from './surface.ts'
+import { deriveEventMessage, isReactionNoteEvent, isSurfaceEligibleType, SurfaceManager } from './surface.ts'
 import type { SessionSurface } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
 
@@ -30,7 +30,7 @@ export { interruptedTurnClosers, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from '
 export { decodeStorageRecord, packChunkRuns } from './chunk-rows.ts'
 export type { ChunkRow, StorageRecord } from './chunk-rows.ts'
 export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult } from './surface.ts'
-export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isModelNoteEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
+export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReactionNoteEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
 export { canonicalHeader, foldRequestHeader, headerEquals } from './request-header.ts'
 export { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
 
@@ -716,14 +716,10 @@ export class Session {
     return this.contextFold
   }
 
-  /** The derived-message cache: frozen projections in log order, extended per unseen event. */
+  /** The derived-message cache: frozen projections in surface order, extended per unseen node. */
   private derived: Message[] = []
-  /** Seqs of the current surface nodes, for the note-target liveness check. */
-  private derivedNodeSeqs = new Set<number>()
   /** Surface position (nodes projected) the cache has reached. */
   private derivedNodes = 0
-  /** Log position the interleaved derivation has reached. */
-  private derivedLogSeq = 0
   /**
    * {@link SurfaceManager.replaceGeneration} the cache was built under.
    *
@@ -736,43 +732,36 @@ export class Session {
   private derivedGeneration = -1
 
   /**
-   * Derive the LLM message history by walking the ordered sequences of
-   * message-producing events maintained by `surfaceOp` markers. The
-   * surface is the single source of derived history: every message-producing
-   * append records its `surfaceOp`, so a raw event with no marker (a chunk, a
-   * turn boundary) is correctly absent, and a compaction `replace` deletes the
+   * Derive the LLM message history by walking the ordered sequence of
+   * message-producing events maintained by `surfaceOp` markers. The surface is
+   * the single source of derived history: every message-producing append
+   * records its `surfaceOp`, so a raw event with no marker (a chunk, a turn
+   * boundary) is correctly absent, and a compaction `replace` deletes the
    * shadowed nodes from the derivation. The projection rules are
    * {@link deriveEventMessage}, folded per node.
    *
-   * Model notes ({@link isModelNoteEvent}) are the one exception, and it is
-   * one-directional: they are log-only — absent from {@link Session.surface},
-   * so absent from the client transcript and from every compaction span — but
-   * they do reach the model. Each note is INTERLEAVED at its log position: it
-   * is projected just before the first current surface node whose seq is
-   * greater (so a note sits where the human reacted, not at the tail of every
-   * later request), and any note left over after the last node follows it. The
-   * surface's own node order is preserved, including a replacement copy that
-   * took an earlier node's place at a later seq.
-   *
-   * A note lives exactly as long as its target: it projects only while
-   * `targetSeq` is still a current surface node. Owen's rule — once the message
-   * leaves the context, so does the reaction to it — falls out of that, because
-   * a compaction `replace` deletes the shadowed node and the note's target seq
-   * stops being one. The lifetime is a PURE FUNCTION OF THE LOG: it reads only
-   * the log's `surfaceOp` markers and the note's own `targetSeq`, never a clock,
-   * a counter, or a client-side reaction map, so replay, a resume, and a
-   * post-compaction rebuild derive the identical array.
+   * A reaction note ({@link isReactionNoteEvent}) is NOT in this history — not
+   * at its own log position, not at the tail, not anywhere. It is a UI signal:
+   * the human's own act, recorded for the transcript's badge and for nothing
+   * the model needs to answer. Keeping it out of the history is what makes a
+   * reaction free: this array is exactly what the agent loop hands the provider,
+   * so a note that never enters it can never insert text mid-conversation and
+   * invalidate the provider's cached prefix. Appending a reaction therefore
+   * leaves this method's return value element-for-element identical, at any log
+   * position — the property `reaction-note.spec.ts` asserts rather than assumes.
+   * The UI reads reactions from {@link Session.reactionNotes}, which owns the
+   * target-liveness rule; the durable log keeps every note either way.
    *
    * CACHED: each surface node is projected exactly once, when first seen — a
    * call costs O(new events), and a surface rewrite (a `replace`;
    * {@link SessionSurface.replaceGeneration}) rebuilds. Only appends can happen
-   * between rebuilds, and an appended event's seq exceeds every already-derived
-   * entry's seq, so appending in log order keeps the interleaved array sorted
-   * exactly as the rebuild would place it. The returned array is a fresh
-   * snapshot per call (later appends never grow an array a caller already
-   * holds); the `Message` objects in it are SHARED and **deep-frozen**. Their
-   * content reuses the already frozen durable event data, so the cache needs no
-   * second deep clone and consumers still cannot mutate the log.
+   * between rebuilds, and an append only ever grows the surface tail, so
+   * projecting the new nodes in surface order keeps the cached array exactly as
+   * the rebuild would place it. The returned array is a fresh snapshot per call
+   * (later appends never grow an array a caller already holds); the `Message`
+   * objects in it are SHARED and **deep-frozen**. Their content reuses the
+   * already frozen durable event data, so the cache needs no second deep clone
+   * and consumers still cannot mutate the log.
    * @returns a fresh array of the shared, frozen derived history.
    */
   deriveMessages(): Message[] {
@@ -784,90 +773,87 @@ export class Session {
       this.derivedGeneration = generation
       return [...this.derived]
     }
-    // Registration precedes the walk: a note's target is always an earlier seq,
-    // so a node appended in this same delta is already known when its note is
-    // considered.
-    for (const seq of nodes.slice(this.derivedNodes)) this.derivedNodeSeqs.add(seq)
-    this.derivedNodes = nodes.length
-    for (let seq = this.derivedLogSeq; seq < this.log.length; seq++) {
-      const msg = this.deriveLogEntry(seq)
-      if (msg) this.derived.push(msg)
-    }
-    this.derivedLogSeq = this.log.length
-    return [...this.derived]
-  }
-
-  /**
-   * Fork the interleaved derivation from the log and the current surface.
-   * @param nodes - current surface node seqs, in model-visible order.
-   */
-  private rebuildDerived(nodes: readonly number[]): void {
-    const nodeSeqs = new Set(nodes)
-    this.derived = []
-    this.derivedNodeSeqs = nodeSeqs
-    this.derivedNodes = nodes.length
-    this.derivedLogSeq = this.log.length
-    // Collect the live notes in log order first, then merge them into the
-    // surface order, because the surface is NOT seq-ordered after a `replace`.
-    const notes: { seq: number; message: Message }[] = []
-    for (let seq = 0; seq < this.log.length; seq++) {
-      const message = this.projectNote(seq, nodeSeqs)
-      if (message) notes.push({ seq, message })
-    }
-    let next = 0
-    for (const seq of nodes) {
-      // Everything the log placed before this node comes first — a note the
-      // human left between two messages stays between them, for good.
-      while (next < notes.length) {
-        const note = notes[next]
-        if (note === undefined || note.seq >= seq) break
-        this.derived.push(note.message)
-        next++
-      }
+    for (let index = this.derivedNodes; index < nodes.length; index++) {
       // Surface sequences are built from this.log — seq is always a valid index
       // by construction. The non-null assertion expresses that invariant.
       // oxlint-disable-next-line typescript/no-non-null-assertion
-      const msg = this.deriveEventMessage(this.log[seq]!)
-      // A surface node is one of the five message-producing types, but an
+      const msg = this.deriveEventMessage(this.log[nodes[index]!]!)
+      // A surface node is one of the message-producing types, but an
       // empty-content assistant/message (a max-tokens step that hosts only
       // usage) derives to null and must not enter the transcript.
       if (msg) this.derived.push(msg)
     }
-    for (const note of notes.slice(next)) this.derived.push(note.message)
+    this.derivedNodes = nodes.length
+    return [...this.derived]
   }
 
   /**
-   * Project one log position for the interleaved history: a current surface
-   * node, or a live model note at its own position.
-   * @param seq - log position to project.
-   * @returns the derived message, or null when the position produces none.
+   * Rebuild the derivation from the log and the current surface.
+   * @param nodes - current surface node seqs, in model-visible order.
    */
-  private deriveLogEntry(seq: number): Message | null {
-    if (this.derivedNodeSeqs.has(seq)) {
-      // Surface sequences are built from this.log — seq is always a valid
-      // index by construction. The non-null assertion expresses that invariant.
+  private rebuildDerived(nodes: readonly number[]): void {
+    this.derived = []
+    this.derivedNodes = nodes.length
+    for (const seq of nodes) {
+      // Surface sequences are built from this.log — seq is always a valid index
+      // by construction. The non-null assertion expresses that invariant.
       // oxlint-disable-next-line typescript/no-non-null-assertion
-      return this.deriveEventMessage(this.log[seq]!)
+      const msg = this.deriveEventMessage(this.log[seq]!)
+      if (msg) this.derived.push(msg)
     }
-    return this.projectNote(seq, this.derivedNodeSeqs)
   }
 
+  /** Memoized UI projection of the live reaction notes. */
+  private liveReactionNotes: readonly SessionEvent<'reaction/note'>[] = []
+  /** Surface position (log length) the note projection was built at. */
+  private liveReactionNotesLogSeq = 0
+  /** {@link SurfaceManager.replaceGeneration} the note projection was built under. */
+  private liveReactionNotesGeneration = -1
+
   /**
-   * Project a model note only while the message it reacts to is still part of
-   * the context. This is the whole lifetime rule: a note is a pure function of
-   * the log, and it lapses the moment a `replace` shadows its target.
-   * @param seq - log position that may hold a note.
-   * @param nodeSeqs - current surface node seqs.
-   * @returns the note's message, or null when the position is not a live note.
+   * The reaction notes still worth showing, in log order — the UI's own
+   * projection, and the only place a note is projected anywhere.
+   *
+   * A note is live exactly while the message it reacts to is still part of the
+   * conversation's surface: `targetSeq` names a current surface node and lies
+   * earlier in the log than the note. Owen's rule — once the message leaves the
+   * context, so does the reaction to it — falls out of that, because a
+   * compaction `replace` deletes the shadowed node and the note's target seq
+   * stops being one. Liveness is a PURE FUNCTION OF THE LOG (its `surfaceOp`
+   * markers plus the note's own `targetSeq`), never a clock, a counter, or a
+   * client-side reaction map, so a replay, a resume and a post-compaction
+   * rebuild return the identical notes. The notes themselves stay in the
+   * durable log either way: a lapse is a projection decision, not a delete.
+   *
+   * NOT on the request path: {@link Session.deriveMessages} never contains a
+   * note, so nothing here can reach the provider or its cache. This read is
+   * memoized per (log length, surface replacement generation), so a caller that
+   * reads it once per render after an append rescans the log once; a UI that
+   * needs a per-frame badge keeps folding the raw events itself (the browser's
+   * `SessionReactionNotes` does).
+   * @returns the live notes, frozen, oldest first — `targetSeq`, `emoji`,
+   *   `actor` and `action` are on `event.data`.
    */
-  private projectNote(seq: number, nodeSeqs: ReadonlySet<number>): Message | null {
-    const event = this.log[seq]
-    if (event === undefined || !isModelNoteEvent(event)) return null
-    const { targetSeq } = event.data
-    // A reaction names an earlier message; the ordering guard keeps the
-    // incremental and rebuilt paths identical even on a hand-written log.
-    if (targetSeq >= seq || !nodeSeqs.has(targetSeq)) return null
-    return this.deriveEventMessage(event)
+  reactionNotes(): readonly SessionEvent<'reaction/note'>[] {
+    const surface = this.surface
+    const generation = surface.replaceGeneration
+    if (this.liveReactionNotesGeneration === generation
+      && this.liveReactionNotesLogSeq === this.log.length) {
+      return this.liveReactionNotes
+    }
+    const liveTargets = new Set(surface.nodes)
+    const notes: SessionEvent<'reaction/note'>[] = []
+    for (const event of this.log) {
+      if (!isReactionNoteEvent(event)) continue
+      // A reaction names an earlier message; the ordering guard keeps this
+      // projection identical on a hand-written log and on a rebuild.
+      const { targetSeq } = event.data
+      if (targetSeq < event.seq && liveTargets.has(targetSeq)) notes.push(event)
+    }
+    this.liveReactionNotes = Object.freeze(notes)
+    this.liveReactionNotesGeneration = generation
+    this.liveReactionNotesLogSeq = this.log.length
+    return this.liveReactionNotes
   }
 
   /**

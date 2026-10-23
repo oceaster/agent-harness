@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-session/surface
  */
 
-import type { Message, MessageId } from '@deepseek-ai/dsh-llm'
+import type { Message } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SurfaceEvent, SurfaceEventType, SurfaceOp } from './types.ts'
 
 /** Runtime counterpart of the message-producing event union. */
@@ -19,14 +19,15 @@ const SURFACE_EVENT_TYPES = new Set<string>([
 ])
 
 /**
- * Runtime counterpart of the model-note event set: log-only events that reach
- * the model without joining the ordered surface. `Session.deriveMessages`
- * interleaves each one at its log position among the surface messages, and only
- * while the message it reacts to is still on the surface, so they are absent
- * from the transcript — the client renders surface events only — and from
- * compaction, which folds the surface's shadowed seqs.
+ * Runtime counterpart of the reaction-note event set: log-only UI records that
+ * reach no model. A note is absent from the ordered surface, so it is absent
+ * from the transcript, from compaction spans, and from `Session.deriveMessages`
+ * — the array the agent loop hands the provider. That is the point: a reaction
+ * is the human's own act, so a note that never enters the request can never
+ * insert text mid-conversation and invalidate a provider's cached prefix. The
+ * UI projects live notes through `Session.reactionNotes()`.
  */
-const MODEL_NOTE_EVENT_TYPES = new Set<string>(['reaction/note'])
+const REACTION_NOTE_EVENT_TYPES = new Set<string>(['reaction/note'])
 
 /**
  * Whether an event type can join the model-visible surface.
@@ -78,58 +79,25 @@ export function isReplacementSurfaceEvent(
 }
 
 /**
- * Narrow an event to a model note: a log-only event that reaches the model
- * without entering the ordered surface.
+ * Narrow an event to a reaction note: a log-only record of one human act of
+ * reacting to an earlier message.
  *
- * A model note is the one kind of record that is model-visible and yet not
- * transcript material: `Session.deriveMessages` interleaves its projection at
- * the note's own log position, and only while the message it reacts to
- * (`targetSeq`) is still a current surface node — so once that message leaves
- * the context, so does the reaction. `foldSurface` (which the client transcript
- * and compaction both fold) never sees the note itself. Its message id is
- * derived from the event's seq, so replay, resume and compaction rebuild the
- * same message.
+ * A reaction note is UI material and nothing else. It never enters the ordered
+ * surface (`foldSurface`, which the client transcript and compaction both fold,
+ * does not see it) and it never enters the model-bound history either:
+ * `Session.deriveMessages` projects surface nodes only, so appending a note
+ * anywhere in the log leaves the array handed to the provider element-for-element
+ * identical. The one projection that does read notes is `Session.reactionNotes`,
+ * which keeps a note exactly while its `targetSeq` is still a current surface
+ * node — Owen's rule: once the message leaves the context, so does the reaction
+ * to it. A note's payload stays exactly `{ targetSeq, emoji, actor, action }`;
+ * any model-facing text about a reaction would have to be a new event appended
+ * in a later turn, never text spliced into history that was already sent.
  * @param event - event to test.
- * @returns true for a log-only event with a model projection.
+ * @returns true for a log-only event that records a human reaction.
  */
-export function isModelNoteEvent(event: SessionEvent): event is SessionEvent<'reaction/note'> {
-  return MODEL_NOTE_EVENT_TYPES.has(event.type)
-}
-
-/**
- * Render one reaction note as the model-facing line it projects to.
- *
- * One line, prose-free, and naming the act, the actor, the glyph and the seq of
- * the message reacted to — the target is named by seq because that is the only
- * identifier the log itself carries.
- * @param data - the note's payload.
- * @returns the exact text of the projected message.
- */
-function reactionNoteText(data: SessionEvent<'reaction/note'>['data']): string {
-  const target = `the message at seq ${data.targetSeq}`
-  switch (data.action) {
-    case 'added': return `${data.actor} reacted ${data.emoji} to ${target}.`
-    case 'removed': return `${data.actor} removed their ${data.emoji} reaction from ${target}.`
-    case 'changed': return `${data.actor} changed their reaction on ${target} to ${data.emoji}.`
-  }
-}
-
-/**
- * Deep-freeze a message this module synthesized.
- *
- * Local on purpose: this module is browser-safe and value-import-free, so it
- * cannot call `freezeMessage` from `@deepseek-ai/dsh-llm` (a plugin value
- * import here is exactly what the client bundle purity gate rejects). The
- * message is built from primitives, so a plain recursive freeze is equivalent.
- * @param message - the message to freeze in place.
- * @returns the same message, frozen.
- */
-function freezeSynthesized<T>(message: T): T {
-  if (message !== null && typeof message === 'object') {
-    for (const nested of Object.values(message)) freezeSynthesized(nested)
-    Object.freeze(message)
-  }
-  return message
+export function isReactionNoteEvent(event: SessionEvent): event is SessionEvent<'reaction/note'> {
+  return REACTION_NOTE_EVENT_TYPES.has(event.type)
 }
 
 /**
@@ -143,19 +111,17 @@ function freezeSynthesized<T>(message: T): T {
  * nested in the event wrapper and shared by delivery, durable history, and
  * model requests.
  *
- * A model note ({@link isModelNoteEvent}) has no message in its event wrapper,
- * so its projection is synthesized here — frozen, and identified by its seq so
- * every fold of the same log yields the same message identity. It is the only
- * entry this function projects that is not a surface node, so WHERE and WHILE
- * it appears is the caller's rule: `Session.deriveMessages` interleaves it at
- * its log position and drops it once its target seq leaves the surface.
+ * A reaction note ({@link isReactionNoteEvent}) projects to null: it is a UI
+ * record, not history. Nothing about a reaction can appear in a request through
+ * this function, so no consumer of it — this session's own derivation, a
+ * compaction span, a token meter, an external reconstructor — can carry one.
  * @param event - the event to project.
  * @returns the derived message, or null when the event produces none.
  */
 export function deriveEventMessage(event: SessionEvent): Message | null {
   // Intentionally non-exhaustive: only message-producing events derive
-  // history; turn/step boundaries, chunks, usage, and errors are trace/replay
-  // data.
+  // history; turn/step boundaries, chunks, usage, errors, and UI-only records
+  // such as reaction notes are trace/replay data.
   switch (event.type) {
     // Ordinary prompts and injected context project in user role: the event's
     // model-facing content stays verbatim. Do NOT re-add per-type framing
@@ -178,27 +144,10 @@ export function deriveEventMessage(event: SessionEvent): Message | null {
     case 'tool/result': {
       return event.data.message
     }
-    case 'reaction/note': {
-      // A model note: log-only (never on the surface, so never in the
-      // transcript and never inside a compaction span), yet projected so the
-      // next request tells the model what the human just did — interleaved at
-      // the note's own log position by `Session.deriveMessages`, and only while
-      // its target is still a surface node. This per-event projection does not
-      // decide that lifetime; the caller that folds it does. The id is derived
-      // from the event seq: the fold re-runs on replay, resume and compaction,
-      // so a random or timestamped id would change identity under the model's
-      // feet. Source is the plugin kind, not `user`, because no human authored
-      // this text — the note is the harness's account of one.
-      return freezeSynthesized({
-        id: `reaction-note-${event.seq}` as MessageId,
-        role: 'user',
-        content: [{ type: 'text', text: reactionNoteText(event.data) }],
-        source: { kind: 'plugin', plugin: 'react-note' },
-      } satisfies Message)
-    }
     default:
-      // A non-surface event (boundary, chunk, log-only record) projects to
-      // no message. Merge-extensible union: no assertNever here.
+      // A non-surface event (boundary, chunk, log-only record — a reaction note
+      // included) projects to no message. Merge-extensible union: no
+      // assertNever here.
       return null
   }
 }

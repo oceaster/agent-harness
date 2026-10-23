@@ -1347,14 +1347,14 @@ are the candidates for open-sourcing.
      `packages/core/session/tests/reaction-note.spec.ts` asserts the note is
      absent from `foldSurface`, from every shadowed span, and from anything
      `deriveEventMessage` would hand a summariser.
-   - **Re-apply on an upstream pull.** If upstream ships a plugin seam for
-     model-visible log-only events, delete the note interleave/liveness pass in
-     `deriveMessages` (`rebuildDerived`/`deriveLogEntry`/`projectNote`) and the
-     `case 'reaction/note'`, and re-home the projection there; if upstream adds
-     its own envelope-intent argument to `Session.append`, keep theirs and drop
-     ours. `npm run gen-persistence-catalog` regenerates the generated
-     pair either way. The client half of the feature is entry 28, and this note
-     owns only the log and the wire; the fork has no other consumer of the kind.
+   - **Re-apply on an upstream pull.** The projection hunks are gone for good
+     (see the final rule below): a note has no model projection to re-home. If
+     upstream adds its own envelope-intent argument to `Session.append`, keep
+     theirs and drop ours; if it ships a plugin seam for log-only events, mount
+     the note kind there instead of in `SessionEventMap`. `npm run
+     gen-persistence-catalog` regenerates the generated pair either way. The
+     client half of the feature is entry 28, and this note owns only the log,
+     the wire and the UI projection; the fork has no other consumer of the kind.
    - **Measured, not asserted** (`apps/web/tests/fixture/react-note/`, the real
      built harness with an isolated `DSH_HOME` and a recording mock provider):
      one `session.react` appends exactly `{"reaction/note": 1}`, writes the
@@ -1380,6 +1380,61 @@ are the candidates for open-sourcing.
      derivations agree) and `packages/session/session-persistence-jsonl/tests/reaction-note-restart.spec.ts`
      (a dropped note is still in the stored log after a restart and still absent
      from the re-derived history).
+
+     **Final rule (entry 26, ticket `52d81c28`): reactions leave the prompt.**
+     The interleave above fixed the wrong half. It stopped notes being pinned to
+     the tail, but it made each note land AT ITS LOG POSITION — so reacting to a
+     message several turns old INSERTED text into the middle of the array
+     `packages/core/agent-loop` hands the provider
+     (`packages/core/agent-loop/src/agent.ts`), invalidating the prompt cache
+     from that point on, every time somebody reacts. Tail-pinning cost tokens;
+     interleaving costs the cache; both were wrong for the same reason: a
+     reaction is a UI signal the model never needs. So the model-facing half is
+     DELETED, not repaired:
+
+     - `Session.deriveMessages()` walks surface nodes only. There is no
+       interleave pass, no `derivedNodeSeqs` set, no `derivedLogSeq` walk, no
+       `deriveLogEntry` and no `projectNote`; the cache is
+       `derivedNodes` + `replaceGeneration` again, so a call still costs
+       O(new events) and a `replace` still rebuilds. Appending a reaction to a
+       message at any log position leaves the returned array ELEMENT-FOR-ELEMENT
+       IDENTICAL (same length, `toEqual`, and every element `toBe` its old
+       self) — the property `packages/core/session/tests/reaction-note.spec.ts`
+       now asserts as the prompt-cache guarantee instead of assuming it.
+     - `deriveEventMessage` has no `case 'reaction/note'`, so a note projects to
+       `null` for every consumer of the per-node rule — this session's
+       derivation, a compaction span, the token meter, an external replay. The
+       text renderer (`reactionNoteText`) and its local `freezeSynthesized` went
+       with it: the harness no longer speaks about reactions at all. The payload
+       stays `{targetSeq, emoji, actor, action}`, which is what the UI badge
+       draws.
+     - `isModelNoteEvent` was a name that asserted the false half, so it is
+       `isReactionNoteEvent` (exported from `surface.ts` and the package index).
+     - Owen's rule moved to the UI, where it still bites:
+       `Session.reactionNotes()` returns the notes whose `targetSeq` is still a
+       current surface node, in log order, frozen — so a compaction `replace`
+       that shadows the reacted-to message takes the reaction with it, while the
+       durable log keeps the record (a lapse is a projection decision, not a
+       delete). It is a pure function of the log plus the surface, memoized per
+       (log length, replacement generation), and it is NOT on the request path.
+       The browser badge still comes from its own fold of the raw window
+       (`SessionReactionNotes`, surfaced as `ConversationSnapshot.reactions`,
+       painted by `ui-conversation`), which is why nothing in the client had to
+       change.
+     - **If the model must ever hear about a reaction**, the only cache-safe
+       shape is a NEW event appended in a later turn — never a note spliced into
+       history that was already sent. The identity test above is the proof
+       obligation for any such change: at every turn boundary, appending the
+       reaction-adjacent event must leave the previous prefix untouched.
+
+     Verified in this tree: `pnpm run clean && pnpm install --frozen-lockfile &&
+     pnpm run build`, `node scripts/verify-deployment-build.ts` (source and
+     browser artifacts agree), the `@deepseek-ai/dsh-session` suites,
+     `session-persistence-jsonl`, `host/apiproxy`, the `ui-conversation`
+     reaction suites and `node --test`. The `apps/web/tests/fixture/react-note/`
+     driver was rewritten for the new rule (it now measures that the note appears
+     NOWHERE in the next request) and IS run for this change — see the ticket
+     for the dump.
 
 27. **Subagent sessions idle for six hours are destroyed** (`host/apiproxy`;
     ticket `b1458dbd`) — the household asked for dead subagent conversations to

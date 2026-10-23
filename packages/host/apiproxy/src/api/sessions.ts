@@ -317,9 +317,12 @@ export interface SessionsApi {
    * log: appends a log-only `reaction/note` event carrying the envelope's
    * `ignorable: true` marker, and nothing else. It starts no turn, makes no
    * model call, generates no title, touches no queue, budget or goal, and
-   * produces no transcript row — the note is model-visible only, through the
-   * session's own derived history, so it reaches the model on the conversation's
-   * NEXT run (at the tail of that request, after the conversation so far).
+   * produces no transcript row. It is also never part of the model-bound
+   * history: `Session.deriveMessages` returns the identical array before and
+   * after the append, so a reaction cannot insert text mid-conversation and
+   * invalidate a provider's cached prefix. The UI reads reactions through
+   * `Session.reactionNotes`, which keeps a note while the message it targets is
+   * still on the surface.
    *
    * `targetSeq` must name an append-origin message in this session (a
    * `user/message`, `assistant/message`, or `tool/result` event that entered the

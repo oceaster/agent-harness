@@ -10,7 +10,12 @@
  *
  *   GET /react-note-observe?sessionId=<id>
  *     → agentStatus, inbox, eventCounts, events[{seq,type}], surfaceNodes,
- *       derivedTexts, projections
+ *       derivedTexts, reactionNotes, projections
+ *
+ * `derivedTexts` is the model-bound history (the array the agent loop hands the
+ * provider): a reaction note must never appear in it, at any index.
+ * `reactionNotes` is the UI projection (`Session.reactionNotes()`): the notes
+ * still shown on the message they target.
  *
  * Mounted as a home-level patch row by start-react-note-fixture.sh, so no
  * product file is touched.
@@ -74,6 +79,7 @@ export function apply(ctx) {
           })),
           surfaceNodes: [...session.surface.nodes],
           derivedTexts: messageTexts(derived),
+          reactionNotes: session.reactionNotes().map(event => ({ seq: event.seq, data: event.data })),
           projections: projections === undefined
             ? null
             : (() => {

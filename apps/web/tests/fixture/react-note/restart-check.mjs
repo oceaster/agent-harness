@@ -12,8 +12,10 @@
  *   2. the conversation OPENS — a second `session.react` resumes the cold
  *      session (the shared `agentFor` path) and lands a new note, so the log was
  *      interpretable rather than refused;
- *   3. the model projection survives the restart: the host's derived history
- *      carries both notes, in log order, still plugin-sourced.
+ *   3. the UI projection survives the restart: `Session.reactionNotes()`
+ *      reports both notes, in log order, each naming its target — while the
+ *      model-bound history (`Session.deriveMessages()`) carries neither, before
+ *      or after the restart.
  *
  * Usage: node restart-check.mjs <baseUrl> <sessionId> <outDir>
  */
@@ -80,14 +82,21 @@ results.conversationOpens = check('a cold session resumed and accepted a new not
 results.bothNotesInLog = check('both notes are in the log, in order',
   noteEvents.length === 2 && noteEvents[1].seq > noteEvents[0].seq, noteEvents)
 
-// ── 3. The model projection survived the restart ───────────────────────────
-const projections = after.derivedTexts.filter(message => message.source.plugin === 'react-note')
-results.projectionSurvives = check('the reopened session projects both notes for the model',
-  projections.length === 2
-  && projections[0].id === `reaction-note-${noteEvents[0].seq}`
-  && projections[1].id === `reaction-note-${noteEvents[1].seq}`
-  && projections[0].text.endsWith('👍 to the message at seq ' + String(target.seq) + '.'),
-  projections)
+// ── 3. The UI projection survived the restart, and the model still has none ─
+const shown = after.reactionNotes ?? []
+results.uiProjectionSurvives = check('the reopened session shows both notes, in log order',
+  shown.length === 2
+  && shown[0].seq === noteEvents[0].seq
+  && shown[1].seq === noteEvents[1].seq
+  && shown[0].data.targetSeq === target.seq
+  && shown[0].data.emoji === '👍'
+  && shown[1].data.emoji === '🎉',
+  shown)
+const modelFacing = after.derivedTexts.filter(message => message.source.plugin === 'react-note'
+  || /reacted|reaction/.test(message.text)
+  || String(message.id).startsWith('reaction-note-'))
+results.modelHistoryCarriesNoNote = check('the reopened model history carries no note at any index',
+  modelFacing.length === 0, after.derivedTexts)
 results.noteNotOnSurface = check('the notes are still off the transcript surface',
   noteEvents.every(note => !after.surfaceNodes.includes(note.seq)), after.surfaceNodes.length)
 

@@ -105,10 +105,14 @@ describe('reaction/note survives a restart of the build that wrote it', () => {
     expect(note.data).toEqual({ targetSeq: 1, emoji: '👍', actor: 'owen', action: 'added' })
 
     // The conversation opens: a live session built from the stored log derives
-    // the same history, note included, and the note is not in its surface.
+    // the same history, no note in it, and the note is not in its surface. The
+    // note is visible to the UI projection, on the message it targets.
     const reopened = second.sessions.create(id, { seed: [...inspected.events], meta: inspected.meta })
     expect(reopened.deriveMessages()).toEqual(derivedBefore)
+    expect(JSON.stringify(derivedBefore)).not.toMatch(/reacted|reaction/)
     expect(reopened.surface.nodes).not.toContain(noteSeq)
+    expect(reopened.reactionNotes().map(event => event.seq)).toEqual([noteSeq])
+    expect(reopened.reactionNotes()[0]?.data).toEqual({ targetSeq: 1, emoji: '👍', actor: 'owen', action: 'added' })
     await second.fiber.dispose()
   })
 
@@ -119,16 +123,19 @@ describe('reaction/note survives a restart of the build that wrote it', () => {
     turn(first.session)
     const noteSeq = react(first.session)
     // A compaction-shaped replacement shadows seq 1 — the message the note
-    // reacted to. Owen's rule: the note stops being derived. Nothing deletes it
-    // from the log, so the drop must come from the log alone, which is what the
-    // restart below re-reads.
+    // reacted to. Owen's rule: the reaction stops being shown. Nothing deletes
+    // it from the log, so the lapse must come from the log alone, which is what
+    // the restart below re-reads.
     first.session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: '<compacted-summary>condensed</compacted-summary>' }],
       source: { kind: 'plugin', plugin: 'compaction' },
     }), { surfaceOp: { op: 'replace', start: 1, end: 1 }, sourceEventSeqs: [1] })
     const derivedBefore = first.session.deriveMessages()
     expect(JSON.stringify(derivedBefore)).not.toMatch(/reacted/)
+    // The model-bound history never carried the note at any point, before or
+    // after the replacement: only the replacement itself changed this array.
     expect(derivedBefore.some(message => message.id === `reaction-note-${noteSeq}`)).toBe(false)
+    expect(first.session.reactionNotes()).toHaveLength(0)
     await first.ctx.sessions.flush(first.session)
     await first.ctx.fiber.dispose()
 
@@ -142,6 +149,7 @@ describe('reaction/note survives a restart of the build that wrote it', () => {
     const reopened = second.sessions.create(id, { seed: [...inspected.events], meta: inspected.meta })
     expect(reopened.deriveMessages()).toEqual(derivedBefore)
     expect(reopened.surface.nodes).not.toContain(noteSeq)
+    expect(reopened.reactionNotes()).toHaveLength(0)
     await second.fiber.dispose()
   })
 

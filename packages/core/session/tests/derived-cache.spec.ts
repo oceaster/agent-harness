@@ -85,22 +85,30 @@ describe('derived-message cache', () => {
     expect(Object.isFrozen(first[0])).toBe(true)
   })
 
-  it('interleaves a live note incrementally exactly as a replay does', () => {
-    const session = Session.create(SessionId('cache-note-interleave'))
+  it('is not extended at all by an appended reaction note', () => {
+    const session = Session.create(SessionId('cache-note-noop'))
     session.append('turn/start', { turn: 1 })
     userText(session, 'one')
+    userText(session, 'two')
+    const before = session.deriveMessages()
     session.append('reaction/note', {
       targetSeq: 1, emoji: '👍', actor: 'owen', action: 'added',
     }, { ignorable: true })
-    // The prompt appended AFTER the note is what the old tail-append rule got
-    // wrong: the note belongs at its own log position, before this message.
-    userText(session, 'two')
+    // The note is appended after both messages and reacts to the FIRST one:
+    // under the old interleave rule it was spliced in before 'two', rewriting
+    // the middle of a request the provider had already cached. Now the array is
+    // unchanged, and so is every element's identity.
     const live = session.deriveMessages()
-    const texts = live.map(message => message.content
-      .flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
-    expect(texts).toEqual(['one', 'owen reacted 👍 to the message at seq 1.', 'two'])
-    expect(live[1]!.id).toBe('reaction-note-2')
+    expect(live).toEqual(before)
+    expect(live).toHaveLength(2)
+    live.forEach((message, index) => { expect(message).toBe(before[index]) })
     expect(live).toEqual(scratch(session))
+    // A later prompt still appends at the tail only: the note is not history.
+    userText(session, 'three')
+    const grown = session.deriveMessages()
+    expect(grown.slice(0, before.length)).toEqual(before)
+    expect(grown).toHaveLength(3)
+    expect(grown).toEqual(scratch(session))
   })
 
 })

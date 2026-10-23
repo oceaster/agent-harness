@@ -6,13 +6,18 @@
  *
  *   NEGATIVE  appending through the real `session.react` RPC starts nothing:
  *             one event, no model request, no turn or step, no title, no goal or
- *             retry record, no inbox entry, agent idle.
- *   POSITIVE  the note reaches the model on the NEXT turn, and the request body
- *             the mock recorded says at which index; the turn's own content is
- *             otherwise unchanged.
+ *             retry record, no inbox entry, agent idle — and the host's derived
+ *             history (the array the loop hands the provider) is element-for-
+ *             element what it was before the append.
+ *   POSITIVE  the NEXT turn's request body contains no reaction text at all:
+ *             the note never enters the model-bound history, so it can never
+ *             insert a message mid-conversation and invalidate the provider's
+ *             cached prefix.
  *   COMPACTION a `/compact` over a session whose log spans the note puts no
- *             reaction text in the summarization request or in the durable
- *             checkpoint, and the note still reaches the model afterwards.
+ *             reaction text in the summarization request, the durable
+ *             checkpoint, or any later request — while the note stays in the
+ *             durable log and in the UI projection (`/react-note-observe`
+ *             reports it) either way.
  *
  * Every "no"/"yes" below is read from the host itself (`/react-note-observe`)
  * or from the request bodies the provider received — never from a claim about
@@ -117,18 +122,6 @@ function firstUserMessageSeq(snapshot) {
   return found.seq
 }
 
-/**
- * The text of one wire message. The provider request carries text-only content
- * as a plain string and block content as an array; both shapes are the real
- * request, so read either.
- */
-function wireText(message) {
-  const content = message?.content
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) return content.filter(block => block.type === 'text').map(block => block.text).join('')
-  return ''
-}
-
 /** Indexes of request messages whose text matches `pattern`. */
 function indexesMatching(messages, pattern) {
   return messages
@@ -196,13 +189,13 @@ check('the note joined no transcript surface (nothing to render)',
   !after.surfaceNodes.includes(appended.seq)
   && JSON.stringify(after.surfaceNodes) === JSON.stringify(before.surfaceNodes),
   { surfaceBefore: before.surfaceNodes.length, surfaceAfter: after.surfaceNodes.length })
-check('the host derived history did carry the note, as one plugin-sourced user line',
-  after.derivedTexts.length === before.derivedTexts.length + 1
-  && JSON.stringify(after.derivedTexts.slice(0, before.derivedTexts.length))
-  === JSON.stringify(before.derivedTexts)
-  && after.derivedTexts.at(-1).source.plugin === 'react-note'
-  && after.derivedTexts.at(-1).id === `reaction-note-${appended.seq}`,
-  after.derivedTexts.at(-1))
+check('the host derived history is element-for-element what it was before the note',
+  JSON.stringify(after.derivedTexts) === JSON.stringify(before.derivedTexts)
+  && after.derivedTexts.length === before.derivedTexts.length,
+  { derivedBefore: before.derivedTexts.length, derivedAfter: after.derivedTexts.length })
+check('the reaction is in the UI projection, on the message it targets',
+  (after.reactionNotes ?? []).some(note => note.seq === appended.seq && note.data.targetSeq === targetSeq),
+  { reactionNotes: after.reactionNotes, appendedSeq: appended.seq, targetSeq })
 
 // A refusal path, measured once against the real host.
 const refused = await rpcOutcome('session.react', { sessionId, targetSeq: 0, emoji: '👍' })
@@ -217,36 +210,28 @@ const afterSecond = await waitIdle(sessionId, { turnCount: 2 })
 const calls = await readMock()
 const secondRequest = calls.at(-1)
 const secondMessages = secondRequest.body.messages ?? []
-const notePlacement = indexesMatching(secondMessages, /reacted 👍/)
+const notePlacement = indexesMatching(secondMessages, /reacted|reaction|👍/u)
 
 check('the second turn produced exactly one more model request',
   calls.length === mockBefore + 1, { before: mockBefore, after: calls.length })
-check('the note reached the model exactly once, in the next request',
-  notePlacement.length === 1, notePlacement)
-check('the note sits at the tail of the request, after the conversation so far',
-  notePlacement.length === 1 && notePlacement[0].index === secondMessages.length - 1,
-  { index: notePlacement[0]?.index, messageCount: secondMessages.length })
-check('the note is a user-role line naming the reaction and its target',
-  notePlacement.length === 1
-  && notePlacement[0].role === 'user'
-  && wireText(secondMessages[notePlacement[0].index])
-    === `owen reacted 👍 to the message at seq ${targetSeq}.`,
-  secondMessages[notePlacement[0]?.index])
+// The prompt-cache property, measured against the provider's own recording: the
+// reaction is in NO message of the next request, so it cannot have rewritten a
+// cached prefix.
+check('the note reached the model nowhere in the next request',
+  notePlacement.length === 0, notePlacement)
 
-// Everything before the note is the turn's own content, unchanged: the same
-// messages the first request carried plus the assistant reply and this prompt.
+// The request is the turn's own content: the same messages the first request
+// carried, plus the assistant reply and this prompt. The reaction added nothing.
 const firstMessages = calls[0].body.messages ?? []
-const conversationOfSecond = secondMessages.filter((_, index) => index !== notePlacement[0]?.index)
-check('the note is the ONLY addition to the second request',
-  conversationOfSecond.length === firstMessages.length + 2
-  && JSON.stringify(conversationOfSecond.slice(0, firstMessages.length))
+check('the second request is the first request\'s messages plus the reply and this prompt',
+  secondMessages.length === firstMessages.length + 2
+  && JSON.stringify(secondMessages.slice(0, firstMessages.length))
   === JSON.stringify(firstMessages),
-  { first: firstMessages.length, second: conversationOfSecond.length })
+  { first: firstMessages.length, second: secondMessages.length })
 
 results.secondTurnRequest = {
   model: secondRequest.body.model,
   messageCount: secondMessages.length,
-  noteIndex: notePlacement[0]?.index,
   messages: secondMessages.map((message, index) => ({
     index,
     role: message.role,
@@ -307,7 +292,11 @@ try {
     summarizationCallCount: compactionCalls.length,
     checkpointText: checkpoint?.text ?? null,
     checkpointCarriedReactionText: checkpoint !== undefined && /reacted|reaction/.test(checkpoint.text),
-    noteInPostCompactionRequest: /reacted 👍/.test(fifthText),
+    noteInPostCompactionRequest: /reacted|reaction/iu.test(fifthText),
+    targetAmongShadowedSeqs: shadowedSeqs.includes(targetSeq),
+    noteInUiProjection: (afterFifth.reactionNotes ?? []).some(note => note.seq === noteSeq),
+    noteStillInDurableLog: afterFifth.events.some(event => event.seq === noteSeq
+      && event.type === 'reaction/note'),
     postCompactionMessages: fifthMessages.map((message, index) => ({
       index,
       role: message.role,
@@ -327,8 +316,18 @@ try {
     !compaction.summarizationRequestCarriedReactionText, compaction.summarizationCallCount)
   check('the durable checkpoint carried no reaction text',
     !compaction.checkpointCarriedReactionText, checkpoint?.text?.slice(0, 300))
-  check('the note still reaches the model after the compaction',
-    compaction.noteInPostCompactionRequest, compaction.postCompactionMessages)
+  check('the note reaches the model nowhere after the compaction',
+    !compaction.noteInPostCompactionRequest, compaction.postCompactionMessages)
+  // Owen's rule, measured from the far side: the reaction is shown exactly
+  // while the message it reacts to is on the surface, and the durable log keeps
+  // the record either way.
+  check('the UI projection shows the note exactly while its target is on the surface',
+    compaction.noteInUiProjection === !compaction.targetAmongShadowedSeqs, {
+      noteInUiProjection: compaction.noteInUiProjection,
+      targetAmongShadowedSeqs: compaction.targetAmongShadowedSeqs,
+    })
+  check('the durable log still holds the note after the compaction',
+    compaction.noteStillInDurableLog, { noteSeq, events: afterFifth.events.length })
 } catch (error) {
   compaction = { error: String(error?.message ?? error) }
   failures.push(`compaction measurement failed: ${compaction.error}`)
@@ -349,7 +348,10 @@ console.log(JSON.stringify({
   summary: Object.fromEntries(Object.entries(results)
     .filter(([key]) => key !== 'secondTurnRequest' && key !== 'compaction')
     .map(([key, value]) => [key, value.ok])),
-  noteIndexInSecondRequest: results.secondTurnRequest?.noteIndex ?? null,
+  noteIndexesInSecondRequest: indexesMatching(
+    results.secondTurnRequest?.messages ?? [],
+    /reacted|reaction|👍/u,
+  ).map(entry => entry.index),
   compaction: {
     command: compaction.command ?? null,
     spans: compaction.spans ?? null,

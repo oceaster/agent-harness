@@ -120,11 +120,16 @@ describe('session.react', () => {
     expect(session.events.some(event => event.type === 'agent/inbox/spliced')).toBe(false)
     expect(ctx.agents.get(session.id)?.status).toBe('idle')
 
-    // The model does see it: appended after the unchanged conversation content.
+    // The model does NOT see it. The derived history — the array the agent loop
+    // hands the provider — is element-for-element what it was before the
+    // reaction, so a note can never invalidate a cached prefix.
     const derivedAfter = session.deriveMessages()
-    expect(derivedAfter.slice(0, derivedBefore.length)).toEqual(derivedBefore)
-    expect(derivedAfter).toHaveLength(derivedBefore.length + 1)
-    expect(derivedAfter.at(-1)?.content).toEqual([{ type: 'text', text: 'owen reacted 👍 to the message at seq 2.' }])
+    expect(derivedAfter).toEqual(derivedBefore)
+    expect(derivedAfter).toHaveLength(derivedBefore.length)
+    derivedAfter.forEach((message, index) => { expect(message).toBe(derivedBefore[index]) })
+    // The reaction is still recorded for the human, and this is where the UI
+    // reads it: the note on the message it targets.
+    expect(session.reactionNotes().map(event => event.seq)).toEqual([response.result.value.seq])
   })
 
   it('defaults action to added and actor to user, and accepts the other two actions', async () => {
@@ -144,9 +149,10 @@ describe('session.react', () => {
     expect(removed.result.ok).toBe(true)
     if (!removed.result.ok) return
     expect(session.events[removed.result.value.seq]?.data).toMatchObject({ action: 'removed', actor: 'hannah' })
-    expect(session.deriveMessages().at(-1)?.content).toEqual([
-      { type: 'text', text: 'hannah removed their 🎉 reaction from the message at seq 1.' },
-    ])
+    // Both notes stay in the log and out of the model-bound history: the last
+    // two appends changed nothing the provider would be sent.
+    expect(session.deriveMessages().map(message => message.role)).toEqual(['user', 'assistant', 'user'])
+    expect(session.reactionNotes().map(event => event.data.action)).toEqual(['added', 'removed'])
   })
 
   it('refuses a target that is not a message, appending nothing', async () => {

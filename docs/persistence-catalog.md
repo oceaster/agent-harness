@@ -90,7 +90,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-Sources: [`packages/core/session/src/types.ts:376`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:383`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:412`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:460`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:378`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:385`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:414`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:462`](../packages/core/session/src/types.ts)
 
 ## Events
 
@@ -541,17 +541,19 @@ Source: [`packages/plan/plan-mode/src/index.ts:54`](../packages/plan/plan-mode/s
 
 ```ts persistence-catalog
 /**
- * A human reaction to an earlier message. Log-only and prose-free: it never
- * enters the ordered surface, so it is invisible in the transcript and
- * excluded from compaction, and it is always written with the envelope's
- * `ignorable: true` marker. It reaches the model only through
- * `deriveEventMessage`, which appends one user-role line per note to the next
- * request.
+ * A human reaction to an earlier message. Log-only and UI-only, and
+ * prose-free: it never enters the ordered surface, so it is invisible in the
+ * transcript and excluded from compaction, and it never enters the
+ * model-bound history either — `deriveMessages` projects surface nodes only,
+ * so a note can never insert text into a request and invalidate a provider's
+ * cached prefix. It is always written with the envelope's `ignorable: true`
+ * marker, and the UI reads it through `reactionNotes`, which keeps a note
+ * while the message it targets is still on the surface.
  */
 'reaction/note': ReactionNoteEventData
 ```
 
-Source: [`packages/core/session/src/types.ts:339`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:341`](../packages/core/session/src/types.ts)
 
 ### `request/*`
 
@@ -567,7 +569,7 @@ Source: [`packages/core/session/src/types.ts:339`](../packages/core/session/src/
 'request/context': RequestContext
 ```
 
-Source: [`packages/core/session/src/types.ts:349`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:351`](../packages/core/session/src/types.ts)
 
 <a id="requestheader--log-only"></a>
 
@@ -581,7 +583,7 @@ Source: [`packages/core/session/src/types.ts:349`](../packages/core/session/src/
 'request/header': { header: EpochHeader; reason: RequestHeaderReason }
 ```
 
-Source: [`packages/core/session/src/types.ts:344`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:346`](../packages/core/session/src/types.ts)
 
 ### `sandbox/*`
 
@@ -656,7 +658,7 @@ Source: [`packages/schedule/schedule/src/types.ts:219`](../packages/schedule/sch
 'session/end-seed': Record<string, never>
 ```
 
-Source: [`packages/core/session/src/types.ts:372`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:374`](../packages/core/session/src/types.ts)
 
 <a id="sessiontitle--log-only"></a>
 

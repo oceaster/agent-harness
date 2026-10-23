@@ -2591,10 +2591,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             details: { sessionId, targetSeq },
           })
         }
-        // Log-only and model-visible, with the envelope marker that lets a
-        // build which does not know `reaction/note` skip it instead of refusing
-        // the whole log. Nothing else moves: no turn, no model call, no title,
-        // no queue entry, no budget or goal record.
+        // Log-only and UI-only, with the envelope marker that lets a build
+        // which does not know `reaction/note` skip it instead of refusing the
+        // whole log. The note never enters the model-bound history: the derived
+        // request array is identical before and after this append, so a
+        // reaction cannot invalidate a provider's cached prefix. Nothing else
+        // moves either: no turn, no model call, no title, no queue entry, no
+        // budget or goal record.
         const note = session.append('reaction/note', {
           targetSeq,
           emoji,
