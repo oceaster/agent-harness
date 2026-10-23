@@ -369,11 +369,27 @@
   border: 2px solid var(--dsw-alias-bg-base); border-radius: 50%; box-shadow: 0 0 0 1px var(--dsw-alias-label-tertiary); }
 .presenceDot[data-presence='online'] { background: var(--dsw-alias-state-success-primary); }
 .presenceDot[data-presence='offline'] { background: var(--dsw-alias-state-error-primary); }
-.presenceDot[data-presence='running'] { background: var(--dsw-static-neutral-00); }
+.presenceDot[data-presence='running'] {
+  width: 18px;
+  height: 18px;
+  right: -4px;
+  bottom: -4px;
+  border: 0;
+  box-shadow: none;
+  overflow: clip;
+}
+.presenceDot[data-presence='running']::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--dsw-static-neutral-00);
+}
 .presenceDot[data-presence='running']::after {
   content: '';
   position: absolute;
-  inset: -5px;
+  inset: 0;
+  box-sizing: border-box;
   border: 2px solid var(--dsw-static-neutral-00);
   border-right-color: transparent;
   border-bottom-color: transparent;
