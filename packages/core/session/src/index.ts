@@ -805,7 +805,7 @@ export class Session {
 
   /** Memoized UI projection of the live reaction notes. */
   private liveReactionNotes: readonly SessionEvent<'reaction/note'>[] = []
-  /** Surface position (log length) the note projection was built at. */
+  /** Log length the note projection was built at (it reads the log, not the surface order). */
   private liveReactionNotesLogSeq = 0
   /** {@link SurfaceManager.replaceGeneration} the note projection was built under. */
   private liveReactionNotesGeneration = -1
