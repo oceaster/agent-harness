@@ -370,6 +370,20 @@
 .presenceDot[data-presence='online'] { background: var(--dsw-alias-state-success-primary); }
 .presenceDot[data-presence='offline'] { background: var(--dsw-alias-state-error-primary); }
 .presenceDot[data-presence='running'] { background: var(--dsw-static-neutral-00); }
+.presenceDot[data-presence='running']::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2px solid var(--dsw-static-neutral-00);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  animation: presenceWorking 1.4s linear infinite;
+}
+@keyframes presenceWorking { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .presenceDot[data-presence='running']::after { animation: none; }
+}
 .presenceDot[data-presence='unread'] { background: var(--dsw-static-blue-500); }
 .presenceDot[data-presence='error'] { background: var(--dsw-static-amber-500); }
 .rowButton:disabled, .menuButton:disabled, .railGlyph:disabled { cursor: not-allowed; opacity: 0.65; }
