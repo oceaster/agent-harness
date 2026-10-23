@@ -1453,9 +1453,13 @@ are the candidates for open-sourcing.
      && pnpm run build` (0), `node scripts/verify-deployment-build.ts` →
      `deployment build: current source and browser artifacts agree`,
      `npx vitest run` → `Test Files 845 passed | 9 skipped (854)`, `Tests 14101
-     passed | 125 skipped (14226)`, `node --test .github/issue-management/policy.test.mjs`
-     → 23/23, and `pnpm doc-sync`'s doc gates (type-equiv 392/392, pairing
-     989/989, catalogs regenerate clean).
+     passed | 125 skipped (14226)`, 0 failed (a later run of the same tree hit the
+     known-flaky 5 s file-watch timeout in
+     `packages/settings/settings-file/tests/local.spec.ts`, which passes alone and
+     passed in the green run), `node --test
+     .github/issue-management/policy.test.mjs` → 23/23, and the doc gates
+     (type-equiv 392/392, translation pairing 989/989, every catalog regenerates
+     clean).
 
 27. **Subagent sessions idle for six hours are destroyed** (`host/apiproxy`;
     ticket `b1458dbd`) — the household asked for dead subagent conversations to
