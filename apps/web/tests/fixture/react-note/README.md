@@ -24,7 +24,7 @@ it is about the wire a client will actually call.
 | `observe-plugin.mjs` | observation-only host route (`/react-note-observe`): event counts, the derived message list, the live reaction notes, agent status, inbox depth, surface nodes |
 | `drive-react-note.mjs` | the measurement: negative, the next request body, the UI projection, compaction |
 | `restart-check.sh` / `restart-check.mjs` | stop the host, start the same build on the same `DSH_HOME`, prove the conversation still opens |
-| `evidence/` | the dumps from the run recorded in the ticket submission (`react-note-drive.json`, `react-note-restart.json`); long assembled prompt bodies are truncated in the drive dump and the truncation is stated inside the file |
+| `evidence/` | the dumps from the run recorded in the current ticket submission (`react-note-drive.json` from the drive run, `react-note-restart.json` from the fresh-session restart); the prompt bodies are recorded whole |
 
 ## Running it
 

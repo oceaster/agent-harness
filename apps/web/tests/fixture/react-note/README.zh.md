@@ -22,7 +22,7 @@ host，因为那时没有可用的 RPC，所以它那条「追加不会启动任
 | `observe-plugin.mjs` | 只做观察的 host 路由（`/react-note-observe`）：事件计数、派生消息列表、存活的反应笔记、agent 状态、inbox 深度、surface 节点 |
 | `drive-react-note.mjs` | 度量本体：负向、下一请求体、UI 投影、compaction |
 | `restart-check.sh` / `restart-check.mjs` | 停掉 host，在同一 `DSH_HOME` 上启动同一构建，证明会话仍能打开 |
-| `evidence/` | 工单提交中记录的那次运行的转储（`react-note-drive.json`、`react-note-restart.json`）；drive 转储里过长的组装 prompt 体被截断，且截断事实写在文件内部 |
+| `evidence/` | 当前工单提交中那次运行的转储（`react-note-drive.json` 来自 drive 运行，`react-note-restart.json` 来自全新会话的重启）；prompt 体完整记录 |
 
 ## 运行方式
 

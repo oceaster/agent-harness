@@ -1427,14 +1427,35 @@ are the candidates for open-sourcing.
        obligation for any such change: at every turn boundary, appending the
        reaction-adjacent event must leave the previous prefix untouched.
 
-     Verified in this tree: `pnpm run clean && pnpm install --frozen-lockfile &&
-     pnpm run build`, `node scripts/verify-deployment-build.ts` (source and
-     browser artifacts agree), the `@deepseek-ai/dsh-session` suites,
-     `session-persistence-jsonl`, `host/apiproxy`, the `ui-conversation`
-     reaction suites and `node --test`. The `apps/web/tests/fixture/react-note/`
-     driver was rewritten for the new rule (it now measures that the note appears
-     NOWHERE in the next request) and IS run for this change — see the ticket
-     for the dump.
+     **Measured on this branch, not asserted** — the
+     `apps/web/tests/fixture/react-note/` fixture was rewritten for the new rule
+     and RE-RUN against the real built harness (isolated `DSH_HOME`, recording
+     mock provider, the real `session.react` RPC):
+
+     - `drive-react-note.mjs`: all 25 checks true, `failures: []`. The derived
+       history is element-for-element identical before and after the note
+       (`derivedTexts` equal, 4 messages either way); the reaction is in
+       `reactionNotes()` on `targetSeq`; the NEXT turn's recorded request holds
+       the note at NO index (its 6 messages are the first request's 4 plus the
+       reply and the new prompt); a `/compact` whose span 7–55 spans the note at
+       seq 23 puts no reaction text in the summarisation request, the durable
+       checkpoint or the later request, and — the lifetime rule from the far
+       side — the note lapsed from the UI projection because the compaction
+       shadowed its target (seq 7) while the durable log still holds it.
+     - `restart-check.mjs` on a FRESH session: all 8 checks true. After a real
+       process restart on the same build and home, the conversation opens, both
+       notes are in the log with their markers, both are shown by
+       `reactionNotes()`, and the reopened model history contains no note at any
+       index.
+     - Both dumps are committed under that directory's `evidence/`.
+
+     Also green in this tree: `pnpm run clean && pnpm install --frozen-lockfile
+     && pnpm run build` (0), `node scripts/verify-deployment-build.ts` →
+     `deployment build: current source and browser artifacts agree`,
+     `npx vitest run` → `Test Files 845 passed | 9 skipped (854)`, `Tests 14101
+     passed | 125 skipped (14226)`, `node --test .github/issue-management/policy.test.mjs`
+     → 23/23, and `pnpm doc-sync`'s doc gates (type-equiv 392/392, pairing
+     989/989, catalogs regenerate clean).
 
 27. **Subagent sessions idle for six hours are destroyed** (`host/apiproxy`;
     ticket `b1458dbd`) — the household asked for dead subagent conversations to

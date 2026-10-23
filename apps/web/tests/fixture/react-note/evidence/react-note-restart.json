@@ -1,10 +1,10 @@
 {
-  "sessionId": "session-925a4cea-eb6c-4560-abc4-bd0cf99c9aa4",
+  "sessionId": "session-e66c95ed-e8d4-495f-a03c-16da709c9a94",
   "results": {
     "historyReads": {
       "ok": true,
       "detail": {
-        "events": 85
+        "events": 24
       }
     },
     "noteStillThere": {
@@ -16,7 +16,7 @@
             "ignorable": true,
             "data": {
               "targetSeq": 7,
-              "emoji": "\ud83d\udc4d",
+              "emoji": "👍",
               "actor": "owen",
               "action": "added"
             }
@@ -29,10 +29,10 @@
       "detail": {
         "type": "reaction/note",
         "seq": 23,
-        "time": 1792502040399,
+        "time": 1792726061472,
         "data": {
           "targetSeq": 7,
-          "emoji": "\ud83d\udc4d",
+          "emoji": "👍",
           "actor": "owen",
           "action": "added"
         },
@@ -42,7 +42,7 @@
     "conversationOpens": {
       "ok": true,
       "detail": {
-        "seq": 86
+        "seq": 25
       }
     },
     "bothNotesInLog": {
@@ -54,50 +54,204 @@
           "ignorable": true,
           "data": {
             "targetSeq": 7,
-            "emoji": "\ud83d\udc4d",
+            "emoji": "👍",
             "actor": "owen",
             "action": "added"
           }
         },
         {
-          "seq": 86,
+          "seq": 25,
           "type": "reaction/note",
           "ignorable": true,
           "data": {
             "targetSeq": 7,
-            "emoji": "\ud83c\udf89",
+            "emoji": "🎉",
             "actor": "owen",
             "action": "added"
           }
         }
       ]
     },
-    "projectionSurvives": {
+    "uiProjectionSurvives": {
+      "ok": true,
+      "detail": {
+        "shown": [
+          {
+            "seq": 23,
+            "data": {
+              "targetSeq": 7,
+              "emoji": "👍",
+              "actor": "owen",
+              "action": "added"
+            }
+          },
+          {
+            "seq": 25,
+            "data": {
+              "targetSeq": 7,
+              "emoji": "🎉",
+              "actor": "owen",
+              "action": "added"
+            }
+          }
+        ],
+        "targetOnSurface": true
+      }
+    },
+    "modelHistoryCarriesNoNote": {
       "ok": true,
       "detail": [
         {
-          "id": "reaction-note-23",
+          "id": "a202eb6b-fb85-421d-ae32-f96ffc935bd0",
           "role": "user",
           "source": {
-            "kind": "plugin",
-            "plugin": "react-note"
+            "kind": "user",
+            "rpcId": "prep-2"
           },
-          "text": "owen reacted \ud83d\udc4d to the message at seq 7."
+          "text": "name the tallest tree"
         },
         {
-          "id": "reaction-note-86",
+          "id": "e4b5c5cb-2e92-44b2-bc54-d267e960224c",
           "role": "user",
           "source": {
             "kind": "plugin",
-            "plugin": "react-note"
+            "plugin": "@deepseek-ai/dsh-system-prompt",
+            "form": "snapshot",
+            "sections": [
+              {
+                "name": "sandbox:policy",
+                "text": "Current DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations."
+              },
+              {
+                "name": "approval:policy",
+                "text": "Approval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`)."
+              }
+            ]
           },
-          "text": "owen reacted \ud83c\udf89 to the message at seq 7."
+          "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.\n\nApproval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`)."
+        },
+        {
+          "id": "7588fd0d-7945-4c18-a743-ff11add22f7f",
+          "role": "user",
+          "source": {
+            "kind": "skill-catalog",
+            "form": "catalog",
+            "entries": [
+              {
+                "name": "amazon-bedrock",
+                "description": "Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Applies when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeni..."
+              },
+              {
+                "name": "aws-ai-ml",
+                "description": "Selects, deploys, and customizes AI models on Amazon SageMaker. Training or Processing jobs, fine-tuning (SFT/DPO/RLVR/RLAIF), model selection, dataset preparation, evaluation, SageMaker or Bedrock deployment, inference optimization and endpoint diagnostics. Covers the full lifecycle from planning through production. Use when fine-tuning models on SageMaker, choosing which base model to customize, fine-tune, or deploy from SageMaker JumpStart or Hub, SageMakerPublicHub, or the SageMaker publi..."
+              },
+              {
+                "name": "aws-auth",
+                "description": "Adds user authentication to web and mobile apps with Amazon Cognito (user pools and identity pools) and the AWS Amplify client auth libraries. Covers sign-up/sign-in flows and the login page (Cognito-hosted UI / managed login), MFA, password policies, OAuth 2.0 / OIDC flows (auth-code + PKCE, client credentials), social/SAML federation, tokens (ID/access/refresh, rotation, revocation, storage), Cognito Lambda triggers, identity pools (temp AWS creds), and gating API Gateway (or ALB) routes to..."
+              },
+              {
+                "name": "aws-billing-and-cost-management",
+                "description": "Analyze AWS costs, find savings, manage budgets, evaluate Savings Plans and Reserved Instances, right-size EC2/Lambda/RDS/EBS with Compute Optimizer, look up service pricing, query CUR with Athena, detect cost anomalies, scope costs to billing views, and monitor Free Tier usage. Triggers on: AWS bill, cost analysis, reduce spend, savings plan, reserved instance, right-size, budget alert, cost optimization, pricing, free tier, cost anomaly, CUR, cost audit, billing view, billing view ARN."
+              },
+              {
+                "name": "aws-blocks",
+                "description": "Guides building full-stack applications with AWS Blocks — an Infrastructure-from-Code framework. Applies when creating APIs, selecting Building Blocks (KVStore, DistributedTable, Database, AuthBasic, AuthCognito, Realtime, AsyncJob, FileBucket, etc.), running local development, or deploying AWS Blocks applications. Also covers AWS Blocks topics with validated, version-specific patterns that prevent common mistakes. Triggers when user mentions AWS Blocks; project has aws-blocks/ directory; cod..."
+              },
+              {
+                "name": "aws-cdk",
+                "description": "Authors, deploys, and troubleshoots AWS infrastructure using CDK with TypeScript or Python. Covers best practices, stack architecture, and construct patterns. Applies when writing CDK constructs, bootstrapping environments, running cdk deploy/synth/diff, fixing CDK or CloudFormation errors, planning stack structure, importing existing resources, resolving drift, or refactoring stacks without resource replacement."
+              },
+              {
+                "name": "aws-cloudformation",
+                "description": "Authors, validates, and troubleshoots AWS CloudFormation templates. Covers template authoring with secure defaults, local validation with either cfn-lint or cloudformation-validate, cfn-guard security and compliance checks as a recommended default, account-aware CloudFormation service pre-deployment validation, CloudFormation Express mode for faster deployments, and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation. Also covers author-time template i..."
+              },
+              {
+                "name": "aws-compute",
+                "description": "Provisions, scales, and operates Amazon EC2 virtual-machine workloads: instance-type selection (Graviton/Arm64, burstable T credits, GPU, instance store vs EBS), launch templates, Auto Scaling groups (scaling policies, instance refresh, mixed instances, Spot, warm pools, lifecycle hooks), IMDSv2, placement groups, Elastic IPs, AMI lifecycle, and Systems Manager fleet operations (Session Manager, Run Command, Patch Manager). Applies to EC2 instance and fleet questions, InsufficientInstanceCapa..."
+              },
+              {
+                "name": "aws-containers",
+                "description": "Builds, deploys, debugs, and optimizes containerized workloads on Amazon EKS, ECS, Fargate, ECR, and Elastic Beanstalk. Covers EKS operations and add-ons; ECS task definitions, services, Exec, Express Mode, Managed Instances, and Action Logs; ECR repositories and lifecycle policies; and Elastic Beanstalk platforms plus Beanstalk Cluster Mode for running containerized applications on service-managed EKS compute. Use for container deployment, service selection, configuration, scaling, health, t..."
+              },
+              {
+                "name": "aws-database",
+                "description": "Routes any task involving AWS databases — choosing, comparing, recommending, getting started with, or operating a database — to the correct service-specific skill. Supersedes general training-data knowledge with post-training service updates, corrected limitations, and decision procedures for relational (Aurora, DSQL, RDS), key-value (DynamoDB), wide-column (Keyspaces), document (DocumentDB), graph (Neptune), time-series (Timestream), and in-memory/caching (ElastiCache, MemoryDB) workloads. A..."
+              },
+              {
+                "name": "aws-deployment",
+                "description": "Configures CI/CD pipelines using AWS CodePipeline, CodeBuild, CodeDeploy, CodeConnections, and CodeArtifact. Covers CodePipeline V2 (triggers, variables, execution modes, cross-account), buildspec.yml (caching, VPC, Docker), CodeDeploy strategies (blue/green, canary, linear), CodeArtifact (private package registries, auth tokens, cross-account), and source connections (GitHub, GitLab, Bitbucket). Applies when CodePipeline, CodeBuild, CodeDeploy, CodeConnections, CodeArtifact, buildspec.yml, a..."
+              },
+              {
+                "name": "aws-iam",
+                "description": "Provides verified corrections for IAM behaviors that AI agents frequently get wrong — policy evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks, and SAML/MFA specifics. Also provides structured workflows for IAM role management and baseline policy generation from application source code or a Terraform plan JSON. Covers condition operator safety (ForAnyValue/ForAllValues with Null checks), bucket policy deny patterns (VPC endpoint restrictions, org paths), co..."
+              },
+              {
+                "name": "aws-messaging-and-streaming",
+                "description": "Guides general use of AWS messaging and streaming services. Covers Amazon SQS, Amazon SNS, Amazon EventBridge, Amazon MQ, Amazon Kinesis Data Streams, Amazon Data Firehose, Amazon Managed Service for Apache Flink, and Amazon Managed Streaming for Apache Kafka (MSK). Use when reasoning about messaging and streaming patterns. Also identifies which AWS service owns each customer communication channel: email (Amazon SES), and WhatsApp, SMS, MMS, RCS, voice and mobile push (the AWS End User Messag..."
+              },
+              {
+                "name": "aws-networking",
+                "description": "Routes AWS networking requests to the correct service skill for implementation. Covers Route 53 (DNS, health checks, routing policies, Resolver, DNS Firewall), CloudFront (caching, edge, OAC, mTLS, signed URLs), Transit Gateway (multi-VPC hub, segmentation, centralized egress), Direct Connect (hybrid link, DX Gateway, MACsec), Site-to-Site VPN (IPsec tunnels, static or BGP), WAF (web ACLs, AWS Managed Rules, rate-based rules, Bot and Fraud Control), and Shield Advanced (L3/L4 DDoS). Applicabl..."
+              },
+              {
+                "name": "aws-observability",
+                "description": "Builds, configures, debugs, and optimizes AWS observability - operator-symptom questions and detecting Omni vs classic CloudWatch. CloudWatch on an already-reporting service: Log Insights, metric/composite/anomaly alarms, custom metrics/EMF, dashboards, X-Ray/ADOT tracing, canaries, CloudTrail, Dynamic Instrumentation (live breakpoints/snapshots), the Application Signals service map, and fleet health views. CloudWatch Omni on an existing Space: SQL over logs and traces, PromQL over metrics, O..."
+              },
+              {
+                "name": "aws-sdk-js-v3-usage",
+                "description": "AWS SDK for JavaScript v3 development patterns. Use when writing JavaScript or TypeScript code that uses AWS services via @aws-sdk/* packages (aws-sdk-js-v3), or when asked about schemas, runtime validation, serialization, or code generation in the context of the JS/TS AWS SDK."
+              },
+              {
+                "name": "aws-sdk-python-usage",
+                "description": "AWS SDK for Python (boto3/botocore) development patterns. You MUST use this skill when writing Python code that uses AWS services via boto3 or botocore. This includes creating service clients or resources, configuring sessions and credentials, handling errors with ClientError, using paginators and waiters, S3 file transfers and presigned URLs, DynamoDB table operations, and any boto3/botocore client configuration. Use this skill whenever Python code imports boto3 or botocore, or when the user..."
+              },
+              {
+                "name": "aws-sdk-swift-usage",
+                "description": "AWS SDK for Swift development patterns. Use when writing Swift code that uses AWS services via aws-sdk-swift package."
+              },
+              {
+                "name": "aws-security",
+                "description": "Covers AWS security services and workflows — Security Hub V2 (OCSF) findings, connectors, aggregators, automation rules, and security posture summaries; Security Hub CSPM (V1/ASFF) controls and compliance standards; GuardDuty threat findings; Inspector vulnerability findings; Macie sensitive data findings; Detective investigation; and Security Lake configuration and data aggregation. Applicable when questions involve security posture, Exposure findings, CSPM failed controls, threat findings, ..."
+              },
+              {
+                "name": "aws-serverless",
+                "description": "Routes serverless requests to a compute form factor and the skill that owns it. Applies first to Lambda, API Gateway, EventBridge, Step Functions and event-driven work while the compute, orchestration or integration choice is open — API backends, webhooks, jobs, cron, queue/stream consumers, durable workflows, event routing, Step Functions vs Durable Functions, and Pipes vs native event source mappings for queues and streams. Decides Event Functions on-demand vs Managed Instances, Web Functio..."
+              },
+              {
+                "name": "aws-storage",
+                "description": "Selects, investigates, and compares AWS object, file, and block storage services, and answers cost, performance, configuration, security, and troubleshooting questions about storage services. Applies when a user asks where to store or archive data based on their usage patterns; which storage service to choose or how two compare; how to migrate data from on-premises or between AWS services; how to protect, replicate, or recover data; how to optimize storage costs; where to deploy shared NFS, S..."
+              },
+              {
+                "name": "aws-well-architected-review",
+                "description": "Performs a full AWS Well-Architected Framework review evaluating every framework question across all pillars discovered from the live AWS documentation by analyzing code, IaC, and configurations to produce evidence-backed findings with Eisenhower-prioritized remediation. Supports full reviews (every framework best practice with BP ID citations), quick reviews (question-level), pillar-scoped reviews, and lens-specific reviews using lenses discovered from the live AWS documentation. Triggers on..."
+              },
+              {
+                "name": "launch-with-aws",
+                "description": "Migrates vibe-coded web applications to AWS. Handles the full workflow from analysis through migration to deployment, producing deployable AWS Blocks infrastructure code. Supports full-stack apps built with vibe-coding platforms (Lovable, Bolt.new, Replit) and frontend web applications and websites: React, Vue, Angular, Next.js, Nuxt, Astro, SvelteKit, Gatsby, Vite, Svelte, Solid, Docusaurus, and others (static sites, SPAs, and SSR frameworks with static export). Triggers on: launch with AWS,..."
+              },
+              {
+                "name": "signing-in-to-aws",
+                "description": "Gets AWS credentials for CLI/SDK access via `aws login`. Activates when a developer needs to authenticate to AWS for local development, when an AWS operation fails due to missing or expired credentials, or when someone asks about setting up AWS access. Triggers: \"set up AWS\", \"configure AWS\", \"aws login\", \"get credentials\", \"authenticate\", \"session expired\", \"token expired\", \"no credentials\", \"AccessDeniedException\" with no configured credentials."
+              }
+            ]
+          },
+          "text": "<system-reminder>\nA skill is a reusable set of task-specific instructions. The following skills are available in this session:\n\n<available_skills>\n- `amazon-bedrock`: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Applies when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeni...\n- `aws-ai-ml`: Selects, deploys, and customizes AI models on Amazon SageMaker. Training or Processing jobs, fine-tuning (SFT/DPO/RLVR/RLAIF), model selection, dataset preparation, evaluation, SageMaker or Bedrock deployment, inference optimization and endpoint diagnostics. Covers the full lifecycle from planning through production. Use when fine-tuning models on SageMaker, choosing which base model to customize, fine-tune, or deploy from SageMaker JumpStart or Hub, SageMakerPublicHub, or the SageMaker publi...\n- `aws-auth`: Adds user authentication to web and mobile apps with Amazon Cognito (user pools and identity pools) and the AWS Amplify client auth libraries. Covers sign-up/sign-in flows and the login page (Cognito-hosted UI / managed login), MFA, password policies, OAuth 2.0 / OIDC flows (auth-code + PKCE, client credentials), social/SAML federation, tokens (ID/access/refresh, rotation, revocation, storage), Cognito Lambda triggers, identity pools (temp AWS creds), and gating API Gateway (or ALB) routes to...\n- `aws-billing-and-cost-management`: Analyze AWS costs, find savings, manage budgets, evaluate Savings Plans and Reserved Instances, right-size EC2/Lambda/RDS/EBS with Compute Optimizer, look up service pricing, query CUR with Athena, detect cost anomalies, scope costs to billing views, and monitor Free Tier usage. Triggers on: AWS bill, cost analysis, reduce spend, savings plan, reserved instance, right-size, budget alert, cost optimization, pricing, free tier, cost anomaly, CUR, cost audit, billing view, billing view ARN.\n- `aws-blocks`: Guides building full-stack applications with AWS Blocks — an Infrastructure-from-Code framework. Applies when creating APIs, selecting Building Blocks (KVStore, DistributedTable, Database, AuthBasic, AuthCognito, Realtime, AsyncJob, FileBucket, etc.), running local development, or deploying AWS Blocks applications. Also covers AWS Blocks topics with validated, version-specific patterns that prevent common mistakes. Triggers when user mentions AWS Blocks; project has aws-blocks/ directory; cod...\n- `aws-cdk`: Authors, deploys, and troubleshoots AWS infrastructure using CDK with TypeScript or Python. Covers best practices, stack architecture, and construct patterns. Applies when writing CDK constructs, bootstrapping environments, running cdk deploy/synth/diff, fixing CDK or CloudFormation errors, planning stack structure, importing existing resources, resolving drift, or refactoring stacks without resource replacement.\n- `aws-cloudformation`: Authors, validates, and troubleshoots AWS CloudFormation templates. Covers template authoring with secure defaults, local validation with either cfn-lint or cloudformation-validate, cfn-guard security and compliance checks as a recommended default, account-aware CloudFormation service pre-deployment validation, CloudFormation Express mode for faster deployments, and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation. Also covers author-time template i...\n- `aws-compute`: Provisions, scales, and operates Amazon EC2 virtual-machine workloads: instance-type selection (Graviton/Arm64, burstable T credits, GPU, instance store vs EBS), launch templates, Auto Scaling groups (scaling policies, instance refresh, mixed instances, Spot, warm pools, lifecycle hooks), IMDSv2, placement groups, Elastic IPs, AMI lifecycle, and Systems Manager fleet operations (Session Manager, Run Command, Patch Manager). Applies to EC2 instance and fleet questions, InsufficientInstanceCapa...\n- `aws-containers`: Builds, deploys, debugs, and optimizes containerized workloads on Amazon EKS, ECS, Fargate, ECR, and Elastic Beanstalk. Covers EKS operations and add-ons; ECS task definitions, services, Exec, Express Mode, Managed Instances, and Action Logs; ECR repositories and lifecycle policies; and Elastic Beanstalk platforms plus Beanstalk Cluster Mode for running containerized applications on service-managed EKS compute. Use for container deployment, service selection, configuration, scaling, health, t...\n- `aws-database`: Routes any task involving AWS databases — choosing, comparing, recommending, getting started with, or operating a database — to the correct service-specific skill. Supersedes general training-data knowledge with post-training service updates, corrected limitations, and decision procedures for relational (Aurora, DSQL, RDS), key-value (DynamoDB), wide-column (Keyspaces), document (DocumentDB), graph (Neptune), time-series (Timestream), and in-memory/caching (ElastiCache, MemoryDB) workloads. A...\n- `aws-deployment`: Configures CI/CD pipelines using AWS CodePipeline, CodeBuild, CodeDeploy, CodeConnections, and CodeArtifact. Covers CodePipeline V2 (triggers, variables, execution modes, cross-account), buildspec.yml (caching, VPC, Docker), CodeDeploy strategies (blue/green, canary, linear), CodeArtifact (private package registries, auth tokens, cross-account), and source connections (GitHub, GitLab, Bitbucket). Applies when CodePipeline, CodeBuild, CodeDeploy, CodeConnections, CodeArtifact, buildspec.yml, a...\n- `aws-iam`: Provides verified corrections for IAM behaviors that AI agents frequently get wrong — policy evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks, and SAML/MFA specifics. Also provides structured workflows for IAM role management and baseline policy generation from application source code or a Terraform plan JSON. Covers condition operator safety (ForAnyValue/ForAllValues with Null checks), bucket policy deny patterns (VPC endpoint restrictions, org paths), co...\n- `aws-messaging-and-streaming`: Guides general use of AWS messaging and streaming services. Covers Amazon SQS, Amazon SNS, Amazon EventBridge, Amazon MQ, Amazon Kinesis Data Streams, Amazon Data Firehose, Amazon Managed Service for Apache Flink, and Amazon Managed Streaming for Apache Kafka (MSK). Use when reasoning about messaging and streaming patterns. Also identifies which AWS service owns each customer communication channel: email (Amazon SES), and WhatsApp, SMS, MMS, RCS, voice and mobile push (the AWS End User Messag...\n- `aws-networking`: Routes AWS networking requests to the correct service skill for implementation. Covers Route 53 (DNS, health checks, routing policies, Resolver, DNS Firewall), CloudFront (caching, edge, OAC, mTLS, signed URLs), Transit Gateway (multi-VPC hub, segmentation, centralized egress), Direct Connect (hybrid link, DX Gateway, MACsec), Site-to-Site VPN (IPsec tunnels, static or BGP), WAF (web ACLs, AWS Managed Rules, rate-based rules, Bot and Fraud Control), and Shield Advanced (L3/L4 DDoS). Applicabl...\n- `aws-observability`: Builds, configures, debugs, and optimizes AWS observability - operator-symptom questions and detecting Omni vs classic CloudWatch. CloudWatch on an already-reporting service: Log Insights, metric/composite/anomaly alarms, custom metrics/EMF, dashboards, X-Ray/ADOT tracing, canaries, CloudTrail, Dynamic Instrumentation (live breakpoints/snapshots), the Application Signals service map, and fleet health views. CloudWatch Omni on an existing Space: SQL over logs and traces, PromQL over metrics, O...\n- `aws-sdk-js-v3-usage`: AWS SDK for JavaScript v3 development patterns. Use when writing JavaScript or TypeScript code that uses AWS services via @aws-sdk/* packages (aws-sdk-js-v3), or when asked about schemas, runtime validation, serialization, or code generation in the context of the JS/TS AWS SDK.\n- `aws-sdk-python-usage`: AWS SDK for Python (boto3/botocore) development patterns. You MUST use this skill when writing Python code that uses AWS services via boto3 or botocore. This includes creating service clients or resources, configuring sessions and credentials, handling errors with ClientError, using paginators and waiters, S3 file transfers and presigned URLs, DynamoDB table operations, and any boto3/botocore client configuration. Use this skill whenever Python code imports boto3 or botocore, or when the user...\n- `aws-sdk-swift-usage`: AWS SDK for Swift development patterns. Use when writing Swift code that uses AWS services via aws-sdk-swift package.\n- `aws-security`: Covers AWS security services and workflows — Security Hub V2 (OCSF) findings, connectors, aggregators, automation rules, and security posture summaries; Security Hub CSPM (V1/ASFF) controls and compliance standards; GuardDuty threat findings; Inspector vulnerability findings; Macie sensitive data findings; Detective investigation; and Security Lake configuration and data aggregation. Applicable when questions involve security posture, Exposure findings, CSPM failed controls, threat findings, ...\n- `aws-serverless`: Routes serverless requests to a compute form factor and the skill that owns it. Applies first to Lambda, API Gateway, EventBridge, Step Functions and event-driven work while the compute, orchestration or integration choice is open — API backends, webhooks, jobs, cron, queue/stream consumers, durable workflows, event routing, Step Functions vs Durable Functions, and Pipes vs native event source mappings for queues and streams. Decides Event Functions on-demand vs Managed Instances, Web Functio...\n- `aws-storage`: Selects, investigates, and compares AWS object, file, and block storage services, and answers cost, performance, configuration, security, and troubleshooting questions about storage services. Applies when a user asks where to store or archive data based on their usage patterns; which storage service to choose or how two compare; how to migrate data from on-premises or between AWS services; how to protect, replicate, or recover data; how to optimize storage costs; where to deploy shared NFS, S...\n- `aws-well-architected-review`: Performs a full AWS Well-Architected Framework review evaluating every framework question across all pillars discovered from the live AWS documentation by analyzing code, IaC, and configurations to produce evidence-backed findings with Eisenhower-prioritized remediation. Supports full reviews (every framework best practice with BP ID citations), quick reviews (question-level), pillar-scoped reviews, and lens-specific reviews using lenses discovered from the live AWS documentation. Triggers on...\n- `launch-with-aws`: Migrates vibe-coded web applications to AWS. Handles the full workflow from analysis through migration to deployment, producing deployable AWS Blocks infrastructure code. Supports full-stack apps built with vibe-coding platforms (Lovable, Bolt.new, Replit) and frontend web applications and websites: React, Vue, Angular, Next.js, Nuxt, Astro, SvelteKit, Gatsby, Vite, Svelte, Solid, Docusaurus, and others (static sites, SPAs, and SSR frameworks with static export). Triggers on: launch with AWS,...\n- `signing-in-to-aws`: Gets AWS credentials for CLI/SDK access via `aws login`. Activates when a developer needs to authenticate to AWS for local development, when an AWS operation fails due to missing or expired credentials, or when someone asks about setting up AWS access. Triggers: \"set up AWS\", \"configure AWS\", \"aws login\", \"get credentials\", \"authenticate\", \"session expired\", \"token expired\", \"no credentials\", \"AccessDeniedException\" with no configured credentials.\n</available_skills>\n\nIf the user names a skill, or the task clearly matches a skill's description, call the `skill` tool with the exact skill name before taking task actions. Load all applicable skills, then follow their full instructions. This catalog contains summaries only; do not infer or follow a skill's instructions until it has been loaded.\nA user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill.\n</system-reminder>"
+        },
+        {
+          "id": "c5e01b96-2a73-4e3a-9888-5db8b834a648",
+          "role": "assistant",
+          "source": {
+            "kind": "model",
+            "provider": "deepseek-official",
+            "model": "deepseek-v4-flash"
+          },
+          "text": "mock assistant reply 8"
         }
       ]
     },
     "noteNotOnSurface": {
       "ok": true,
-      "detail": 6
+      "detail": 4
     }
   },
   "failures": [],
@@ -111,24 +265,19 @@
       "permission/preset": 1,
       "sandbox/mode": 1,
       "approval/policy": 1,
-      "agent/inbox/spliced": 10,
-      "turn/start": 5,
-      "step/start": 5,
-      "user/message": 10,
+      "agent/inbox/spliced": 2,
+      "turn/start": 1,
+      "step/start": 1,
+      "user/message": 3,
       "session/title": 2,
-      "request/header": 2,
+      "request/header": 1,
       "request/context": 1,
       "session/title-llm-request": 1,
-      "assistant/chunk": 25,
-      "assistant/message": 5,
-      "step/end": 5,
-      "turn/end": 5,
+      "assistant/chunk": 5,
+      "assistant/message": 1,
+      "step/end": 1,
+      "turn/end": 1,
       "reaction/note": 2,
-      "command/run": 1,
-      "compaction/start": 1,
-      "compaction/summary": 1,
-      "compaction/end": 1,
-      "command/done": 1,
       "session/end-seed": 1
     },
     "events": [
@@ -253,391 +402,46 @@
         "ignorable": true,
         "data": {
           "targetSeq": 7,
-          "emoji": "\ud83d\udc4d",
+          "emoji": "👍",
           "actor": "owen",
           "action": "added"
         }
       },
       {
         "seq": 24,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 25,
-        "type": "turn/start",
-        "ignorable": false
-      },
-      {
-        "seq": 26,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 27,
-        "type": "step/start",
-        "ignorable": false
-      },
-      {
-        "seq": 28,
-        "type": "user/message",
-        "ignorable": false
-      },
-      {
-        "seq": 29,
-        "type": "request/header",
-        "ignorable": false
-      },
-      {
-        "seq": 30,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 31,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 32,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 33,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 34,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 35,
-        "type": "assistant/message",
-        "ignorable": false
-      },
-      {
-        "seq": 36,
-        "type": "step/end",
-        "ignorable": false
-      },
-      {
-        "seq": 37,
-        "type": "turn/end",
-        "ignorable": false
-      },
-      {
-        "seq": 38,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 39,
-        "type": "turn/start",
-        "ignorable": false
-      },
-      {
-        "seq": 40,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 41,
-        "type": "step/start",
-        "ignorable": false
-      },
-      {
-        "seq": 42,
-        "type": "user/message",
-        "ignorable": false
-      },
-      {
-        "seq": 43,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 44,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 45,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 46,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 47,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 48,
-        "type": "assistant/message",
-        "ignorable": false
-      },
-      {
-        "seq": 49,
-        "type": "step/end",
-        "ignorable": false
-      },
-      {
-        "seq": 50,
-        "type": "turn/end",
-        "ignorable": false
-      },
-      {
-        "seq": 51,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 52,
-        "type": "turn/start",
-        "ignorable": false
-      },
-      {
-        "seq": 53,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 54,
-        "type": "step/start",
-        "ignorable": false
-      },
-      {
-        "seq": 55,
-        "type": "user/message",
-        "ignorable": false
-      },
-      {
-        "seq": 56,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 57,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 58,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 59,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 60,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 61,
-        "type": "assistant/message",
-        "ignorable": false
-      },
-      {
-        "seq": 62,
-        "type": "step/end",
-        "ignorable": false
-      },
-      {
-        "seq": 63,
-        "type": "turn/end",
-        "ignorable": false
-      },
-      {
-        "seq": 64,
-        "type": "command/run",
-        "ignorable": false
-      },
-      {
-        "seq": 65,
-        "type": "compaction/start",
-        "ignorable": false
-      },
-      {
-        "seq": 66,
-        "type": "compaction/summary",
-        "ignorable": false,
-        "data": {
-          "shadowedRange": {
-            "start": 7,
-            "end": 55
-          },
-          "shadowedSeqs": [
-            7,
-            8,
-            9,
-            19,
-            28,
-            35,
-            42,
-            48,
-            55
-          ]
-        }
-      },
-      {
-        "seq": 67,
-        "type": "user/message",
-        "ignorable": false
-      },
-      {
-        "seq": 68,
-        "type": "compaction/end",
-        "ignorable": false
-      },
-      {
-        "seq": 69,
-        "type": "command/done",
-        "ignorable": false
-      },
-      {
-        "seq": 70,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 71,
-        "type": "turn/start",
-        "ignorable": false
-      },
-      {
-        "seq": 72,
-        "type": "agent/inbox/spliced",
-        "ignorable": false
-      },
-      {
-        "seq": 73,
-        "type": "step/start",
-        "ignorable": false
-      },
-      {
-        "seq": 74,
-        "type": "user/message",
-        "ignorable": false
-      },
-      {
-        "seq": 75,
-        "type": "user/message",
-        "ignorable": false
-      },
-      {
-        "seq": 76,
-        "type": "user/message",
-        "ignorable": false
-      },
-      {
-        "seq": 77,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 78,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 79,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 80,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 81,
-        "type": "assistant/chunk",
-        "ignorable": false
-      },
-      {
-        "seq": 82,
-        "type": "assistant/message",
-        "ignorable": false
-      },
-      {
-        "seq": 83,
-        "type": "step/end",
-        "ignorable": false
-      },
-      {
-        "seq": 84,
-        "type": "turn/end",
-        "ignorable": false
-      },
-      {
-        "seq": 85,
         "type": "session/end-seed",
         "ignorable": false
       },
       {
-        "seq": 86,
+        "seq": 25,
         "type": "reaction/note",
         "ignorable": true,
         "data": {
           "targetSeq": 7,
-          "emoji": "\ud83c\udf89",
+          "emoji": "🎉",
           "actor": "owen",
           "action": "added"
         }
       }
     ],
     "surfaceNodes": [
-      67,
-      61,
-      74,
-      75,
-      76,
-      82
+      7,
+      8,
+      9,
+      19
     ],
     "derivedTexts": [
       {
-        "id": "d8a636d1-0e21-4d95-b41b-35d21c3ce895",
-        "role": "user",
-        "source": {
-          "kind": "plugin",
-          "plugin": "compact",
-          "compactionId": "f4d5224a-f5b2-4527-95d8-d3189d6f6878",
-          "sourceCommandId": "cmd-25ccf6ab-1"
-        },
-        "text": "This is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. Treat the captured context as established background and build on it without restating it. Continue the task directly from the messages that follow, without acknowledging this checkpoint.\n\n<compacted-summary>\nmock assistant reply 6\n</compacted-summary>"
-      },
-      {
-        "id": "d776c309-d5af-43dd-b9a0-d37b502b18ed",
-        "role": "assistant",
-        "source": {
-          "kind": "model",
-          "provider": "deepseek-official",
-          "model": "deepseek-v4-flash"
-        },
-        "text": "mock assistant reply 5"
-      },
-      {
-        "id": "73b3110c-528c-4148-aa1a-2768c3b50935",
+        "id": "a202eb6b-fb85-421d-ae32-f96ffc935bd0",
         "role": "user",
         "source": {
           "kind": "user",
-          "rpcId": "react-note-9"
+          "rpcId": "prep-2"
         },
-        "text": "turn five: after compaction"
+        "text": "name the tallest tree"
       },
       {
-        "id": "d11c6183-705c-4f39-ac9c-d332b1a76e73",
+        "id": "e4b5c5cb-2e92-44b2-bc54-d267e960224c",
         "role": "user",
         "source": {
           "kind": "plugin",
@@ -650,19 +454,18 @@
             },
             {
               "name": "approval:policy",
-              "text": "Approval prompts are disabled in this session: actions that require approval are rejected automatically \u2014 do not request sandbox escalation (do not set `sandbox_permissions`)."
+              "text": "Approval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`)."
             }
           ]
         },
-        "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.\n\nApproval prompts are disabled in this session: actions that require approval are rejected automatically \u2014 do not request sandbox escalation (do not set `sandbox_permissions`)."
+        "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.\n\nApproval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`)."
       },
       {
-        "id": "0c8b0bfb-648b-44d5-902e-08db49a7df2b",
+        "id": "7588fd0d-7945-4c18-a743-ff11add22f7f",
         "role": "user",
         "source": {
           "kind": "skill-catalog",
           "form": "catalog",
-          "update": true,
           "entries": [
             {
               "name": "amazon-bedrock",
@@ -682,7 +485,7 @@
             },
             {
               "name": "aws-blocks",
-              "description": "Guides building full-stack applications with AWS Blocks \u2014 an Infrastructure-from-Code framework. Applies when creating APIs, selecting Building Blocks (KVStore, DistributedTable, Database, AuthBasic, AuthCognito, Realtime, AsyncJob, FileBucket, etc.), running local development, or deploying AWS Blocks applications. Also covers AWS Blocks topics with validated, version-specific patterns that prevent common mistakes. Triggers when user mentions AWS Blocks; project has aws-blocks/ directory; cod..."
+              "description": "Guides building full-stack applications with AWS Blocks — an Infrastructure-from-Code framework. Applies when creating APIs, selecting Building Blocks (KVStore, DistributedTable, Database, AuthBasic, AuthCognito, Realtime, AsyncJob, FileBucket, etc.), running local development, or deploying AWS Blocks applications. Also covers AWS Blocks topics with validated, version-specific patterns that prevent common mistakes. Triggers when user mentions AWS Blocks; project has aws-blocks/ directory; cod..."
             },
             {
               "name": "aws-cdk",
@@ -702,7 +505,7 @@
             },
             {
               "name": "aws-database",
-              "description": "Routes any task involving AWS databases \u2014 choosing, comparing, recommending, getting started with, or operating a database \u2014 to the correct service-specific skill. Supersedes general training-data knowledge with post-training service updates, corrected limitations, and decision procedures for relational (Aurora, DSQL, RDS), key-value (DynamoDB), wide-column (Keyspaces), document (DocumentDB), graph (Neptune), time-series (Timestream), and in-memory/caching (ElastiCache, MemoryDB) workloads. A..."
+              "description": "Routes any task involving AWS databases — choosing, comparing, recommending, getting started with, or operating a database — to the correct service-specific skill. Supersedes general training-data knowledge with post-training service updates, corrected limitations, and decision procedures for relational (Aurora, DSQL, RDS), key-value (DynamoDB), wide-column (Keyspaces), document (DocumentDB), graph (Neptune), time-series (Timestream), and in-memory/caching (ElastiCache, MemoryDB) workloads. A..."
             },
             {
               "name": "aws-deployment",
@@ -710,7 +513,7 @@
             },
             {
               "name": "aws-iam",
-              "description": "Provides verified corrections for IAM behaviors that AI agents frequently get wrong \u2014 policy evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks, and SAML/MFA specifics. Also provides structured workflows for IAM role management and baseline policy generation from application source code or a Terraform plan JSON. Covers condition operator safety (ForAnyValue/ForAllValues with Null checks), bucket policy deny patterns (VPC endpoint restrictions, org paths), co..."
+              "description": "Provides verified corrections for IAM behaviors that AI agents frequently get wrong — policy evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks, and SAML/MFA specifics. Also provides structured workflows for IAM role management and baseline policy generation from application source code or a Terraform plan JSON. Covers condition operator safety (ForAnyValue/ForAllValues with Null checks), bucket policy deny patterns (VPC endpoint restrictions, org paths), co..."
             },
             {
               "name": "aws-messaging-and-streaming",
@@ -738,11 +541,11 @@
             },
             {
               "name": "aws-security",
-              "description": "Covers AWS security services and workflows \u2014 Security Hub V2 (OCSF) findings, connectors, aggregators, automation rules, and security posture summaries; Security Hub CSPM (V1/ASFF) controls and compliance standards; GuardDuty threat findings; Inspector vulnerability findings; Macie sensitive data findings; Detective investigation; and Security Lake configuration and data aggregation. Applicable when questions involve security posture, Exposure findings, CSPM failed controls, threat findings, ..."
+              "description": "Covers AWS security services and workflows — Security Hub V2 (OCSF) findings, connectors, aggregators, automation rules, and security posture summaries; Security Hub CSPM (V1/ASFF) controls and compliance standards; GuardDuty threat findings; Inspector vulnerability findings; Macie sensitive data findings; Detective investigation; and Security Lake configuration and data aggregation. Applicable when questions involve security posture, Exposure findings, CSPM failed controls, threat findings, ..."
             },
             {
               "name": "aws-serverless",
-              "description": "Routes serverless requests to a compute form factor and the skill that owns it. Applies first to Lambda, API Gateway, EventBridge, Step Functions and event-driven work while the compute, orchestration or integration choice is open \u2014 API backends, webhooks, jobs, cron, queue/stream consumers, durable workflows, event routing, Step Functions vs Durable Functions, and Pipes vs native event source mappings for queues and streams. Decides Event Functions on-demand vs Managed Instances, Web Functio..."
+              "description": "Routes serverless requests to a compute form factor and the skill that owns it. Applies first to Lambda, API Gateway, EventBridge, Step Functions and event-driven work while the compute, orchestration or integration choice is open — API backends, webhooks, jobs, cron, queue/stream consumers, durable workflows, event routing, Step Functions vs Durable Functions, and Pipes vs native event source mappings for queues and streams. Decides Event Functions on-demand vs Managed Instances, Web Functio..."
             },
             {
               "name": "aws-storage",
@@ -762,39 +565,41 @@
             }
           ]
         },
-        "text": "<system-reminder>\nThe available skill catalog changed. This complete catalog replaces every earlier available-skills list in this session:\n\n<available_skills>\n- `amazon-bedrock`: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Applies when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeni...\n- `aws-ai-ml`: Selects, deploys, and customizes AI models on Amazon SageMaker. Training or Processing jobs, fine-tuning (SFT/DPO/RLVR/RLAIF), model selection, dataset preparation, evaluation, SageMaker or Bedrock deployment, inference optimization and endpoint diagnostics. Covers the full lifecycle from planning through production. Use when fine-tuning models on SageMaker, choosing which base model to customize, fine-tune, or deploy from SageMaker JumpStart or Hub, SageMakerPublicHub, or the SageMaker publi...\n- `aws-auth`: Adds user authentication to web and mobile apps with Amazon Cognito (user pools and identity pools) and the AWS Amplify client auth libraries. Covers sign-up/sign-in flows and the login page (Cognito-hosted UI / managed login), MFA, password policies, OAuth 2.0 / OIDC flows (auth-code + PKCE, client credentials), social/SAML federation, tokens (ID/access/refresh, rotation, revocation, storage), Cognito Lambda triggers, identity pools (temp AWS creds), and gating API Gateway (or ALB) routes to...\n- `aws-billing-and-cost-management`: Analyze AWS costs, find savings, manage budgets, evaluate Savings Plans and Reserved Instances, right-size EC2/Lambda/RDS/EBS with Compute Optimizer, look up service pricing, query CUR with Athena, detect cost anomalies, scope costs to billing views, and monitor Free Tier usage. Triggers on: AWS bill, cost analysis, reduce spend, savings plan, reserved instance, right-size, budget alert, cost optimization, pricing, free tier, cost anomaly, CUR, cost audit, billing view, billing view ARN.\n- `aws-blocks`: Guides building full-stack applications with AWS Blocks \u2014 an Infrastructure-from-Code framework. Applies when creating APIs, selecting Building Blocks (KVStore, DistributedTable, Database, AuthBasic, AuthCognito, Realtime, AsyncJob, FileBucket, etc.), running local development, or deploying AWS Blocks applications. Also covers AWS Blocks topics with validated, version-specific patterns that prevent common mistakes. Triggers when user mentions AWS Blocks; project has aws-blocks/ directory; cod...\n- `aws-cdk`: Authors, deploys, and troubleshoots AWS infrastructure using CDK with TypeScript or Python. Covers best practices, stack architecture, and construct patterns. Applies when writing CDK constructs, bootstrapping environments, running cdk deploy/synth/diff, fixing CDK or CloudFormation errors, planning stack structure, importing existing resources, resolving drift, or refactoring stacks without resource replacement.\n- `aws-cloudformation`: Authors, validates, and troubleshoots AWS CloudFormation templates. Covers template authoring with secure defaults, local validation with either cfn-lint or cloudformation-validate, cfn-guard security and compliance checks as a recommended default, account-aware CloudFormation service pre-deployment validation, CloudFormation Express mode for faster deployments, and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation. Also covers author-time template i...\n- `aws-compute`: Provisions, scales, and operates Amazon EC2 virtual-machine workloads: instance-type selection (Graviton/Arm64, burstable T credits, GPU, instance store vs EBS), launch templates, Auto Scaling groups (scaling policies, instance refresh, mixed instances, Spot, warm pools, lifecycle hooks), IMDSv2, placement groups, Elastic IPs, AMI lifecycle, and Systems Manager fleet operations (Session Manager, Run Command, Patch Manager). Applies to EC2 instance and fleet questions, InsufficientInstanceCapa...\n- `aws-containers`: Builds, deploys, debugs, and optimizes containerized workloads on Amazon EKS, ECS, Fargate, ECR, and Elastic Beanstalk. Covers EKS operations and add-ons; ECS task definitions, services, Exec, Express Mode, Managed Instances, and Action Logs; ECR repositories and lifecycle policies; and Elastic Beanstalk platforms plus Beanstalk Cluster Mode for running containerized applications on service-managed EKS compute. Use for container deployment, service selection, configuration, scaling, health, t...\n- `aws-database`: Routes any task involving AWS databases \u2014 choosing, comparing, recommending, getting started with, or operating a database \u2014 to the correct service-specific skill. Supersedes general training-data knowledge with post-training service updates, corrected limitations, and decision procedures for relational (Aurora, DSQL, RDS), key-value (DynamoDB), wide-column (Keyspaces), document (DocumentDB), graph (Neptune), time-series (Timestream), and in-memory/caching (ElastiCache, MemoryDB) workloads. A...\n- `aws-deployment`: Configures CI/CD pipelines using AWS CodePipeline, CodeBuild, CodeDeploy, CodeConnections, and CodeArtifact. Covers CodePipeline V2 (triggers, variables, execution modes, cross-account), buildspec.yml (caching, VPC, Docker), CodeDeploy strategies (blue/green, canary, linear), CodeArtifact (private package registries, auth tokens, cross-account), and source connections (GitHub, GitLab, Bitbucket). Applies when CodePipeline, CodeBuild, CodeDeploy, CodeConnections, CodeArtifact, buildspec.yml, a...\n- `aws-iam`: Provides verified corrections for IAM behaviors that AI agents frequently get wrong \u2014 policy evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks, and SAML/MFA specifics. Also provides structured workflows for IAM role management and baseline policy generation from application source code or a Terraform plan JSON. Covers condition operator safety (ForAnyValue/ForAllValues with Null checks), bucket policy deny patterns (VPC endpoint restrictions, org paths), co...\n- `aws-messaging-and-streaming`: Guides general use of AWS messaging and streaming services. Covers Amazon SQS, Amazon SNS, Amazon EventBridge, Amazon MQ, Amazon Kinesis Data Streams, Amazon Data Firehose, Amazon Managed Service for Apache Flink, and Amazon Managed Streaming for Apache Kafka (MSK). Use when reasoning about messaging and streaming patterns. Also identifies which AWS service owns each customer communication channel: email (Amazon SES), and WhatsApp, SMS, MMS, RCS, voice and mobile push (the AWS End User Messag...\n- `aws-networking`: Routes AWS networking requests to the correct service skill for implementation. Covers Route 53 (DNS, health checks, routing policies, Resolver, DNS Firewall), CloudFront (caching, edge, OAC, mTLS, signed URLs), Transit Gateway (multi-VPC hub, segmentation, centralized egress), Direct Connect (hybrid link, DX Gateway, MACsec), Site-to-Site VPN (IPsec tunnels, static or BGP), WAF (web ACLs, AWS Managed Rules, rate-based rules, Bot and Fraud Control), and Shield Advanced (L3/L4 DDoS). Applicabl...\n- `aws-observability`: Builds, configures, debugs, and optimizes AWS observability - operator-symptom questions and detecting Omni vs classic CloudWatch. CloudWatch on an already-reporting service: Log Insights, metric/composite/anomaly alarms, custom metrics/EMF, dashboards, X-Ray/ADOT tracing, canaries, CloudTrail, Dynamic Instrumentation (live breakpoints/snapshots), the Application Signals service map, and fleet health views. CloudWatch Omni on an existing Space: SQL over logs and traces, PromQL over metrics, O...\n- `aws-sdk-js-v3-usage`: AWS SDK for JavaScript v3 development patterns. Use when writing JavaScript or TypeScript code that uses AWS services via @aws-sdk/* packages (aws-sdk-js-v3), or when asked about schemas, runtime validation, serialization, or code generation in the context of the JS/TS AWS SDK.\n- `aws-sdk-python-usage`: AWS SDK for Python (boto3/botocore) development patterns. You MUST use this skill when writing Python code that uses AWS services via boto3 or botocore. This includes creating service clients or resources, configuring sessions and credentials, handling errors with ClientError, using paginators and waiters, S3 file transfers and presigned URLs, DynamoDB table operations, and any boto3/botocore client configuration. Use this skill whenever Python code imports boto3 or botocore, or when the user...\n- `aws-sdk-swift-usage`: AWS SDK for Swift development patterns. Use when writing Swift code that uses AWS services via aws-sdk-swift package.\n- `aws-security`: Covers AWS security services and workflows \u2014 Security Hub V2 (OCSF) findings, connectors, aggregators, automation rules, and security posture summaries; Security Hub CSPM (V1/ASFF) controls and compliance standards; GuardDuty threat findings; Inspector vulnerability findings; Macie sensitive data findings; Detective investigation; and Security Lake configuration and data aggregation. Applicable when questions involve security posture, Exposure findings, CSPM failed controls, threat findings, ...\n- `aws-serverless`: Routes serverless requests to a compute form factor and the skill that owns it. Applies first to Lambda, API Gateway, EventBridge, Step Functions and event-driven work while the compute, orchestration or integration choice is open \u2014 API backends, webhooks, jobs, cron, queue/stream consumers, durable workflows, event routing, Step Functions vs Durable Functions, and Pipes vs native event source mappings for queues and streams. Decides Event Functions on-demand vs Managed Instances, Web Functio...\n- `aws-storage`: Selects, investigates, and compares AWS object, file, and block storage services, and answers cost, performance, configuration, security, and troubleshooting questions about storage services. Applies when a user asks where to store or archive data based on their usage patterns; which storage service to choose or how two compare; how to migrate data from on-premises or between AWS services; how to protect, replicate, or recover data; how to optimize storage costs; where to deploy shared NFS, S...\n- `aws-well-architected-review`: Performs a full AWS Well-Architected Framework review evaluating every framework question across all pillars discovered from the live AWS documentation by analyzing code, IaC, and configurations to produce evidence-backed findings with Eisenhower-prioritized remediation. Supports full reviews (every framework best practice with BP ID citations), quick reviews (question-level), pillar-scoped reviews, and lens-specific reviews using lenses discovered from the live AWS documentation. Triggers on...\n- `launch-with-aws`: Migrates vibe-coded web applications to AWS. Handles the full workflow from analysis through migration to deployment, producing deployable AWS Blocks infrastructure code. Supports full-stack apps built with vibe-coding platforms (Lovable, Bolt.new, Replit) and frontend web applications and websites: React, Vue, Angular, Next.js, Nuxt, Astro, SvelteKit, Gatsby, Vite, Svelte, Solid, Docusaurus, and others (static sites, SPAs, and SSR frameworks with static export). Triggers on: launch with AWS,...\n- `signing-in-to-aws`: Gets AWS credentials for CLI/SDK access via `aws login`. Activates when a developer needs to authenticate to AWS for local development, when an AWS operation fails due to missing or expired credentials, or when someone asks about setting up AWS access. Triggers: \"set up AWS\", \"configure AWS\", \"aws login\", \"get credentials\", \"authenticate\", \"session expired\", \"token expired\", \"no credentials\", \"AccessDeniedException\" with no configured credentials.\n</available_skills>\n\nUse only names in this replacement catalog. If the user names a listed skill, or the task clearly matches its description, call the `skill` tool with the exact name before acting.\nA user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill.\n</system-reminder>"
+        "text": "<system-reminder>\nA skill is a reusable set of task-specific instructions. The following skills are available in this session:\n\n<available_skills>\n- `amazon-bedrock`: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Applies when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeni...\n- `aws-ai-ml`: Selects, deploys, and customizes AI models on Amazon SageMaker. Training or Processing jobs, fine-tuning (SFT/DPO/RLVR/RLAIF), model selection, dataset preparation, evaluation, SageMaker or Bedrock deployment, inference optimization and endpoint diagnostics. Covers the full lifecycle from planning through production. Use when fine-tuning models on SageMaker, choosing which base model to customize, fine-tune, or deploy from SageMaker JumpStart or Hub, SageMakerPublicHub, or the SageMaker publi...\n- `aws-auth`: Adds user authentication to web and mobile apps with Amazon Cognito (user pools and identity pools) and the AWS Amplify client auth libraries. Covers sign-up/sign-in flows and the login page (Cognito-hosted UI / managed login), MFA, password policies, OAuth 2.0 / OIDC flows (auth-code + PKCE, client credentials), social/SAML federation, tokens (ID/access/refresh, rotation, revocation, storage), Cognito Lambda triggers, identity pools (temp AWS creds), and gating API Gateway (or ALB) routes to...\n- `aws-billing-and-cost-management`: Analyze AWS costs, find savings, manage budgets, evaluate Savings Plans and Reserved Instances, right-size EC2/Lambda/RDS/EBS with Compute Optimizer, look up service pricing, query CUR with Athena, detect cost anomalies, scope costs to billing views, and monitor Free Tier usage. Triggers on: AWS bill, cost analysis, reduce spend, savings plan, reserved instance, right-size, budget alert, cost optimization, pricing, free tier, cost anomaly, CUR, cost audit, billing view, billing view ARN.\n- `aws-blocks`: Guides building full-stack applications with AWS Blocks — an Infrastructure-from-Code framework. Applies when creating APIs, selecting Building Blocks (KVStore, DistributedTable, Database, AuthBasic, AuthCognito, Realtime, AsyncJob, FileBucket, etc.), running local development, or deploying AWS Blocks applications. Also covers AWS Blocks topics with validated, version-specific patterns that prevent common mistakes. Triggers when user mentions AWS Blocks; project has aws-blocks/ directory; cod...\n- `aws-cdk`: Authors, deploys, and troubleshoots AWS infrastructure using CDK with TypeScript or Python. Covers best practices, stack architecture, and construct patterns. Applies when writing CDK constructs, bootstrapping environments, running cdk deploy/synth/diff, fixing CDK or CloudFormation errors, planning stack structure, importing existing resources, resolving drift, or refactoring stacks without resource replacement.\n- `aws-cloudformation`: Authors, validates, and troubleshoots AWS CloudFormation templates. Covers template authoring with secure defaults, local validation with either cfn-lint or cloudformation-validate, cfn-guard security and compliance checks as a recommended default, account-aware CloudFormation service pre-deployment validation, CloudFormation Express mode for faster deployments, and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation. Also covers author-time template i...\n- `aws-compute`: Provisions, scales, and operates Amazon EC2 virtual-machine workloads: instance-type selection (Graviton/Arm64, burstable T credits, GPU, instance store vs EBS), launch templates, Auto Scaling groups (scaling policies, instance refresh, mixed instances, Spot, warm pools, lifecycle hooks), IMDSv2, placement groups, Elastic IPs, AMI lifecycle, and Systems Manager fleet operations (Session Manager, Run Command, Patch Manager). Applies to EC2 instance and fleet questions, InsufficientInstanceCapa...\n- `aws-containers`: Builds, deploys, debugs, and optimizes containerized workloads on Amazon EKS, ECS, Fargate, ECR, and Elastic Beanstalk. Covers EKS operations and add-ons; ECS task definitions, services, Exec, Express Mode, Managed Instances, and Action Logs; ECR repositories and lifecycle policies; and Elastic Beanstalk platforms plus Beanstalk Cluster Mode for running containerized applications on service-managed EKS compute. Use for container deployment, service selection, configuration, scaling, health, t...\n- `aws-database`: Routes any task involving AWS databases — choosing, comparing, recommending, getting started with, or operating a database — to the correct service-specific skill. Supersedes general training-data knowledge with post-training service updates, corrected limitations, and decision procedures for relational (Aurora, DSQL, RDS), key-value (DynamoDB), wide-column (Keyspaces), document (DocumentDB), graph (Neptune), time-series (Timestream), and in-memory/caching (ElastiCache, MemoryDB) workloads. A...\n- `aws-deployment`: Configures CI/CD pipelines using AWS CodePipeline, CodeBuild, CodeDeploy, CodeConnections, and CodeArtifact. Covers CodePipeline V2 (triggers, variables, execution modes, cross-account), buildspec.yml (caching, VPC, Docker), CodeDeploy strategies (blue/green, canary, linear), CodeArtifact (private package registries, auth tokens, cross-account), and source connections (GitHub, GitLab, Bitbucket). Applies when CodePipeline, CodeBuild, CodeDeploy, CodeConnections, CodeArtifact, buildspec.yml, a...\n- `aws-iam`: Provides verified corrections for IAM behaviors that AI agents frequently get wrong — policy evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks, and SAML/MFA specifics. Also provides structured workflows for IAM role management and baseline policy generation from application source code or a Terraform plan JSON. Covers condition operator safety (ForAnyValue/ForAllValues with Null checks), bucket policy deny patterns (VPC endpoint restrictions, org paths), co...\n- `aws-messaging-and-streaming`: Guides general use of AWS messaging and streaming services. Covers Amazon SQS, Amazon SNS, Amazon EventBridge, Amazon MQ, Amazon Kinesis Data Streams, Amazon Data Firehose, Amazon Managed Service for Apache Flink, and Amazon Managed Streaming for Apache Kafka (MSK). Use when reasoning about messaging and streaming patterns. Also identifies which AWS service owns each customer communication channel: email (Amazon SES), and WhatsApp, SMS, MMS, RCS, voice and mobile push (the AWS End User Messag...\n- `aws-networking`: Routes AWS networking requests to the correct service skill for implementation. Covers Route 53 (DNS, health checks, routing policies, Resolver, DNS Firewall), CloudFront (caching, edge, OAC, mTLS, signed URLs), Transit Gateway (multi-VPC hub, segmentation, centralized egress), Direct Connect (hybrid link, DX Gateway, MACsec), Site-to-Site VPN (IPsec tunnels, static or BGP), WAF (web ACLs, AWS Managed Rules, rate-based rules, Bot and Fraud Control), and Shield Advanced (L3/L4 DDoS). Applicabl...\n- `aws-observability`: Builds, configures, debugs, and optimizes AWS observability - operator-symptom questions and detecting Omni vs classic CloudWatch. CloudWatch on an already-reporting service: Log Insights, metric/composite/anomaly alarms, custom metrics/EMF, dashboards, X-Ray/ADOT tracing, canaries, CloudTrail, Dynamic Instrumentation (live breakpoints/snapshots), the Application Signals service map, and fleet health views. CloudWatch Omni on an existing Space: SQL over logs and traces, PromQL over metrics, O...\n- `aws-sdk-js-v3-usage`: AWS SDK for JavaScript v3 development patterns. Use when writing JavaScript or TypeScript code that uses AWS services via @aws-sdk/* packages (aws-sdk-js-v3), or when asked about schemas, runtime validation, serialization, or code generation in the context of the JS/TS AWS SDK.\n- `aws-sdk-python-usage`: AWS SDK for Python (boto3/botocore) development patterns. You MUST use this skill when writing Python code that uses AWS services via boto3 or botocore. This includes creating service clients or resources, configuring sessions and credentials, handling errors with ClientError, using paginators and waiters, S3 file transfers and presigned URLs, DynamoDB table operations, and any boto3/botocore client configuration. Use this skill whenever Python code imports boto3 or botocore, or when the user...\n- `aws-sdk-swift-usage`: AWS SDK for Swift development patterns. Use when writing Swift code that uses AWS services via aws-sdk-swift package.\n- `aws-security`: Covers AWS security services and workflows — Security Hub V2 (OCSF) findings, connectors, aggregators, automation rules, and security posture summaries; Security Hub CSPM (V1/ASFF) controls and compliance standards; GuardDuty threat findings; Inspector vulnerability findings; Macie sensitive data findings; Detective investigation; and Security Lake configuration and data aggregation. Applicable when questions involve security posture, Exposure findings, CSPM failed controls, threat findings, ...\n- `aws-serverless`: Routes serverless requests to a compute form factor and the skill that owns it. Applies first to Lambda, API Gateway, EventBridge, Step Functions and event-driven work while the compute, orchestration or integration choice is open — API backends, webhooks, jobs, cron, queue/stream consumers, durable workflows, event routing, Step Functions vs Durable Functions, and Pipes vs native event source mappings for queues and streams. Decides Event Functions on-demand vs Managed Instances, Web Functio...\n- `aws-storage`: Selects, investigates, and compares AWS object, file, and block storage services, and answers cost, performance, configuration, security, and troubleshooting questions about storage services. Applies when a user asks where to store or archive data based on their usage patterns; which storage service to choose or how two compare; how to migrate data from on-premises or between AWS services; how to protect, replicate, or recover data; how to optimize storage costs; where to deploy shared NFS, S...\n- `aws-well-architected-review`: Performs a full AWS Well-Architected Framework review evaluating every framework question across all pillars discovered from the live AWS documentation by analyzing code, IaC, and configurations to produce evidence-backed findings with Eisenhower-prioritized remediation. Supports full reviews (every framework best practice with BP ID citations), quick reviews (question-level), pillar-scoped reviews, and lens-specific reviews using lenses discovered from the live AWS documentation. Triggers on...\n- `launch-with-aws`: Migrates vibe-coded web applications to AWS. Handles the full workflow from analysis through migration to deployment, producing deployable AWS Blocks infrastructure code. Supports full-stack apps built with vibe-coding platforms (Lovable, Bolt.new, Replit) and frontend web applications and websites: React, Vue, Angular, Next.js, Nuxt, Astro, SvelteKit, Gatsby, Vite, Svelte, Solid, Docusaurus, and others (static sites, SPAs, and SSR frameworks with static export). Triggers on: launch with AWS,...\n- `signing-in-to-aws`: Gets AWS credentials for CLI/SDK access via `aws login`. Activates when a developer needs to authenticate to AWS for local development, when an AWS operation fails due to missing or expired credentials, or when someone asks about setting up AWS access. Triggers: \"set up AWS\", \"configure AWS\", \"aws login\", \"get credentials\", \"authenticate\", \"session expired\", \"token expired\", \"no credentials\", \"AccessDeniedException\" with no configured credentials.\n</available_skills>\n\nIf the user names a skill, or the task clearly matches a skill's description, call the `skill` tool with the exact skill name before taking task actions. Load all applicable skills, then follow their full instructions. This catalog contains summaries only; do not infer or follow a skill's instructions until it has been loaded.\nA user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill.\n</system-reminder>"
       },
       {
-        "id": "6d8d4152-bb4d-4305-8745-439b2a84a0c2",
+        "id": "c5e01b96-2a73-4e3a-9888-5db8b834a648",
         "role": "assistant",
         "source": {
           "kind": "model",
           "provider": "deepseek-official",
           "model": "deepseek-v4-flash"
         },
-        "text": "mock assistant reply 7"
+        "text": "mock assistant reply 8"
+      }
+    ],
+    "reactionNotes": [
+      {
+        "seq": 23,
+        "data": {
+          "targetSeq": 7,
+          "emoji": "👍",
+          "actor": "owen",
+          "action": "added"
+        }
       },
       {
-        "id": "reaction-note-23",
-        "role": "user",
-        "source": {
-          "kind": "plugin",
-          "plugin": "react-note"
-        },
-        "text": "owen reacted \ud83d\udc4d to the message at seq 7."
-      },
-      {
-        "id": "reaction-note-86",
-        "role": "user",
-        "source": {
-          "kind": "plugin",
-          "plugin": "react-note"
-        },
-        "text": "owen reacted \ud83c\udf89 to the message at seq 7."
+        "seq": 25,
+        "data": {
+          "targetSeq": 7,
+          "emoji": "🎉",
+          "actor": "owen",
+          "action": "added"
+        }
       }
     ],
     "projections": {
-      "asOfSeq": 86,
+      "asOfSeq": 25,
       "keys": [
         "sessionStats",
         "tokenUsage",
@@ -811,9 +616,5 @@
         "plan"
       ]
     }
-  },
-  "evidenceNotes": {
-    "source": "the restarted host, asked through the same client-request carrier the browser uses",
-    "provenance": "verbatim: event list, note payloads, derived message list and surface nodes from the restarted process (no truncation applied)."
   }
 }
