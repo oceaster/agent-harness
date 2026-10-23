@@ -1303,15 +1303,27 @@ are the candidates for open-sourcing.
      browser-safe, value-import-free subpath, and a plugin value import there is
      exactly what the client bundle purity gate rejects (it failed the build
      until this was local).
-   - **The fold** (`Session.deriveMessages` in `index.ts`): a second segment.
-     `deriveMessages` walked surface nodes only, and a log-only note is not a
-     surface node — so the projection case alone reaches nobody. Notes now
-     project AFTER the surface segment, in log order, appended in a second pass.
-     Two segments rather than interleaving each note at its log position is what
-     keeps the result a pure function of the log: a later surface append never
-     reorders, and replay, cold resume and a post-compaction rebuild produce the
-     identical array. The practical effect is that an unreacted-to note sits
-     immediately before whatever the human types next.
+   - **The fold** (`Session.deriveMessages` in `index.ts`): interleave, and
+     live only while the target does. `deriveMessages` walked surface nodes only,
+     and a log-only note is not a surface node — so the projection case alone
+     reaches nobody. The first cut appended every note AFTER the surface segment,
+     which pinned each note to the tail of every later request forever; Owen's
+     rule retires that: once the message leaves the context, so should the
+     reaction to it. So a note now projects AT ITS LOG POSITION — just before the
+     first current surface node whose seq is greater, with any leftover note
+     after the last node — and ONLY while its `targetSeq` is still a current
+     surface node, i.e. still in `foldSurface`'s `nodes`. A compaction `replace`
+     that shadows the target drops the note from the derivation by the same
+     stroke that drops the message, which is the whole point; the shadowed-seq
+     bookkeeping, the surface order of the replacement copy and the log itself
+     are untouched. The lifetime is a PURE FUNCTION OF THE LOG — the `surfaceOp`
+     markers plus the note's own `targetSeq`, never a clock, a counter or the
+     client's reaction map — so replay, cold resume and a post-compaction rebuild
+     derive the identical array. The cache keeps its incremental path (an
+     appended event's seq exceeds every already-derived entry's, so tail-append
+     preserves the interleave order) and its `replaceGeneration` rebuild;
+     `derivedGeneration` is seeded to `-1` so even a replayed log takes the
+     rebuild path a compacted one takes.
    - **The wire** (`packages/host/apiproxy`): `session.react` — name, doc,
      schema pair, `rpc-map` row, `fetch/handler` route, `fetch/client` face and
      the `api-proxy` implementation, following `session.rename` (also a
@@ -1336,10 +1348,11 @@ are the candidates for open-sourcing.
      absent from `foldSurface`, from every shadowed span, and from anything
      `deriveEventMessage` would hand a summariser.
    - **Re-apply on an upstream pull.** If upstream ships a plugin seam for
-     model-visible log-only events, delete the `deriveMessages` note segment and
-     the `case 'reaction/note'` and re-home the projection there; if upstream
-     adds its own envelope-intent argument to `Session.append`, keep theirs and
-     drop ours. `npm run gen-persistence-catalog` regenerates the generated
+     model-visible log-only events, delete the note interleave/liveness pass in
+     `deriveMessages` (`rebuildDerived`/`deriveLogEntry`/`projectNote`) and the
+     `case 'reaction/note'`, and re-home the projection there; if upstream adds
+     its own envelope-intent argument to `Session.append`, keep theirs and drop
+     ours. `npm run gen-persistence-catalog` regenerates the generated
      pair either way. The client half of the feature is entry 28, and this note
      owns only the log and the wire; the fork has no other consumer of the kind.
    - **Measured, not asserted** (`apps/web/tests/fixture/react-note/`, the real
@@ -1347,14 +1360,26 @@ are the candidates for open-sourcing.
      one `session.react` appends exactly `{"reaction/note": 1}`, writes the
      marker, starts no turn or step, makes no model request, generates no title,
      writes no goal/retry/command/queue record, leaves the agent idle with an
-     empty inbox and the surface unchanged; the note reaches the next request at
-     index 6 of 7 (last, user role, `owen reacted 👍 to the message at seq 7.`)
-     and is the only addition; a `/compact` whose span (7–55) spans the note at
-     seq 23 puts no reaction text in the summarisation request or in the durable
-     checkpoint and the note still reaches the model afterwards; and a real
-     restart of the same build on the same `DSH_HOME` reopens the conversation,
-     keeps the note with its marker, and accepts a second note on the resumed
-     cold session.
+     empty inbox and the surface unchanged; a `/compact` whose span (7–55) spans
+     the note at seq 23 puts no reaction text in the summarisation request or in
+     the durable checkpoint; and a real restart of the same build on the same
+     `DSH_HOME` reopens the conversation, keeps the note with its marker, and
+     accepts a second note on the resumed cold session.
+
+     **Corrected after the interleave change (entry 26, ticket `781d05ae`).**
+     That fixture run also measured the note arriving at "index 6 of 7 — last,
+     user role" of the next request, and that number was the old rule showing
+     through: it is now the note's LOG POSITION, not the tail, so any note
+     reacted to before a later message arrives ahead of that message instead of
+     behind it. The fixture was **not** re-run for this change (it drives a built
+     harness, and nothing was built), so no new index is quoted here; the rule it
+     used to pin is now pinned by unit tests instead —
+     `packages/core/session/tests/reaction-note.spec.ts` (a prompt appended after
+     a note lands AFTER it; a replacement that shadows the target drops the note;
+     a replacement that spares it keeps the note interleaved; live and replayed
+     derivations agree) and `packages/session/session-persistence-jsonl/tests/reaction-note-restart.spec.ts`
+     (a dropped note is still in the stored log after a restart and still absent
+     from the re-derived history).
 
 27. **Subagent sessions idle for six hours are destroyed** (`host/apiproxy`;
     ticket `b1458dbd`) — the household asked for dead subagent conversations to

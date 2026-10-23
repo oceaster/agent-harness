@@ -716,16 +716,24 @@ export class Session {
     return this.contextFold
   }
 
-  /** The derived-message cache: frozen projections, extended per unseen node. */
+  /** The derived-message cache: frozen projections in log order, extended per unseen event. */
   private derived: Message[] = []
-  /** Derived model-note messages, in log order; they follow the surface segment. */
-  private derivedNotes: Message[] = []
+  /** Seqs of the current surface nodes, for the note-target liveness check. */
+  private derivedNodeSeqs = new Set<number>()
   /** Surface position (nodes projected) the cache has reached. */
   private derivedNodes = 0
-  /** Log position the model-note scan has reached (notes project after the surface prefix). */
-  private derivedNoteScan = 0
-  /** {@link SurfaceManager.replaceGeneration} the cache was built under. */
-  private derivedGeneration = 0
+  /** Log position the interleaved derivation has reached. */
+  private derivedLogSeq = 0
+  /**
+   * {@link SurfaceManager.replaceGeneration} the cache was built under.
+   *
+   * Seeded to `-1`, a value the surface's monotonic counter never takes, so the
+   * FIRST call always takes the full rebuild. A replayed or restored log then
+   * takes exactly the path a compacted one does, instead of a sequence-ordered
+   * walk that could disagree with it (a `replace` leaves surface nodes in
+   * non-monotonic seq order).
+   */
+  private derivedGeneration = -1
 
   /**
    * Derive the LLM message history by walking the ordered sequences of
@@ -739,21 +747,32 @@ export class Session {
    * Model notes ({@link isModelNoteEvent}) are the one exception, and it is
    * one-directional: they are log-only — absent from {@link Session.surface},
    * so absent from the client transcript and from every compaction span — but
-   * they do reach the model as a second segment appended AFTER the surface
-   * segment, in log order. Keeping the two segments apart (rather than
-   * interleaving each note at its log position) is what makes the result a pure
-   * function of the log: a later surface append never reorders, and replay, a
-   * resume, and a post-compaction rebuild produce the identical array. The
-   * practical effect is that an unreacted-to note sits immediately before
-   * whatever the human types next.
+   * they do reach the model. Each note is INTERLEAVED at its log position: it
+   * is projected just before the first current surface node whose seq is
+   * greater (so a note sits where the human reacted, not at the tail of every
+   * later request), and any note left over after the last node follows it. The
+   * surface's own node order is preserved, including a replacement copy that
+   * took an earlier node's place at a later seq.
+   *
+   * A note lives exactly as long as its target: it projects only while
+   * `targetSeq` is still a current surface node. Owen's rule — once the message
+   * leaves the context, so does the reaction to it — falls out of that, because
+   * a compaction `replace` deletes the shadowed node and the note's target seq
+   * stops being one. The lifetime is a PURE FUNCTION OF THE LOG: it reads only
+   * the log's `surfaceOp` markers and the note's own `targetSeq`, never a clock,
+   * a counter, or a client-side reaction map, so replay, a resume, and a
+   * post-compaction rebuild derive the identical array.
    *
    * CACHED: each surface node is projected exactly once, when first seen — a
-   * call costs O(new nodes), and a surface rewrite (a `replace`;
-   * {@link SessionSurface.replaceGeneration}) rebuilds. The returned array is
-   * a fresh snapshot per call (later appends never grow an array a caller
-   * already holds); the `Message` objects in it are SHARED and **deep-frozen**.
-   * Their content reuses the already frozen durable event data, so the cache
-   * needs no second deep clone and consumers still cannot mutate the log.
+   * call costs O(new events), and a surface rewrite (a `replace`;
+   * {@link SessionSurface.replaceGeneration}) rebuilds. Only appends can happen
+   * between rebuilds, and an appended event's seq exceeds every already-derived
+   * entry's seq, so appending in log order keeps the interleaved array sorted
+   * exactly as the rebuild would place it. The returned array is a fresh
+   * snapshot per call (later appends never grow an array a caller already
+   * holds); the `Message` objects in it are SHARED and **deep-frozen**. Their
+   * content reuses the already frozen durable event data, so the cache needs no
+   * second deep clone and consumers still cannot mutate the log.
    * @returns a fresh array of the shared, frozen derived history.
    */
   deriveMessages(): Message[] {
@@ -761,15 +780,52 @@ export class Session {
     const nodes = surface.nodes
     const generation = surface.replaceGeneration
     if (generation !== this.derivedGeneration) {
-      this.derived = []
-      this.derivedNotes = []
-      this.derivedNodes = 0
-      this.derivedNoteScan = 0
+      this.rebuildDerived(nodes)
       this.derivedGeneration = generation
+      return [...this.derived]
     }
-    for (const seq of nodes.slice(this.derivedNodes)) {
-      // Surface sequences are built from this.log — seq is always a valid
-      // index by construction. The non-null assertion expresses that invariant.
+    // Registration precedes the walk: a note's target is always an earlier seq,
+    // so a node appended in this same delta is already known when its note is
+    // considered.
+    for (const seq of nodes.slice(this.derivedNodes)) this.derivedNodeSeqs.add(seq)
+    this.derivedNodes = nodes.length
+    for (let seq = this.derivedLogSeq; seq < this.log.length; seq++) {
+      const msg = this.deriveLogEntry(seq)
+      if (msg) this.derived.push(msg)
+    }
+    this.derivedLogSeq = this.log.length
+    return [...this.derived]
+  }
+
+  /**
+   * Fork the interleaved derivation from the log and the current surface.
+   * @param nodes - current surface node seqs, in model-visible order.
+   */
+  private rebuildDerived(nodes: readonly number[]): void {
+    const nodeSeqs = new Set(nodes)
+    this.derived = []
+    this.derivedNodeSeqs = nodeSeqs
+    this.derivedNodes = nodes.length
+    this.derivedLogSeq = this.log.length
+    // Collect the live notes in log order first, then merge them into the
+    // surface order, because the surface is NOT seq-ordered after a `replace`.
+    const notes: { seq: number; message: Message }[] = []
+    for (let seq = 0; seq < this.log.length; seq++) {
+      const message = this.projectNote(seq, nodeSeqs)
+      if (message) notes.push({ seq, message })
+    }
+    let next = 0
+    for (const seq of nodes) {
+      // Everything the log placed before this node comes first — a note the
+      // human left between two messages stays between them, for good.
+      while (next < notes.length) {
+        const note = notes[next]
+        if (note === undefined || note.seq >= seq) break
+        this.derived.push(note.message)
+        next++
+      }
+      // Surface sequences are built from this.log — seq is always a valid index
+      // by construction. The non-null assertion expresses that invariant.
       // oxlint-disable-next-line typescript/no-non-null-assertion
       const msg = this.deriveEventMessage(this.log[seq]!)
       // A surface node is one of the five message-producing types, but an
@@ -777,18 +833,41 @@ export class Session {
       // usage) derives to null and must not enter the transcript.
       if (msg) this.derived.push(msg)
     }
-    this.derivedNodes = nodes.length
-    // Notes are not surface nodes, so they never appear in the loop above; a
-    // rebuild re-scans them from the log start for the same reason.
-    for (let seq = this.derivedNoteScan; seq < this.log.length; seq++) {
+    for (const note of notes.slice(next)) this.derived.push(note.message)
+  }
+
+  /**
+   * Project one log position for the interleaved history: a current surface
+   * node, or a live model note at its own position.
+   * @param seq - log position to project.
+   * @returns the derived message, or null when the position produces none.
+   */
+  private deriveLogEntry(seq: number): Message | null {
+    if (this.derivedNodeSeqs.has(seq)) {
+      // Surface sequences are built from this.log — seq is always a valid
+      // index by construction. The non-null assertion expresses that invariant.
       // oxlint-disable-next-line typescript/no-non-null-assertion
-      const event = this.log[seq]!
-      if (!isModelNoteEvent(event)) continue
-      const msg = this.deriveEventMessage(event)
-      if (msg) this.derivedNotes.push(msg)
+      return this.deriveEventMessage(this.log[seq]!)
     }
-    this.derivedNoteScan = this.log.length
-    return [...this.derived, ...this.derivedNotes]
+    return this.projectNote(seq, this.derivedNodeSeqs)
+  }
+
+  /**
+   * Project a model note only while the message it reacts to is still part of
+   * the context. This is the whole lifetime rule: a note is a pure function of
+   * the log, and it lapses the moment a `replace` shadows its target.
+   * @param seq - log position that may hold a note.
+   * @param nodeSeqs - current surface node seqs.
+   * @returns the note's message, or null when the position is not a live note.
+   */
+  private projectNote(seq: number, nodeSeqs: ReadonlySet<number>): Message | null {
+    const event = this.log[seq]
+    if (event === undefined || !isModelNoteEvent(event)) return null
+    const { targetSeq } = event.data
+    // A reaction names an earlier message; the ordering guard keeps the
+    // incremental and rebuilt paths identical even on a hand-written log.
+    if (targetSeq >= seq || !nodeSeqs.has(targetSeq)) return null
+    return this.deriveEventMessage(event)
   }
 
   /**

@@ -112,6 +112,39 @@ describe('reaction/note survives a restart of the build that wrote it', () => {
     await second.fiber.dispose()
   })
 
+  it('re-derives the note\'s lifetime from the stored log, not from live state', async () => {
+    const root = await freshRoot()
+    const id = SessionId('restart-note-dropped')
+    const first = await boot(root, id, 'none')
+    turn(first.session)
+    const noteSeq = react(first.session)
+    // A compaction-shaped replacement shadows seq 1 — the message the note
+    // reacted to. Owen's rule: the note stops being derived. Nothing deletes it
+    // from the log, so the drop must come from the log alone, which is what the
+    // restart below re-reads.
+    first.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: '<compacted-summary>condensed</compacted-summary>' }],
+      source: { kind: 'plugin', plugin: 'compaction' },
+    }), { surfaceOp: { op: 'replace', start: 1, end: 1 }, sourceEventSeqs: [1] })
+    const derivedBefore = first.session.deriveMessages()
+    expect(JSON.stringify(derivedBefore)).not.toMatch(/reacted/)
+    expect(derivedBefore.some(message => message.id === `reaction-note-${noteSeq}`)).toBe(false)
+    await first.ctx.sessions.flush(first.session)
+    await first.ctx.fiber.dispose()
+
+    const second = new Context()
+    await second.plugin(SessionStore)
+    await second.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+    const inspected = await second.sessionPersistence.load(id)
+    // The record is still durable; only its projection lapsed.
+    expect(inspected.events[noteSeq]?.type).toBe('reaction/note')
+
+    const reopened = second.sessions.create(id, { seed: [...inspected.events], meta: inspected.meta })
+    expect(reopened.deriveMessages()).toEqual(derivedBefore)
+    expect(reopened.surface.nodes).not.toContain(noteSeq)
+    await second.fiber.dispose()
+  })
+
   it('records the marker in the durable artifact, not only in memory', async () => {
     const root = await freshRoot()
     const first = await boot(root, SessionId('restart-bytes'), 'none')

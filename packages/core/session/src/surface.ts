@@ -20,10 +20,11 @@ const SURFACE_EVENT_TYPES = new Set<string>([
 
 /**
  * Runtime counterpart of the model-note event set: log-only events that reach
- * the model without joining the ordered surface. They project into the request
- * tail (`Session.deriveMessages` appends their messages after the surface
- * prefix), so they are absent from the transcript — the client renders surface
- * events only — and from compaction, which folds the surface's shadowed seqs.
+ * the model without joining the ordered surface. `Session.deriveMessages`
+ * interleaves each one at its log position among the surface messages, and only
+ * while the message it reacts to is still on the surface, so they are absent
+ * from the transcript — the client renders surface events only — and from
+ * compaction, which folds the surface's shadowed seqs.
  */
 const MODEL_NOTE_EVENT_TYPES = new Set<string>(['reaction/note'])
 
@@ -81,10 +82,13 @@ export function isReplacementSurfaceEvent(
  * without entering the ordered surface.
  *
  * A model note is the one kind of record that is model-visible and yet not
- * transcript material: `Session.deriveMessages` appends its projection after
- * the surface prefix, while `foldSurface` (which the client transcript and
- * compaction both fold) never sees it. Its message id is derived from the
- * event's seq, so replay, resume and compaction rebuild the same message.
+ * transcript material: `Session.deriveMessages` interleaves its projection at
+ * the note's own log position, and only while the message it reacts to
+ * (`targetSeq`) is still a current surface node — so once that message leaves
+ * the context, so does the reaction. `foldSurface` (which the client transcript
+ * and compaction both fold) never sees the note itself. Its message id is
+ * derived from the event's seq, so replay, resume and compaction rebuild the
+ * same message.
  * @param event - event to test.
  * @returns true for a log-only event with a model projection.
  */
@@ -141,7 +145,10 @@ function freezeSynthesized<T>(message: T): T {
  *
  * A model note ({@link isModelNoteEvent}) has no message in its event wrapper,
  * so its projection is synthesized here — frozen, and identified by its seq so
- * every fold of the same log yields the same message identity.
+ * every fold of the same log yields the same message identity. It is the only
+ * entry this function projects that is not a surface node, so WHERE and WHILE
+ * it appears is the caller's rule: `Session.deriveMessages` interleaves it at
+ * its log position and drops it once its target seq leaves the surface.
  * @param event - the event to project.
  * @returns the derived message, or null when the event produces none.
  */
@@ -174,11 +181,14 @@ export function deriveEventMessage(event: SessionEvent): Message | null {
     case 'reaction/note': {
       // A model note: log-only (never on the surface, so never in the
       // transcript and never inside a compaction span), yet projected so the
-      // next request tells the model what the human just did. The id is
-      // derived from the event seq: the fold re-runs on replay, resume and
-      // compaction, so a random or timestamped id would change identity under
-      // the model's feet. Source is the plugin kind, not `user`, because no
-      // human authored this text — the note is the harness's account of one.
+      // next request tells the model what the human just did — interleaved at
+      // the note's own log position by `Session.deriveMessages`, and only while
+      // its target is still a surface node. This per-event projection does not
+      // decide that lifetime; the caller that folds it does. The id is derived
+      // from the event seq: the fold re-runs on replay, resume and compaction,
+      // so a random or timestamped id would change identity under the model's
+      // feet. Source is the plugin kind, not `user`, because no human authored
+      // this text — the note is the harness's account of one.
       return freezeSynthesized({
         id: `reaction-note-${event.seq}` as MessageId,
         role: 'user',

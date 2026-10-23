@@ -85,6 +85,24 @@ describe('derived-message cache', () => {
     expect(Object.isFrozen(first[0])).toBe(true)
   })
 
+  it('interleaves a live note incrementally exactly as a replay does', () => {
+    const session = Session.create(SessionId('cache-note-interleave'))
+    session.append('turn/start', { turn: 1 })
+    userText(session, 'one')
+    session.append('reaction/note', {
+      targetSeq: 1, emoji: '👍', actor: 'owen', action: 'added',
+    }, { ignorable: true })
+    // The prompt appended AFTER the note is what the old tail-append rule got
+    // wrong: the note belongs at its own log position, before this message.
+    userText(session, 'two')
+    const live = session.deriveMessages()
+    const texts = live.map(message => message.content
+      .flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
+    expect(texts).toEqual(['one', 'owen reacted 👍 to the message at seq 1.', 'two'])
+    expect(live[1]!.id).toBe('reaction-note-2')
+    expect(live).toEqual(scratch(session))
+  })
+
 })
 
 describe('Session.deriveEventMessage — the per-event projection', () => {

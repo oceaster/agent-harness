@@ -517,17 +517,28 @@ declare class Session {
    * Model notes ({@link isModelNoteEvent}) are the one exception, and it is
    * one-directional: they are log-only — absent from {@link Session.surface},
    * so absent from the client transcript and from every compaction span — but
-   * they do reach the model as a second segment appended AFTER the surface
-   * segment, in log order. Keeping the two segments apart (rather than
-   * interleaving each note at its log position) is what makes the result a pure
-   * function of the log: a later surface append never reorders, and replay, a
-   * resume, and a post-compaction rebuild produce the identical array. The
-   * practical effect is that an unreacted-to note sits immediately before
-   * whatever the human types next.
+   * they do reach the model. Each note is INTERLEAVED at its log position: it
+   * is projected just before the first current surface node whose seq is
+   * greater (so a note sits where the human reacted, not at the tail of every
+   * later request), and any note left over after the last node follows it. The
+   * surface's own node order is preserved, including a replacement copy that
+   * took an earlier node's place at a later seq.
+   *
+   * A note lives exactly as long as its target: it projects only while
+   * `targetSeq` is still a current surface node. Owen's rule — once the message
+   * leaves the context, so does the reaction to it — falls out of that, because
+   * a compaction `replace` deletes the shadowed node and the note's target seq
+   * stops being one. The lifetime is a PURE FUNCTION OF THE LOG: it reads only
+   * the log's `surfaceOp` markers and the note's own `targetSeq`, never a clock,
+   * a counter, or a client-side reaction map, so replay, a resume, and a
+   * post-compaction rebuild derive the identical array.
    *
    * CACHED: each surface node is projected exactly once, when first seen — a
-   * call costs O(new nodes), and a surface rewrite (a `replace`;
-   * {@link SessionSurface.replaceGeneration}) rebuilds. The returned array is
+   * call costs O(new events), and a surface rewrite (a `replace`;
+   * {@link SessionSurface.replaceGeneration}) rebuilds. Only appends can happen
+   * between rebuilds, and an appended event's seq exceeds every already-derived
+   * entry's seq, so appending in log order keeps the interleaved array sorted
+   * exactly as the rebuild would place it. The returned array is
    * a fresh snapshot per call (later appends never grow an array a caller
    * already holds); the `Message` objects in it are SHARED and **deep-frozen**.
    * Their content reuses the already frozen durable event data, so the cache
@@ -773,7 +784,7 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 Types: [CreateSessionOptions](persistence.md) · [PrepareSessionOptions](persistence.md) · [SessionId](core.md)
 
-Source: [`packages/core/session/src/index.ts:837`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:916`](../../packages/core/session/src/index.ts)
 
 <a id="session-events"></a>
 
