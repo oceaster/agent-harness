@@ -316,7 +316,11 @@ export function apply(ctx: ClientContext): void {
         surface,
         place: places.placeOf(who, surface),
         addressed: surface === 'inbox' ? surfaces.pendingConversation() : null,
-        ready: surface === 'inbox' ? inbox.status === 'ready' : inbox.workersState === 'ready',
+        // The Delta surface is ready when the person's rows are. The Epsilon
+        // surface is ready when Delta's roster has been READ — which also needs
+        // the rows, because the roster is read for the parent the Delta row names
+        // (see loadWorkers: an unknown parent is not an empty roster).
+        ready: inbox.status === 'ready' && (surface === 'inbox' || inbox.workersState === 'ready'),
         rows: inbox.rows,
         channelIds,
         workers: inbox.workers,
@@ -441,6 +445,15 @@ export function apply(ctx: ClientContext): void {
     const stopSurface = surfaces.store.subscribe(() => {
       if (surfaces.surface === 'epsilons') readWorkers()
     })
+    // The roster's parent is a row, so the boot read can arrive before the rows
+    // it is named by. Nothing else would ask again until the 2s tick, and the
+    // epsilon surface — plus its where-you-were restore, which waits for a
+    // roster it can resolve a unit against — must not sit on "not read yet".
+    const stopRoster = controller.store.subscribe(() => {
+      const state = controller.store.getSnapshot()
+      if (surfaces.surface !== 'epsilons' || state.status !== 'ready') return
+      if (state.workersState === 'idle') readWorkers()
+    })
     const stopPoll = whileEnabled([shown], () => shown.getSnapshot(), () => {
       // On screen again: one read, immediately, so a paused poll is never a
       // stale panel (the tab went to the background, or the frame was covered).
@@ -477,6 +490,7 @@ export function apply(ctx: ClientContext): void {
       stopFrames()
       stopReset()
       stopSurface()
+      stopRoster()
     }
   }, 'ui-inbox: inbox reads')
 

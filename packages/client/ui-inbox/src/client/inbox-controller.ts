@@ -455,11 +455,19 @@ export class InboxController {
    */
   async loadWorkers(): Promise<void> {
     if (this.workersLoading) return
-    const parent = this.deltaSession(this.store.getSnapshot().rows)
+    const snapshot = this.store.getSnapshot()
+    const parent = this.deltaSession(snapshot.rows)
     if (parent === undefined) {
-      // No Delta conversation for this person means no roster to read. That is
-      // an answer, not a failure: the panel says Delta has no sub-agents.
-      this.store.set({ ...this.store.getSnapshot(), workers: [], workersState: 'ready' })
+      // TWO DIFFERENT SENTENCES, and only one of them is an answer. "This person
+      // has no Delta row" means Delta has no sub-agents to list and the roster is
+      // empty — a ready answer. "The rows have not been read yet" means nobody
+      // knows which parent the roster belongs to, and answering "ready, empty"
+      // there is how a cold load of the epsilon interface looked like a household
+      // with no workers, and how a restore of one was thrown away as dead. So the
+      // state is left alone; the boot read asks again when the rows land
+      // (index.ts's roster re-read).
+      if (snapshot.status !== 'ready') return
+      this.store.set({ ...snapshot, workers: [], workersState: 'ready' })
       return
     }
     const refresh = this.sessions.refreshSubagents
