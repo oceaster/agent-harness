@@ -339,3 +339,41 @@ describe('SettingsRoot viewing-state persistence', () => {
     }
   })
 })
+
+describe('embedding shell Settings entry', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    history.replaceState(null, '', '/')
+  })
+
+  function embedded(query = '') {
+    const postMessage = vi.fn()
+    const parent = { postMessage } as unknown as Window
+    vi.spyOn(window, 'parent', 'get').mockReturnValue(parent)
+    const origin = location.protocol + '//' + location.hostname + ':9999'
+    vi.spyOn(document, 'referrer', 'get').mockReturnValue(origin + '/system')
+    history.replaceState(null, '', '/' + query)
+    const mounted = mount({ steps: [] })
+    return { ...mounted, parent, origin, postMessage }
+  }
+
+  it('moves the trigger to its parent, authenticates messages, and reports close', () => {
+    const { parent, origin, postMessage } = embedded()
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull()
+    expect(postMessage).toHaveBeenCalledWith({ type: 'e-server:settings:ready' }, origin)
+    fireEvent(window, new MessageEvent('message', { source: parent, origin: 'https://wrong.test', data: { type: 'e-server:settings:open' } }))
+    fireEvent(window, new MessageEvent('message', { source: window, origin, data: { type: 'e-server:settings:open' } }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent(window, new MessageEvent('message', { source: parent, origin, data: { type: 'e-server:settings:open' } }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(postMessage).toHaveBeenCalledWith({ type: 'e-server:settings:closed' }, origin)
+  })
+
+  it('opens the same section automatically for the global settings frame', () => {
+    embedded('?eServerSettings=1')
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByTestId('section-general')).toBeTruthy()
+    expect(document.querySelector('[data-host-settings-only]')).toBeTruthy()
+  })
+})

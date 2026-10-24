@@ -86,7 +86,33 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
   // closed comes back closed rather than surprising the reader.
   const open = useStore(state => state.open)
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
-  const close = useCallback(() => { actions.close() }, [actions])
+  // A same-host embedding shell owns the global Settings entry. Commands are
+  // accepted only from the actual parent and its exact referrer origin.
+  const [parentOrigin] = useState(() => {
+    try {
+      const referrer = new URL(document.referrer)
+      return window.parent !== window && referrer.hostname === location.hostname
+        && referrer.protocol === location.protocol ? referrer.origin : null
+    } catch { return null }
+  })
+  const settingsOnly = parentOrigin !== null && new URLSearchParams(location.search).get('eServerSettings') === '1'
+  const close = useCallback(() => {
+    actions.close()
+    if (parentOrigin) window.parent.postMessage({ type: 'e-server:settings:closed' }, parentOrigin)
+  }, [actions, parentOrigin])
+  useEffect(() => {
+    if (!parentOrigin) return
+    const receive = (event: MessageEvent<unknown>) => {
+      const data = event.data
+      if (event.source === window.parent && event.origin === parentOrigin
+        && data !== null && typeof data === 'object' && 'type' in data
+        && data.type === 'e-server:settings:open') actions.open()
+    }
+    window.addEventListener('message', receive)
+    if (settingsOnly) actions.open()
+    window.parent.postMessage({ type: 'e-server:settings:ready' }, parentOrigin)
+    return () => { window.removeEventListener('message', receive) }
+  }, [actions, parentOrigin, settingsOnly])
   const openSettings = useCallback(() => { actions.open() }, [actions])
 
   // The ledger tick keeps the rendered section fresh: registrants come and go
@@ -115,7 +141,8 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
 
   return (
     <>
-      <button
+      {settingsOnly && <style>{'#root{visibility:hidden}[data-host-settings-only]{visibility:visible}'}</style>}
+      {!parentOrigin && <button
         type="button"
         className={clsx(css.trigger, !wide && css.rail)}
         aria-haspopup="dialog"
@@ -123,20 +150,20 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
         onClick={() => { actions.open() }}
       >
         {renderSlot('settings.trigger', { wide })}
-      </button>
+      </button>}
       {open && (
-        <SettingsPanel
+        <div data-host-settings-only={settingsOnly ? '' : undefined}><SettingsPanel
           sectionId={sectionIds[0]}
           renderSlot={renderSlot}
           onClose={close}
-        />
+        /></div>
       )}
       {/* Dialog chrome and `#root` inert ownership live inside each step's
           visible branch. A step still deciding (private facts loading)
           renders null, so nothing paints or blocks while it decides. The step
           opens the panel itself — there is one section and no navigation, so
           the handoff names no id. */}
-      {onboardingStep !== undefined && renderSlot('settings.onboarding', {
+      {!settingsOnly && onboardingStep !== undefined && renderSlot('settings.onboarding', {
         stepId: onboardingStep.id,
         complete: () => { completeOnboardingStep(onboardingStep.id) },
         openSettings,
