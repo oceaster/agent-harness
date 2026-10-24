@@ -142,6 +142,20 @@ describe('sessions domain schemas', () => {
     expect(sessionSummarySchema.parse({ sessionId: 's1', updatedAt: 1, running: true, blank: false, parentSessionId: 'p', cwd: '/x' }).cwd).toBe('/x')
     // blank is mandatory: a summary without it fails the parse.
     expect(() => sessionSummarySchema.parse({ sessionId: 's1', updatedAt: 1, running: false })).toThrow()
+    // The effort field must SURVIVE this schema. It is a zod object, so a key it
+    // does not name is stripped rather than rejected: without the row below, the
+    // handler fills `effort` and the client's second-level parse deletes it in
+    // transit, leaving every package suite green and the composer's effort chip
+    // inert. This is the regression guard for exactly that.
+    expect(sessionSummarySchema.parse({
+      sessionId: 's1', updatedAt: 1, running: false, blank: true,
+      agentPreset: 'delta',
+      effort: { level: 'low', word: 'Dynamic', opens: true, editable: false, tree: true },
+    })).toMatchObject({ effort: { level: 'low', word: 'Dynamic', editable: false, tree: true } })
+    // `level` is required, so a row that carries a policy but no level is refused.
+    expect(() => sessionSummarySchema.parse({
+      sessionId: 's1', updatedAt: 1, running: false, blank: true, effort: { word: 'Max' },
+    })).toThrow()
     const event = sessionEventSchema.parse({
       type: 'user/message',
       seq: 0,

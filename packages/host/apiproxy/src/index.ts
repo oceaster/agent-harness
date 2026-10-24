@@ -15,7 +15,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
-import type { ApiProxy, EffortPolicyTable } from './api/index.ts'
+import type { ApiProxy, EffortPolicyTable, SessionEffort } from './api/index.ts'
 import {
   createApiProxy,
   DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
@@ -119,6 +119,45 @@ export interface Config {
   effortPolicy?: EffortPolicyTable
 }
 
+/** The keys one policy entry may carry: the row field's own vocabulary, and nothing else. */
+const EFFORT_POLICY_KEYS: readonly (keyof SessionEffort)[] = ['level', 'word', 'opens', 'editable', 'tree']
+
+/**
+ * Refuse an effort policy the row schema could not later carry.
+ *
+ * `schemastery` checks the declared TYPES but reads a `null` value as "present,
+ * null", and the row's zod schema then rejects every row the gateway emits —
+ * a load-time nuisance turned into a wire-time outage. A flag that is neither a
+ * boolean nor absent is a mistake in the composition, so it is named here while
+ * the plugin is still refusing to start.
+ * @param table - the validated config table, possibly absent.
+ * @throws Error naming the preset and key of the first malformed entry.
+ */
+export function assertEffortPolicy(table: EffortPolicyTable | undefined): void {
+  for (const [preset, policy] of Object.entries(table ?? {})) {
+    if (typeof policy.level !== 'string' || policy.level === '') {
+      throw new Error(`effortPolicy[${JSON.stringify(preset)}].level must be a non-empty string`)
+    }
+    for (const key of Object.keys(policy)) {
+      if (!(EFFORT_POLICY_KEYS as readonly string[]).includes(key)) {
+        // The row schema strips a key it does not name, so an unknown one would
+        // vanish in transit and the control would quietly ignore what the
+        // composition said. Name it while the plugin is still refusing to start.
+        throw new Error(`effortPolicy[${JSON.stringify(preset)}].${key} is not a policy key; `
+          + `expected one of ${EFFORT_POLICY_KEYS.join(', ')}`)
+      }
+    }
+    for (const key of ['word', 'opens', 'editable', 'tree'] as const) {
+      const value = policy[key]
+      if (value === undefined) continue
+      if (typeof value !== (key === 'word' ? 'string' : 'boolean') || (key === 'word' && value === '')) {
+        throw new Error(`effortPolicy[${JSON.stringify(preset)}].${key} must be a `
+          + `${key === 'word' ? 'non-empty string' : 'boolean'} when present, got ${JSON.stringify(value)}`)
+      }
+    }
+  }
+}
+
 /**
  * The API gateway service: implements the ApiProxy contract over the composed
  * host context and provides it as `ctx.apiProxy`. The Host cwd is the default
@@ -165,6 +204,7 @@ export class ApiProxyService extends Service implements ApiProxy {
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'apiProxy')
+    assertEffortPolicy(config.effortPolicy)
     const api = createApiProxy(ctx, {
       defaultModelSelection: () => ctx.agentDefaultModel.currentSelection(),
       saveDefaultModelSelection: selection => ctx.agentDefaultModel.saveSelection(selection),
