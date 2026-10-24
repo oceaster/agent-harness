@@ -79,6 +79,8 @@ async function bench(listBody: unknown = {
     setSidebar: vi.fn(), setDetails: vi.fn(), toggleSidebar: vi.fn(), setNarrow: vi.fn(),
     setPortrait: vi.fn(), collapseOnSelection: vi.fn(), openDetails: vi.fn(),
     closeDetails: vi.fn(), openPage: vi.fn(),
+    // Same reason as ui-layout's own stub: the frame owns a rail column now.
+    setRail: vi.fn(), openRail: vi.fn(), closeRail: vi.fn(), toggleRail: vi.fn(),
   }
   const openPage = options.realLayout === true ? panels.openPage : vi.fn()
   ctx.provide('layout', options.realLayout === true ? layout : { openPage })

@@ -19,6 +19,14 @@ function fakePanels(): PanelActions {
     collapseOnSelection: vi.fn(),
     openDetails: vi.fn(),
     closeDetails: vi.fn(),
+    // The fourth track's actions. The frame declares them as soon as it owns a
+    // rail column, so a stub that omits them cannot type-check as PanelActions -
+    // the build's own `tsc -b tsconfig.client.json` is what finds that, not the
+    // package suite, which types the stub loosely enough to pass.
+    setRail: vi.fn(),
+    openRail: vi.fn(),
+    closeRail: vi.fn(),
+    toggleRail: vi.fn(),
     openPage: vi.fn(),
   }
 }
