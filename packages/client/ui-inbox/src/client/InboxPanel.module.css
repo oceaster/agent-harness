@@ -339,16 +339,11 @@
   mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat;
   -webkit-mask: url('/v1/browser/inbox/brand.svg') center / contain no-repeat; }
 .channelHeader .channelReload { padding: 4px; }
-.channelMessage { display: flex; justify-content: flex-start; margin: 0 0 24px; }
+.channelMessage { display: flex; justify-content: flex-start; margin: 0 0 16px; }
+/* 16px, not 24px: the chat surface spaces its flow items with
+   `gap: 16px` (ui-conversation/src/client/chat/ChatView.module.css:44),
+   and a peer channel should read as the same flow. */
 .channelMessage[data-side='right'] { justify-content: flex-end; }
-.channelMessage[data-agent='delta'] { --channel-agent-color: #3b82f6; }
-.channelMessage[data-agent='darwin'] { --channel-agent-color: #22c55e; }
-.channelMessage[data-agent='diana'] { --channel-agent-color: #a855f7; }
-.channelMessage[data-agent='dexter'] { --channel-agent-color: #f97316; }
-.channelMessage[data-agent] .channelBubble {
-  background: color-mix(in srgb, var(--channel-agent-color, #64748b) 16%, var(--dsw-alias-bg-base));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--channel-agent-color, #64748b) 24%, transparent);
-}
 .channelMessageStack { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; max-width: min(525px, 82%); }
 .channelMessage[data-side='right'] .channelMessageStack { align-items: flex-end; }
 .channelMessage header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: 12px; padding: 0 8px; }
