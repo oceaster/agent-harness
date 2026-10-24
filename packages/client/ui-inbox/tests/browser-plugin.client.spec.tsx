@@ -311,7 +311,11 @@ describe('ui-inbox channel restore (where you were, channel half)', () => {
     expect(b.openPage).not.toHaveBeenCalled()
     expect(face.hooks.channels.getSnapshot().selected).toBeNull()
     expect(face.hooks.channels.getSnapshot().error).toBeNull()
-    expect(JSON.parse(localStorage.getItem('dsh.inbox.channel')!)).toEqual({ channelId: null })
+    // The retired key is gone rather than left for the next person on this
+    // browser to inherit, and no place was recorded for a channel that does not
+    // exist: the record store holds nothing for this person's Delta surface.
+    expect(localStorage.getItem('dsh.inbox.channel')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('dsh.inbox.places') ?? '{}')).toEqual({})
   })
 
   it('does not restore anything when no channel was open', async () => {

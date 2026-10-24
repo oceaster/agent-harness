@@ -157,6 +157,19 @@ export class SurfaceController {
   }
 
   /**
+   * The conversation an address is asking for, WITHOUT retiring it.
+   *
+   * This is how the where-you-were restore knows that an explicit address is in
+   * force and that its own record does not speak this time (see
+   * surface-memory.ts's `planRestore`); `takeConversation` stays the opener's,
+   * so the address is still consumed exactly once, by the path that opens it.
+   * @returns the agent an unopened address names, or null.
+   */
+  pendingConversation(): string | null {
+    return this.pending
+  }
+
+  /**
    * Listen for conversation requests (a fragment at boot, a message later).
    * @param listener - called after every accepted request.
    * @returns unsubscribe.
@@ -177,6 +190,14 @@ export class SurfaceController {
    * interface lists Delta's workers, and a worker has no address a fragment or a
    * message could carry — so a conversation word arriving with `epsilons` is
    * ignored rather than half-applied.
+   *
+   * THE ORDER INSIDE ONE MESSAGE, which is a rule and not an accident: the
+   * conversation is queued BEFORE the surface is published. Publishing is what
+   * wakes the where-you-were restore for the surface being shown, and a restore
+   * that ran first would paint the stored record and only then be overruled —
+   * visible as a flash of yesterday's conversation under a deep link. Queued
+   * first, the restore sees the address in force and stands aside, and the
+   * address wins once, then becomes the record.
    * @param intent - the address to show (a validated `dsh:open` or the boot read).
    * @returns true when the app's state changed.
    */
@@ -185,13 +206,15 @@ export class SurfaceController {
     const asksConversation = intent.surface === 'inbox' && intent.conversation !== null
     const conversationChanged = asksConversation && intent.conversation !== this.intent.conversation
     if (!surfaceChanged && !conversationChanged) return false
+    if (conversationChanged) {
+      this.intent = { ...this.intent, conversation: intent.conversation }
+      this.pending = intent.conversation
+    }
     if (surfaceChanged) {
       this.intent = { ...this.intent, surface: intent.surface }
       this.publish(intent.surface)
     }
     if (conversationChanged) {
-      this.intent = { ...this.intent, conversation: intent.conversation }
-      this.pending = intent.conversation
       for (const listener of this.requests) listener()
     }
     return true

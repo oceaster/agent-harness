@@ -26,14 +26,15 @@ export interface ChannelState {
 export class ChannelController {
   /** Shared channel selection and transcript rendered by the sidebar and chat tile. */
   readonly store = createSnapshotStore<ChannelState>({ rows: [], selected: null, messages: [], error: null, loading: false })
-  /**
-   * The durable half of the selection, and only the id: the row itself is
-   * server data (its name, agents, presence) and is re-read from the list on
-   * every boot, so restoring a stored row object would resurrect a stale
-   * channel.
-   */
-  private readonly selection = createSnapshotStore<{ channelId: string | null }>(
-    { channelId: null }, { persist: { name: 'dsh.inbox.channel' } })
+  // NO SECOND COPY OF THE SELECTION ANY MORE, and that is deliberate. This class
+  // used to persist the open channel id itself (`dsh.inbox.channel`) because it
+  // was the app's only durable memory of where the person was. The memory is now
+  // ONE record per (person, surface), owned by surface-memory.ts, and `selected`
+  // above already carries the id for as long as the page is loaded — a second
+  // durable copy written by a second writer in a different tick is exactly how
+  // the painted page and the sidebar's current row drift apart. The old key is
+  // read once, and retired, by `SurfaceMemory.adoptLegacyChannel`, so nobody
+  // loses the channel they were reading across the change.
   private reading = false
   private revision = 0
   /** Refresh permitted channel rows from the caller's own cookie-authenticated API. */
@@ -52,41 +53,44 @@ export class ChannelController {
   async open(id: string): Promise<void> {
     const selected = this.store.getSnapshot().rows.find(row => row.id === id)
     if (selected === undefined) return
-    this.selection.set({ channelId: id })
     this.select(selected)
     await this.refresh()
   }
   /**
-   * Reopen the channel this person was reading when the page last unloaded.
-   * Called by the plugin once the server's rows are known, so the restore is
-   * ONE step: the channel becomes the selection and the caller switches the
-   * main view in the same write (ui-inbox is the single writer of the channel
-   * page — see index.ts), which is what keeps the painted surface and the
-   * sidebar's current row from ever disagreeing.
+   * Reopen one channel an address names, as ONE step: the channel becomes the
+   * selection and the caller paints the channel page in the same tick, which is
+   * what keeps the painted page and the sidebar's current row from ever
+   * disagreeing (a page selected a frame before its row is a page that paints
+   * the wrong channel).
    *
-   * A stored id that no longer resolves (the channel was cleared, removed, or
-   * belongs to a different person's list) is dropped and the ordinary
-   * conversation default stands: nothing failed, so nothing is reported.
+   * The caller is the where-you-were restore (surface-memory.ts plans it), and
+   * the id comes from that person's own record. A stored id that no longer
+   * resolves — the channel was cleared, removed, or belongs to a different
+   * person's list — is reported as `unresolved` and nothing is painted: nothing
+   * failed, so nothing is reported.
+   * @param id - channel id the record names.
    * @param openPage - selects the channel page; called only when the id resolves.
-   * @returns the reopened channel id, or null when nothing was restored.
+   * @returns `opened`, `unresolved`, or `unknown` while the rows are not read yet.
    */
-  async restorePersisted(openPage: () => void): Promise<string | null> {
-    const channelId = this.selection.getSnapshot().channelId
-    if (channelId === null) return null
+  async reopen(id: string, openPage: () => void): Promise<'opened' | 'unresolved' | 'unknown'> {
     const state = this.store.getSnapshot()
-    // Rows are unknown yet (the read is in flight or failed): keep the id and
-    // let the next read try. Only a rows set the server actually answered can
-    // retire the selection.
-    if (state.rows.length === 0) return null
-    const channel = state.rows.find(row => row.id === channelId)
-    if (channel === undefined) {
-      this.selection.set({ channelId: null })
-      return null
+    // Rows are unknown yet (the read is in flight or failed): the caller keeps
+    // the record and the next read tries again. Only a rows set the server
+    // actually answered can retire a selection.
+    if (state.rows.length === 0) return 'unknown'
+    const channel = state.rows.find(row => row.id === id)
+    if (channel === undefined) return 'unresolved'
+    // Already there (a trip to the other interface left the channel selected):
+    // make sure the page is painted and do not throw away the transcript that is
+    // on screen to fetch it again.
+    if (state.selected?.id === channel.id) {
+      openPage()
+      return 'opened'
     }
     this.select(channel)
     openPage()
     await this.refresh()
-    return channelId
+    return 'opened'
   }
   /** Make one channel the selection and mark its transcript as loading. */
   private select(channel: AgentChannel): void {
@@ -116,9 +120,13 @@ export class ChannelController {
       this.store.set({ ...current, error: error instanceof Error ? error.message : String(error) })
     }
   }
-  /** Return to the agent conversation while preserving channel history on the server. */
+  /**
+   * Leave the channel page for a conversation, keeping the channel's history on
+   * the server. The durable half of leaving is the caller's: the record that
+   * says where this surface is gets rewritten by the selection that replaces it
+   * (see index.ts's write points), in the same tick as the selection moves.
+   */
   close(): void {
-    this.selection.set({ channelId: null })
     this.store.set({ ...this.store.getSnapshot(), selected: null, loading: false })
   }
   /** Poll only the open channel; a selection change cannot display another channel's response. */

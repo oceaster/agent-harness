@@ -33,6 +33,7 @@
  * per-agent colours or display names.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls ui-sidebar's SlotMap merge (the 'sidebar.workspaces' entry).
@@ -44,9 +45,10 @@ import { InboxController } from './inbox-controller.ts'
 import { ChannelController } from './channel-controller.ts'
 import { SurfacePanels } from './SurfacePanels.tsx'
 import { SurfaceController } from './surface-controller.ts'
+import { SurfaceMemory, planRestore } from './surface-memory.ts'
 import { watchFrameShown } from './frame-shown.ts'
 import { en, zh, type InboxKey } from './locales.ts'
-import { bootIntentOf, type BootIntent } from './surface.ts'
+import { bootIntentOf, type BootIntent, type HarnessSurface } from './surface.ts'
 
 export type { InboxAgentRow, InboxFailureCode } from './inbox-api.ts'
 export type { InboxNoticeCode, InboxState, InboxStatus } from './inbox-controller.ts'
@@ -54,12 +56,14 @@ export type { InboxInjected, InboxPanelProps } from './slots.ts'
 export type { InboxKey } from './locales.ts'
 export type { BootIntent, HarnessSurface, OpenIntent } from './surface.ts'
 export type { SurfaceSnapshot } from './surface-controller.ts'
+export type { SurfacePlace, SurfacePlaceKind, RestorePlan } from './surface-memory.ts'
 export type { FrameShown } from './frame-shown.ts'
 export {
   CONVERSATION_FRAGMENT, EPSILONS_FRAGMENT, OPEN_MESSAGE, READY_MESSAGE, ROUTE_MESSAGE,
   bootIntentOf, isHarnessSurface, openIntentOf, surfaceOf,
 } from './surface.ts'
 export { SurfaceController, parentOriginOf } from './surface-controller.ts'
+export { SurfaceMemory, PLACE_KINDS, planRestore } from './surface-memory.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -153,6 +157,12 @@ export function apply(ctx: ClientContext): void {
 
   const api: InboxApi = createInboxApi()
   const channels = new ChannelController()
+  // One record per (person, surface): see surface-memory.ts for the shape, the
+  // storage and the decision. This plugin is its single writer, exactly as it is
+  // the single writer of the channel page.
+  const places = new SurfaceMemory()
+  /** The person the server resolved, or null before the roster lands. */
+  const personOf = (): string | null => controller.store.getSnapshot().person?.id ?? null
   ctx.effect(() => whileEnabled(
     [surfaces.store, shown],
     () => surfaces.surface === 'inbox' && shown.getSnapshot(),
@@ -172,42 +182,9 @@ export function apply(ctx: ClientContext): void {
       return () => { clearInterval(timer) }
     },
   ), 'ui-inbox: agent channels')
-  // Where-you-were, channel half. The open channel is durable (ChannelController
-  // persists its id), and this plugin is the SINGLE writer of the channel page:
-  // the restore selects the channel and calls layout.openPage in one step, so a
-  // reload lands on the channel itself instead of painting the agent
-  // conversation first and correcting a frame later. Disarmed after the first
-  // resolved boot (or when there was nothing to restore) so a later rows
-  // refresh can never re-navigate the person; an id the server no longer offers
-  // is dropped by the controller and the ordinary conversation default stands,
-  // silently, because nothing failed.
-  //
-  // Triggers are the notification AND the state that is already there, in that
-  // order: a rows write that happened before this effect installed is caught by
-  // the immediate read, one that happens after it by the subscription. Reading
-  // only on the notification is a restore that works when the data happens to
-  // arrive while we are watching, which is not a restore. The frame's own boot
-  // order is not a dependency either: openPage before the root entry mounts is
-  // held by ctx.layout and applied at mount (ui-layout's LayoutController).
-  ctx.effect(() => {
-    // Where-you-were is per interface: a channel restored onto the epsilon
-    // interface would paint a channel page where the sub-agent list lives — and
-    // it loses to an ADDRESSED conversation for the same reason. `#c/<agent>` is
-    // somebody saying which conversation they want; restoring the channel they
-    // last read would paint a channel page over it and make the deep link look
-    // broken. The explicit address wins, and this is the only place that has to
-    // know it.
-    if (intent.surface !== 'inbox' || intent.conversation !== null) return () => {}
-    let armed = true
-    const restore = (): void => {
-      if (!armed || channels.store.getSnapshot().rows.length === 0) return
-      armed = false
-      void channels.restorePersisted(() => { ctx.layout.openPage('agent-channel') })
-    }
-    const stop = channels.store.subscribe(() => { restore() })
-    restore()
-    return () => { stop() }
-  }, 'ui-inbox: channel restore')
+  // WHERE YOU WERE is per interface and lives in one store (surface-memory.ts);
+  // the effect that restores it is installed below, once the sessions seam and
+  // the two controllers it reads are in scope.
   // The navigation seam, assembled explicitly. `list`, `open` and `clear` are
   // the typed ISessions face; `refresh` is not — the runtime keeps the
   // wire-pump verbs on the concrete SessionRuntime it provides as
@@ -228,6 +205,14 @@ export function apply(ctx: ClientContext): void {
   const openConversation = (agent: string): void => {
     channels.close()
     ctx.layout.openPage(null)
+    // THE ADDRESS BECOMES THE MEMORY, in the same tick it is asked for. A row
+    // click, a `#c/<agent>` cold load and a `dsh:open` carrying a conversation
+    // all arrive here — one door, one write point — so the record can never be
+    // written by one of them and missed by another. Written on the ASK rather
+    // than on the answer: the click is the selection changing, and a person who
+    // switches interfaces while the request is still in flight was still
+    // choosing that conversation.
+    places.remember(personOf(), 'inbox', 'agent', agent)
     void controller.open(agent)
   }
   const controller = new InboxController({
@@ -287,6 +272,146 @@ export function apply(ctx: ClientContext): void {
     attempt()
     return () => { stopRows(); stopRequests() }
   }, 'ui-inbox: addressed conversation')
+
+  // ── WHERE YOU WERE, restored on the way in ────────────────────────────────
+  // Owen, 2026-10-24: "when switching between Delta/Epsilon views always default
+  // the last known read/write inbox session or agent channel for the Delta view.
+  // And default to the last known Epsilon read only session for the Epsilon
+  // view." So each interface restores ITS OWN place — one record per (person,
+  // surface), shape and storage in surface-memory.ts — every time it becomes
+  // visible, and the decision of what to paint is `planRestore`'s (pure, and the
+  // one place the ordering rule is written):
+  //
+  //   - an explicit address beats the record and then becomes it (the write is in
+  //     `openConversation`, the door every addressed open comes through);
+  //   - nothing is restored before that surface's own data is read;
+  //   - a target that no longer resolves falls back to the surface's own default,
+  //     silently, and its record is retired.
+  //
+  // ARMED ONCE PER SHOWING, which is what makes a Delta -> Epsilon -> Delta round
+  // trip restore each side exactly once: the arm is consumed by the first answer
+  // (painted, dropped as dead, adopted, or overruled by an address) and re-armed
+  // only by the next switch TO that surface. No rows refresh, session frame or
+  // channel poll can re-navigate somebody who has since moved on.
+  //
+  // AND THE PAINT IS THE SAME WRITE. The surface store notifies synchronously, so
+  // the selection moves in the same tick as the visibility flip: the painted
+  // conversation (or channel page) and the sidebar's `aria-current` row cannot
+  // disagree, not even for one frame. Nothing here is deferred to an effect.
+  ctx.effect(() => {
+    const armed: Record<HarnessSurface, boolean> = { inbox: false, epsilons: false }
+    let shown = surfaces.surface
+    armed[shown] = true
+    const attempt = (): void => {
+      const surface = surfaces.surface
+      if (!armed[surface]) return
+      const inbox = controller.store.getSnapshot()
+      const channelState = channels.store.getSnapshot()
+      const who = personOf()
+      const channelIds = channelState.rows.map(row => row.id)
+      // The previous build's channel key, adopted once for the person signed in
+      // now, so nobody loses the channel they were reading when this lands.
+      places.adoptLegacyChannel(who, channelIds)
+      const plan = planRestore({
+        surface,
+        place: places.placeOf(who, surface),
+        addressed: surface === 'inbox' ? surfaces.pendingConversation() : null,
+        ready: surface === 'inbox' ? inbox.status === 'ready' : inbox.workersState === 'ready',
+        rows: inbox.rows,
+        channelIds,
+        workers: inbox.workers,
+        listed: sessions.list.getSnapshot().ids,
+        current: sessions.list.getSnapshot().current,
+      })
+      // Not an answer yet: the data that proves or disproves this record is
+      // still in flight. Stay armed and try again on the next write.
+      if (plan.action === 'wait') return
+      armed[surface] = false
+      switch (plan.action) {
+        case 'addressed':
+          // The explicit address wins, and the open path writes the new record
+          // when it applies it. The record does not speak this time at all.
+          return
+        case 'none':
+          return
+        case 'adopt':
+          // Already where the person left it, because their place lived in the
+          // runtime's own persisted selection: remember it now, so the NEXT
+          // interface switch has something to come back to. Nothing is painted.
+          places.remember(who, surface, plan.kind, plan.id)
+          return
+        case 'default': {
+          // The record's target is gone, or the pane is painting the other
+          // interface's selection. Forget the dead address and paint this
+          // surface's own default — the Delta welcome screen, or the Epsilon list
+          // with nothing open — so the place you just left is never left painted
+          // underneath. Nothing failed, so nothing is said.
+          places.forget(who, surface)
+          channels.close()
+          ctx.layout.openPage(null)
+          sessions.clear()
+          return
+        }
+        case 'agent':
+          // One write: the channel page (a Delta page) is closed and the pane is
+          // moved in the same tick the surface became visible. `reconcile`
+          // derives the row highlight from the runtime's selection, so the two
+          // cannot disagree.
+          channels.close()
+          ctx.layout.openPage(null)
+          try {
+            sessions.open(plan.sessionId as SessionId)
+          } catch {
+            // The mirror lost the id between the check and the select: the
+            // surface keeps its default instead of throwing out of a message.
+            places.forget(who, surface)
+            sessions.clear()
+          }
+          return
+        case 'channel':
+          // ui-inbox is the single writer of the channel page, and this is the
+          // same one-step pattern a channel row click uses: the channel becomes
+          // the selection and the page is named in the same tick, so a reload
+          // lands on the channel itself rather than painting the agent
+          // conversation first and correcting a frame later.
+          void channels.reopen(plan.id, () => { ctx.layout.openPage('agent-channel') })
+            .then((outcome) => { if (outcome !== 'opened') places.forget(who, surface) })
+          return
+        case 'worker':
+          // The unit, through the same door a row click uses — and the channel
+          // page is closed first, because it belongs to Delta and would otherwise
+          // stay painted under the unit the person came back to.
+          ctx.layout.openPage(null)
+          if (!controller.restoreWorker(plan.id)) {
+            places.forget(who, surface)
+            sessions.clear()
+          }
+          return
+      }
+    }
+    // The trigger is the notification AND the state that is already there, in
+    // that order: a write that landed before this effect installed is caught by
+    // the immediate call, one that lands after it by the subscription. A restore
+    // that only works when the data happens to arrive while we are watching is
+    // not a restore. Each source is a different half of the answer — the surface
+    // (a switch), the inbox store (rows and the roster), the channel store (the
+    // channel list), and the session list (what `sessions.open` accepts).
+    const stops = [
+      surfaces.store.subscribe(() => {
+        const next = surfaces.surface
+        // A resident flag write is not a move between interfaces.
+        if (next === shown) return
+        shown = next
+        armed[next] = true
+        attempt()
+      }),
+      controller.store.subscribe(() => { attempt() }),
+      channels.store.subscribe(() => { attempt() }),
+      sessions.list.subscribe(() => { attempt() }),
+    ]
+    attempt()
+    return () => { for (const stop of stops) stop() }
+  }, 'ui-inbox: where you were')
 
   // The epsilon interface's roster: read at boot and on the tick that already
   // re-reads the inbox. The inbox interface never asks: no request, no catalog,
@@ -363,6 +488,23 @@ export function apply(ctx: ClientContext): void {
   // nothing and keeps its boot read.
   ctx.effect(() => surfaces.attach(), 'ui-inbox: parent messages')
 
+  /**
+   * Clear one row's conversation, and retire the Delta record that names it.
+   *
+   * A cleared conversation cannot be reopened, so the record would only be
+   * dropped as dead on the next visit; retiring it here keeps the store honest
+   * and keeps "where you were" from surviving the thing it pointed at. The row
+   * is the proof: `sessionId: null` means the server itself said it is gone.
+   * @param agent - the row's agent id.
+   */
+  const clearRow = async (agent: string): Promise<void> => {
+    await controller.clear(agent)
+    const row = controller.store.getSnapshot().rows.find(item => item.agent === agent)
+    if (row === undefined || row.sessionId !== null) return
+    const place = places.placeOf(personOf(), 'inbox')
+    if (place !== null && place.kind === 'agent' && place.id === agent) places.forget(personOf(), 'inbox')
+  }
+
   const injected = () => ({
     hooks: { inbox: controller.store, channels: channels.store },
     sources: { inbox: controller.store, channels: channels.store },
@@ -374,15 +516,32 @@ export function apply(ctx: ClientContext): void {
     // address of their own (the addresses name an agent), so those report the
     // interface and no conversation.
     openChannel: (id: string) => {
+      const row = channels.store.getSnapshot().rows.find(candidate => candidate.id === id)
       void channels.open(id)
       ctx.layout.openPage('agent-channel')
+      // Where-you-were for this interface, channel kind: the Delta place is the
+      // channel now, so the record stops naming a conversation in one write.
+      // Only a row the server listed is recorded — the same rule a click obeys.
+      if (row !== undefined) places.remember(personOf(), 'inbox', 'channel', id)
       surfaces.announce('inbox', null)
     },
     clearChannel: (id: string) => { void channels.clear(id) },
     open: (agent: string) => { openConversation(agent); surfaces.announce('inbox', agent) },
     loadWorkers: () => { readWorkers() },
-    openWorker: (id: string) => { controller.openWorker(id); surfaces.announce('epsilons', null) },
-    clear: (agent: string) => { void controller.clear(agent) },
+    openWorker: (id: string) => {
+      // The channel page belongs to the Delta interface. Leaving it painted
+      // under a unit is exactly the "previous surface's selection underneath"
+      // this ticket is about: `sessions.openSubagent` moves the selection, but a
+      // page the layout still calls current keeps the chat tile.
+      ctx.layout.openPage(null)
+      const row = controller.store.getSnapshot().workers.find(worker => worker.id === id)
+      controller.openWorker(id)
+      // Where-you-were for THIS interface: the read-only unit, by the address
+      // the row's own `openSubagent` call uses. Only a roster row is recorded.
+      if (row !== undefined && row.mode !== undefined) places.remember(personOf(), 'epsilons', 'worker', id)
+      surfaces.announce('epsilons', null)
+    },
+    clear: (agent: string) => { void clearRow(agent) },
   })
 
   ctx.slots.inject('conversation.page', () => ctx.slots.register(

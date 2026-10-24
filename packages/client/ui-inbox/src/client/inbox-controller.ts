@@ -552,20 +552,52 @@ export class InboxController {
     const snapshot = this.store.getSnapshot()
     const row = snapshot.workers.find(worker => worker.id === id)
     if (row === undefined || row.mode === undefined) return
-    this.store.set({ ...snapshot, workerNotice: null })
+    if (!this.selectWorker(row)) {
+      this.store.set({ ...this.store.getSnapshot(), workerNotice: { id: row.id, code: 'worker-unavailable' } })
+      return
+    }
+    this.store.set({ ...this.store.getSnapshot(), workerNotice: null })
+  }
+
+  /**
+   * Reopen the unit this person was reading when they last left the Epsilon
+   * interface — the restore door, which is the same door a click uses with one
+   * difference: it says nothing.
+   *
+   * A click reports a refusal on the row, because a person asked for that row
+   * and deserves to be told. A RESTORE is the app acting on its own memory: a
+   * unit that Delta's catalog no longer lists (or that arrived damaged, with no
+   * mode to address it by) is simply not reopened, the surface keeps its list,
+   * and nothing is reported — nothing failed.
+   * @param id - the child session id the record names.
+   * @returns whether the runtime accepted the address.
+   */
+  restoreWorker(id: string): boolean {
+    const row = this.store.getSnapshot().workers.find(worker => worker.id === id)
+    if (row === undefined || row.mode === undefined || row.damaged) return false
+    return this.selectWorker(row)
+  }
+
+  /**
+   * Move the pane onto one roster row through the runtime's own sub-agent door.
+   * @param row - the roster row, whose mode is the address the runtime needs.
+   * @returns whether the runtime accepted the address (it refuses a child its
+   *   live catalog no longer calls healthy).
+   */
+  private selectWorker(row: InboxWorkerRow): boolean {
     try {
       this.sessions.openSubagent({
         parentSessionId: row.parentId,
         childSessionId: row.id,
-        mode: row.mode,
+        mode: row.mode as 'one-shot' | 'continuable',
       })
     } catch {
-      this.store.set({ ...this.store.getSnapshot(), workerNotice: { id: row.id, code: 'worker-unavailable' } })
-      return
+      return false
     }
     // The selection moved: re-derive the highlight now rather than waiting for
     // the list frame, exactly as the agent-row open path does.
     this.reconcile()
+    return true
   }
 
   /**
