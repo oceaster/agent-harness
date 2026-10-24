@@ -131,11 +131,13 @@ async function firstTrack(page: Page): Promise<string> {
     el => getComputedStyle(el).gridTemplateColumns)).split(' ')[0]!
 }
 
-/** Last column track (details) as a number of pixels. */
+/** The details column track as a number of pixels: the third track, because a
+ * fourth (the right rail) follows it whenever a writable conversation paints
+ * one. */
 async function detailsTrack(page: Page): Promise<number> {
   const cols = await page.locator('[class*="frame"]').evaluate(
     el => getComputedStyle(el).gridTemplateColumns)
-  return Number(cols.split(' ').pop()!.replace('px', ''))
+  return Number(cols.split(' ')[2]!.replace('px', ''))
 }
 
 // Readiness gate: `dsh web` serves every production manifest plugin; until every UI
@@ -528,7 +530,10 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     expect(await page.locator('text=Failed to load plugins').count()).toBe(0)
     const template = await page.locator('[class*="frame"]').evaluate(el => getComputedStyle(el).gridTemplateColumns)
-    expect(template.split(' ').length).toBe(3)
+    // Three tracks, plus the right rail's fourth when a writable conversation
+    // is selected at boot (it is the only state that paints one).
+    const railPainted = await page.locator('[data-testid="ui-layout-rail"]').count() === 1
+    expect(template.split(' ').length).toBe(railPainted ? 4 : 3)
     await screen(page, '01-cold-start')
   })
 

@@ -46,6 +46,18 @@ const nowSeconds = () => Date.now() / 1000
 /** React serialises `minmax(0, 1fr)` to `minmax(0px, 1fr)`; accept either spelling. */
 const tracksOf = (tracks) => (tracks ?? '').replace(/minmax\(0px, 1fr\)/g, 'minmax(0, 1fr)')
 
+/**
+ * The template a frame must produce: the three solved tracks, plus the right
+ * rail's own fourth track when a writable conversation paints one (AppFrame
+ * appends it, so the first three tracks never move).
+ * @param first - the sidebar track, as a px string.
+ * @param details - the details track, as a px string.
+ * @param rightRailWidth - measured right rail width, or null when absent.
+ * @returns the expected normalised template.
+ */
+const templateOf = (first, details, rightRailWidth) =>
+  tracksOf(`${first} minmax(0, 1fr) ${details}${rightRailWidth === null ? '' : ` ${rightRailWidth}px`}`)
+
 /** Sub-pixel layout: a measured box within one pixel of the contract number. */
 const near = (actual, expected) => typeof actual === 'number' && Math.abs(actual - expected) <= 1
 
@@ -210,6 +222,10 @@ async function measure(page) {
     const scrimNode = frame.querySelector('[data-testid="ui-layout-scrim"]')
     const expand = document.querySelector('[data-testid="ui-sidebar-expand"]')
     const rail = document.querySelector('[data-testid="ui-inbox-rail"]')
+    // The shell's right rail (AppFrame's fourth track), a different thing from
+    // the inbox's own compact `ui-inbox-rail`. Absent in portrait and in
+    // read-only conversations.
+    const rightRail = frame.querySelector('[data-testid="ui-layout-rail"]')
     const width = (node) => (node instanceof Element ? Math.round(node.getBoundingClientRect().width) : null)
     const text = (selector) => Array.from(frame.querySelectorAll(selector))
     const count = (selector) => text(selector).length
@@ -254,6 +270,7 @@ async function measure(page) {
       collapsed: frame.hasAttribute('data-sidebar-collapsed'),
       detailsCollapsed: frame.hasAttribute('data-details-collapsed'),
       tracks: frame.style.gridTemplateColumns,
+      rightRailWidth: width(rightRail),
       sidebarWidth: width(sidebar),
       chatWidth: width(center),
       chatRect: rectOf(center),
@@ -328,6 +345,7 @@ for (const vp of [{ name: 'mobile-390x844', width: 390, height: 844 }, { name: '
     collapsed.expand !== null && collapsed.expand.right <= 56 && collapsed.expandLabel === 'Expand inbox',
     JSON.stringify(collapsed.expand))
   check(`${tag}: no sidebar resize handle in portrait`, collapsed.dragHandles === 0, String(collapsed.dragHandles))
+  check(`${tag}: the right rail owns no portrait column`, collapsed.rightRailWidth === null, String(collapsed.rightRailWidth))
 
   // 2. Keyboard: everything tabbable in the collapsed state is on screen.
   const tabs = await tabOrder(page, 8)
@@ -352,6 +370,7 @@ for (const vp of [{ name: 'mobile-390x844', width: 390, height: 844 }, { name: '
   await page.getByTestId('ui-inbox-panel').waitFor({ timeout: 10_000 })
   await page.waitForTimeout(450) // let the 300ms slide settle so widths are final
   const expanded = await measure(page)
+  check(`${tag}: the expanded portrait frame still paints no right rail`, expanded.rightRailWidth === null, String(expanded.rightRailWidth))
   const expandedBrightness = chatClip === null ? null : meanBrightness(await page.screenshot({ clip: chatClip }))
   check(`${tag}: expanding does not squeeze the chat`, near(expanded.chatWidth, collapsed.chatWidth), JSON.stringify({ collapsed: collapsed.chatWidth, expanded: expanded.chatWidth }))
   check(`${tag}: the sidebar track stays zero when expanded`, tracksOf(expanded.tracks) === '0px minmax(0, 1fr) 0px', expanded.tracks)
@@ -498,12 +517,17 @@ for (const vp of [{ name: 'landscape-1200x800', width: 1200, height: 800 }, { na
   const open = await measure(page)
   check(`${tag}: landscape is not portrait`, open.portrait === false && open.portraitOverlay === false && open.portraitMobile === false, JSON.stringify({ portrait: open.portrait }))
   check(`${tag}: the sidebar keeps its 280px landscape track`,
-    tracksOf(open.tracks) === '280px minmax(0, 1fr) 0px' && near(open.sidebarWidth, 280),
-    JSON.stringify({ tracks: open.tracks, sidebarWidth: open.sidebarWidth }))
-  check(`${tag}: the chat keeps the concession width`, near(open.chatWidth, vp.width - 280), JSON.stringify({ chatWidth: open.chatWidth, expected: vp.width - 280 }))
+    tracksOf(open.tracks) === templateOf('280px', '0px', open.rightRailWidth) && near(open.sidebarWidth, 280),
+    JSON.stringify({ tracks: open.tracks, expected: templateOf('280px', '0px', open.rightRailWidth), sidebarWidth: open.sidebarWidth }))
+  check(`${tag}: the chat keeps the concession width`,
+    near(open.chatWidth, vp.width - 280 - (open.rightRailWidth ?? 0)),
+    JSON.stringify({ chatWidth: open.chatWidth, rightRail: open.rightRailWidth, expected: vp.width - 280 - (open.rightRailWidth ?? 0) }))
   check(`${tag}: no scrim in landscape`, open.scrim === null)
   check(`${tag}: the expanded inbox is the full panel`, open.rail.panel === 1 && open.rail.present === false, JSON.stringify(open.rail))
-  check(`${tag}: the sidebar resize handle is present`, open.dragHandles === 1, String(open.dragHandles))
+  // The right rail is resizable too, so it contributes a handle of its own.
+  check(`${tag}: the resize handles are present`,
+    open.dragHandles === 1 + (open.rightRailWidth === null ? 0 : 1),
+    JSON.stringify({ handles: open.dragHandles, rightRail: open.rightRailWidth }))
   check(`${tag}: the column keeps its opaque fill`, open.sidebarFill !== 'rgba(0, 0, 0, 0)', open.sidebarFill)
   await page.screenshot({ path: `${outDir}/${tag}-1-expanded.png` })
 
@@ -513,8 +537,8 @@ for (const vp of [{ name: 'landscape-1200x800', width: 1200, height: 800 }, { na
   await page.waitForTimeout(400)
   const collapsed = await measure(page)
   check(`${tag}: collapsing lands on the 56px rail track`,
-    tracksOf(collapsed.tracks) === '56px minmax(0, 1fr) 0px' && near(collapsed.sidebarWidth, 56),
-    JSON.stringify({ tracks: collapsed.tracks, sidebarWidth: collapsed.sidebarWidth }))
+    tracksOf(collapsed.tracks) === templateOf('56px', '0px', collapsed.rightRailWidth) && near(collapsed.sidebarWidth, 56),
+    JSON.stringify({ tracks: collapsed.tracks, expected: templateOf('56px', '0px', collapsed.rightRailWidth), sidebarWidth: collapsed.sidebarWidth }))
   check(`${tag}: the rail keeps the landscape fold control`, collapsed.expandLabel === 'Open sidebar', collapsed.expandLabel)
   check(`${tag}: the collapsed rail still paints the column fill`, collapsed.sidebarFill !== 'rgba(0, 0, 0, 0)', collapsed.sidebarFill)
   check(`${tag}: no scrim while collapsed`, collapsed.scrim === null)
@@ -528,9 +552,12 @@ for (const vp of [{ name: 'landscape-1200x800', width: 1200, height: 800 }, { na
   await page.waitForTimeout(900)
   const afterSelection = await measure(page)
   check(`${tag}: a selection leaves the landscape column open, as it always did`,
-    afterSelection.collapsed === false && tracksOf(afterSelection.tracks) === '280px minmax(0, 1fr) 0px',
+    afterSelection.collapsed === false
+      && tracksOf(afterSelection.tracks) === templateOf('280px', '0px', afterSelection.rightRailWidth),
     JSON.stringify({ collapsed: afterSelection.collapsed, tracks: afterSelection.tracks }))
-  check(`${tag}: the chat keeps its landscape width after a selection`, near(afterSelection.chatWidth, vp.width - 280), String(afterSelection.chatWidth))
+  check(`${tag}: the chat keeps its landscape width after a selection`,
+    near(afterSelection.chatWidth, vp.width - 280 - (afterSelection.rightRailWidth ?? 0)),
+    JSON.stringify({ chatWidth: afterSelection.chatWidth, rightRail: afterSelection.rightRailWidth }))
 
   const pageErrors = consoleErrors.filter(text => !/^Failed to load resource/.test(text))
   check(`${tag}: no page console errors`, pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 4)))

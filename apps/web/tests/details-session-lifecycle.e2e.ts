@@ -21,11 +21,13 @@ const SEED_FIXTURE = fileURLToPath(new URL('./snapshots/seeded-history/seed.json
 const PROMPT = 'Reply with the single word LIGHTHOUSE and stop.'
 const MODE = webSnapshotMode()
 
-/** Last AppFrame grid track in CSS pixels. */
+/** The details grid track in CSS pixels: always the third track, since the
+ * right rail (when a writable conversation paints one) is appended after it and
+ * the sidebar is first. */
 async function detailsTrack(page: Page): Promise<number> {
   return await appFrame(page).evaluate((element) => {
     const tracks = getComputedStyle(element).gridTemplateColumns.split(' ')
-    return Number.parseFloat(tracks.at(-1) ?? 'NaN')
+    return Number.parseFloat(tracks[2] ?? 'NaN')
   })
 }
 
