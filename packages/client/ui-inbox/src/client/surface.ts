@@ -2,6 +2,16 @@
  * Which interface this page load is, and — when the address says so — WHICH
  * CONVERSATION it opens. ONE shell, TWO interfaces, one conversation door.
  *
+ * THE FRAGMENT IS THE FALLBACK, NOT THE MECHANISM. Owen, 2026-10-24: "The
+ * Agent-Harness should always be rendered and rendering (or at least in theory)
+ * - if closed, it's actually just 'not-visible'." So the page that wraps this
+ * app keeps ONE frame with ONE `src` and switches what the app shows by
+ * MESSAGE ({@link OPEN_MESSAGE}), exactly as an IDE switches a pane: nothing
+ * here reloads, and both surfaces stay mounted (see SurfacePanels.tsx). The
+ * fragment still decides what a COLD load paints — a bookmark, a pasted link
+ * and a reload land where they always have, without the wrapper having to ask
+ * — which is why this reader stays the single owner of both words.
+ *
  * Owen, 2026-10-23: "2 separate interfaces BUT SAME SAME, DIFFERENT, BUT SAME".
  * The shell — the sidebar column, the conversation column, the read-only worker
  * transcript, the header, the composer machine — is one thing. What the sidebar
@@ -129,4 +139,87 @@ export function bootIntentOf(hash: string): BootIntent {
  */
 export function surfaceOf(hash: string): HarnessSurface {
   return bootIntentOf(hash).surface
+}
+
+// ─── the message contract ───────────────────────────────────────────────────
+// One shell, two interfaces, ONE document — so the wrapper page switches what
+// the app shows instead of loading another document. These three words are the
+// whole wire, frozen beside the e-server route that speaks them
+// (api/routes.py's `_harness_frame`): the parent posts {@link OPEN_MESSAGE} to
+// this window with an exact `targetOrigin`, and this app answers
+// {@link READY_MESSAGE} once it can receive and {@link ROUTE_MESSAGE} whenever
+// the person navigates inside it, so the parent can keep the browser URL and
+// the menu's selected entry in step without loading anything.
+
+/** Parent to app: show this address. */
+export const OPEN_MESSAGE = 'dsh:open'
+
+/** App to parent: the app can receive an {@link OPEN_MESSAGE}. */
+export const READY_MESSAGE = 'dsh:ready'
+
+/** App to parent: the person navigated inside the app. */
+export const ROUTE_MESSAGE = 'dsh:route'
+
+/**
+ * One {@link OPEN_MESSAGE} this app accepts: the address to show, plus the
+ * token the parent wants echoed in {@link READY_MESSAGE}.
+ */
+export interface OpenIntent extends BootIntent {
+  /**
+   * Opaque parent-side correlation value, echoed back untouched. Absent reads
+   * as the empty string, so a parent that has not minted one yet still
+   * completes the handshake.
+   */
+  readonly token: string
+}
+
+/**
+ * Sentinel for a `conversation` field this app cannot address. Distinct from
+ * `null`, which means "no conversation asked for": a bad word is a protocol
+ * violation and the WHOLE message is dropped, never half-applied.
+ */
+const INVALID = Symbol('invalid conversation')
+
+/**
+ * Whether a word names one of the two interfaces.
+ * @param value - any value, typically off the wire.
+ * @returns true when the value is a surface this app paints.
+ */
+export function isHarnessSurface(value: unknown): value is HarnessSurface {
+  return value === 'inbox' || value === 'epsilons'
+}
+
+/**
+ * Read one `conversation` field.
+ * @param value - the field as it arrived.
+ * @returns the agent id, null for "none asked for", or {@link INVALID}.
+ */
+function conversationOf(value: unknown): string | null | typeof INVALID {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value !== 'string' || !AGENT_ID.test(value)) return INVALID
+  return value
+}
+
+/**
+ * Validate one message off `window`, WITHOUT trusting its origin (the caller
+ * checks {@link OPEN_MESSAGE}'s sender first: only this app's parent may move
+ * it).
+ *
+ * Strict on purpose: a `surface` this app does not paint, a conversation that
+ * is not an agent id this app could open, or a `token` that is not a string
+ * means the sender and this app disagree about the contract, and applying half
+ * of such a message would put the app in a state neither side asked for. The
+ * three words and the two surfaces are the only shape accepted.
+ * @param data - `event.data` from a `message` event.
+ * @returns the intent to apply, or null when the message is not one of ours.
+ */
+export function openIntentOf(data: unknown): OpenIntent | null {
+  if (typeof data !== 'object' || data === null) return null
+  const message = data as { type?: unknown; surface?: unknown; conversation?: unknown; token?: unknown }
+  if (message.type !== OPEN_MESSAGE) return null
+  if (!isHarnessSurface(message.surface)) return null
+  if (message.token !== undefined && typeof message.token !== 'string') return null
+  const conversation = conversationOf(message.conversation)
+  if (conversation === INVALID) return null
+  return { surface: message.surface, conversation, token: message.token ?? '' }
 }

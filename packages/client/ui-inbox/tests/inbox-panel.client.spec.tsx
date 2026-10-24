@@ -18,6 +18,7 @@ import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client
 import { InboxPanel } from '../src/client/InboxPanel.tsx'
 import type { InboxState } from '../src/client/inbox-controller.ts'
 import type { ChannelState } from '../src/client/channel-controller.ts'
+import type { SurfaceSnapshot } from '../src/client/surface-controller.ts'
 import { en } from '../src/client/locales.ts'
 import type { InboxPanelProps } from '../src/client/slots.ts'
 
@@ -78,6 +79,9 @@ function mount(overrides: {
   const collapseSidebar = vi.fn()
   const collapseOnSelection = vi.fn()
   const channels = createSnapshotStore<ChannelState>({ rows:[{ id:'delta-darwin',name:'Delta-Darwin',agents:['delta','darwin'] }],selected:null,messages:[],error:null,loading:false })
+  // The occupant's surface state: this suite renders the panel itself, so it
+  // stands in for SurfacePanels with the interface a cold inbox load shows.
+  const surface = createSnapshotStore<SurfaceSnapshot>({ surface: 'inbox', resident: false })
   const openChannel = vi.fn()
   const clearChannel = vi.fn()
   // The runtime share also carries the global session/workspace hooks; the
@@ -95,6 +99,8 @@ function mount(overrides: {
     useSessions: neverHook,
     useWorkspaces: neverHook,
     useInbox: bindSnapshotSelector(inbox),
+    sources: { inbox, channels },
+    surface,
     load,
     open,
     openWorker,

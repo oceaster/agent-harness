@@ -28,6 +28,7 @@ import type { InboxAgentRow } from '../src/client/inbox-api.ts'
 import { EpsilonPanel } from '../src/client/EpsilonPanel.tsx'
 import { InboxPanel } from '../src/client/InboxPanel.tsx'
 import type { InboxState, InboxWorkerRow } from '../src/client/inbox-controller.ts'
+import type { SurfaceSnapshot } from '../src/client/surface-controller.ts'
 import type { ChannelState } from '../src/client/channel-controller.ts'
 import { en } from '../src/client/locales.ts'
 import type { InboxPanelProps } from '../src/client/slots.ts'
@@ -104,6 +105,10 @@ function mount(overrides: {
   portrait?: boolean
 } = {}) {
   const inbox = store(overrides.state)
+  // The occupant's surface state: this suite renders the panel itself, so it
+  // stands in for SurfacePanels with the interface a cold epsilon load shows.
+  const surface = createSnapshotStore<SurfaceSnapshot>({ surface: 'epsilons', resident: false })
+  const channels = createSnapshotStore<ChannelState>({ rows: [], selected: null, messages: [], error: null, loading: false })
   const openWorker = vi.fn()
   const loadWorkers = vi.fn()
   const expandSidebar = vi.fn()
@@ -123,6 +128,8 @@ function mount(overrides: {
     useSessions: (() => { throw new Error('the epsilon panel must not read sessions') }) as never,
     useWorkspaces: (() => { throw new Error('the epsilon panel must not read workspaces') }) as never,
     useInbox: bindSnapshotSelector(inbox),
+    sources: { inbox, channels },
+    surface,
     load: vi.fn(),
     open: vi.fn(),
     openWorker,
