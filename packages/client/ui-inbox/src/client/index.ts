@@ -38,14 +38,14 @@ import { ChannelController } from './channel-controller.ts'
 import { InboxPanel } from './InboxPanel.tsx'
 import { EpsilonPanel } from './EpsilonPanel.tsx'
 import { en, zh, type InboxKey } from './locales.ts'
-import { surfaceOf, type HarnessSurface } from './surface.ts'
+import { bootIntentOf, type BootIntent, type HarnessSurface } from './surface.ts'
 
 export type { InboxAgentRow, InboxFailureCode } from './inbox-api.ts'
 export type { InboxNoticeCode, InboxState, InboxStatus } from './inbox-controller.ts'
 export type { InboxInjected, InboxPanelProps } from './slots.ts'
 export type { InboxKey } from './locales.ts'
-export type { HarnessSurface } from './surface.ts'
-export { EPSILONS_FRAGMENT, surfaceOf } from './surface.ts'
+export type { BootIntent, HarnessSurface } from './surface.ts'
+export { CONVERSATION_FRAGMENT, EPSILONS_FRAGMENT, bootIntentOf, surfaceOf } from './surface.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -77,12 +77,14 @@ export const inject = ['slots', 'sessions', 'locale', 'layout']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-inbox: dictionaries')
 
-  // THE MODE. Read once, from the URL fragment, before anything is registered:
-  // a mode that could change under a mounted panel would have to re-register the
-  // single `sidebar.workspaces` slot mid-session, and the two entries are
-  // separate links anyway — switching interfaces is a page load, which is also
-  // what keeps a link shareable. `surfaceOf` owns the fragment's spelling.
-  const surface: HarnessSurface = surfaceOf(globalThis.location?.hash ?? '')
+  // THE MODE, AND THE CONVERSATION. Read once, from the URL fragment, before
+  // anything is registered: a mode that could change under a mounted panel would
+  // have to re-register the single `sidebar.workspaces` slot mid-session, and the
+  // entries are separate links anyway — switching interfaces is a page load,
+  // which is also what keeps a link shareable. `bootIntentOf` owns both words
+  // (`#epsilons` and `#c/<agent>`); see surface.ts for why they are a fragment.
+  const intent: BootIntent = bootIntentOf(globalThis.location?.hash ?? '')
+  const surface: HarnessSurface = intent.surface
 
   const api: InboxApi = createInboxApi()
   const channels = new ChannelController()
@@ -117,8 +119,13 @@ export function apply(ctx: ClientContext): void {
   // held by ctx.layout and applied at mount (ui-layout's LayoutController).
   ctx.effect(() => {
     // Where-you-were is per interface: a channel restored onto the epsilon
-    // interface would paint a channel page where the sub-agent list lives.
-    if (surface !== 'inbox') return () => {}
+    // interface would paint a channel page where the sub-agent list lives — and
+    // it loses to an ADDRESSED conversation for the same reason. `#c/<agent>` is
+    // somebody saying which conversation they want; restoring the channel they
+    // last read would paint a channel page over it and make the deep link look
+    // broken. The explicit address wins, and this is the only place that has to
+    // know it.
+    if (surface !== 'inbox' || intent.conversation !== null) return () => {}
     let armed = true
     const restore = (): void => {
       if (!armed || channels.store.getSnapshot().rows.length === 0) return
@@ -141,6 +148,15 @@ export function apply(ctx: ClientContext): void {
   if (typeof refresh !== 'function') {
     throw new Error('the client runtime no longer exposes sessions.refresh; the inbox open path depends on it')
   }
+  // One way to move the pane onto an agent's conversation, shared by the sidebar
+  // row's click (through `injected.open` below) and by an addressed boot
+  // (`#c/<agent>`): the channel page is closed first, so a channel a person was
+  // reading cannot stay painted under a conversation they just asked for.
+  const openConversation = (agent: string): void => {
+    channels.close()
+    ctx.layout.openPage(null)
+    void controller.open(agent)
+  }
   const controller = new InboxController({
     api,
     sessions: {
@@ -159,6 +175,38 @@ export function apply(ctx: ClientContext): void {
       },
     },
   })
+
+  // THE ADDRESSED CONVERSATION. When the address named one (`#c/<agent>`, which
+  // the e-server top bar's menu writes), this page load opens it — the same
+  // `open(agent)` a click runs, so a deep link and a click cannot disagree.
+  //
+  // It waits for the rows rather than for a single `load()` call: the read above
+  // may already be in flight (a repeated `load()` returns immediately), and
+  // opening an agent whose row has not arrived yet would be opening it before we
+  // know whether this person is allowed to. `ready` is the answer — a row means
+  // open, no row means this person does not have that agent and the front page
+  // stands, silently, because nothing failed. `refused` is the same silence with
+  // no retry behind it; an `error` keeps waiting, since the 2s poll below is a
+  // real retry and a deep link should not depend on which boot beat which.
+  ctx.effect(() => {
+    const agent = intent.conversation
+    if (agent === null || surface !== 'inbox') return () => {}
+    let stop = (): void => {}
+    const attempt = (): void => {
+      const snapshot = controller.store.getSnapshot()
+      // Not an answer yet: the read is in flight, or it failed and the 2s poll
+      // below is the retry that may still make this address work.
+      if (snapshot.status === 'loading' || snapshot.status === 'error') return
+      stop()
+      if (snapshot.status !== 'ready') return
+      const row = snapshot.rows.find(item => item.agent === agent)
+      if (row === undefined || row.enabled === false) return
+      openConversation(agent)
+    }
+    stop = controller.store.subscribe(() => { attempt() })
+    attempt()
+    return () => { stop() }
+  }, 'ui-inbox: addressed conversation')
 
   // The boot read must never throw into cordis: a rejected inbox API is a
   // visible row with a retry control, and an unreachable server is the same
@@ -212,7 +260,7 @@ export function apply(ctx: ClientContext): void {
     load: () => { void controller.load(); void channels.load(); void channels.refresh() },
     openChannel: (id: string) => { void channels.open(id); ctx.layout.openPage('agent-channel') },
     clearChannel: (id: string) => { void channels.clear(id) },
-    open: (agent: string) => { channels.close(); ctx.layout.openPage(null); void controller.open(agent) },
+    open: (agent: string) => { openConversation(agent) },
     loadWorkers: () => { void controller.loadWorkers() },
     openWorker: (id: string) => { controller.openWorker(id) },
     clear: (agent: string) => { void controller.clear(agent) },
