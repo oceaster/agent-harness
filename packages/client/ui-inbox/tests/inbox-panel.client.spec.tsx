@@ -57,6 +57,7 @@ function store(initial: Partial<InboxState> = {}): SnapshotStore<InboxState> {
     openAgent: null,
     activeSubagents: {},
     workers: [],
+    workersState: 'idle',
     openWorkerId: null,
     workerNotice: null,
     ...initial,
@@ -97,6 +98,7 @@ function mount(overrides: {
     load,
     open,
     openWorker,
+    loadWorkers: vi.fn(),
     clear,
     t,
   }

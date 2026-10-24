@@ -14,6 +14,13 @@
  * of its own — the rows ARE the payload, so the panel cannot invent an agent or
  * hide one the person owns.
  *
+ * SUB-AGENTS ARE NOT IN THIS PANEL. Owen, 2026-10-23: "sub-agents is appears in my
+ * inbox/agent-channel sidebar". Delta's workers are the OTHER interface of this
+ * same shell (EpsilonPanel.tsx, reached at the epsilon entry point), so a person
+ * reading their inbox or a peer channel sees their own agents and channels and
+ * nothing else. The row component and the open-by-address plumbing did not move
+ * out of the package — they moved into the interface they belong to.
+ *
  * Three non-list states, deliberately distinct screens rather than a blank div:
  * a read in flight, a profile this deployment refuses (`refused`: no retry —
  * retrying cannot help), and a read that failed (retry).
@@ -190,25 +197,10 @@ function monogram(name: string): string {
 function noticeText(notice: InboxNoticeCode, t: Translate): string {
   switch (notice) {
     case 'clear-refused': return t('notice.clear-refused')
-    case 'session-not-listed': return t('notice.session-not-listed')
     case 'worker-unavailable': return t('worker.unavailable')
+    case 'session-not-listed': return t('notice.session-not-listed')
     default: return t(`error.${notice}`)
   }
-}
-
-/**
- * The household's name for one sub-agent: "Epsilon 3" once, on its own row.
- *
- * Owen's rule (2026-10-23): a sub-agent is named once in long form and is "E3"
- * afterwards. The short form is the avatar's monogram here, and nothing else on
- * this surface prints a worker's name a second time — the row's second line is
- * the durable task label the harness recorded, not the name again.
- * @param index - the worker's 1-based position in its parent's catalog.
- * @param t - the locale seat.
- * @returns the long form.
- */
-function workerName(index: number, t: Translate): string {
-  return t('worker.name', { n: index })
 }
 
 /**
@@ -218,7 +210,7 @@ function workerName(index: number, t: Translate): string {
  */
 export function InboxPanel({
   wide, portrait = false, expandSidebar, collapseSidebar, collapseOnSelection = () => {},
-  useInbox, useChannels, load, open, openWorker, clear, openChannel, clearChannel, t,
+  useInbox, useChannels, load, open, clear, openChannel, clearChannel, t,
 }: InboxPanelProps) {
   const channelState = useChannels(snapshot => snapshot)
   const state = useInbox(snapshot => snapshot)
@@ -434,66 +426,6 @@ export function InboxPanel({
             )
           })}
         </ul>
-      )}
-
-      {/* The sub-agents of the conversation the pane has open: the DOOR to a
-          worker, never a drawing of one. Each row is the same row component an
-          agent row is (avatar, presence dot, name, one state line), and a click
-          hands the runtime the catalog-derived address, so the centre column
-          renders that worker through the harness's own conversation components.
-          There is no transcript, no bubble and no geometry in this panel to
-          drift when the chat surface changes. */}
-      {state.workers.length > 0 && (
-        <section className={css.channels} aria-label={t('workers.section')} data-testid="ui-inbox-workers">
-          <h3 className={css.channelTitle}>{t('workers.section')}</h3>
-          <ul className={css.list}>
-            {state.workers.map((worker) => {
-              const name = workerName(worker.index, t)
-              const open = worker.id === state.openWorkerId
-              const notice = state.workerNotice?.id === worker.id ? state.workerNotice.code : undefined
-              return (
-                <li
-                  key={worker.id}
-                  className={clsx(css.row, open && css.rowActive)}
-                  data-testid={`ui-inbox-worker-row-${worker.id}`}
-                >
-                  <div className={css.rowLine}>
-                    <button
-                      type="button"
-                      className={css.rowButton}
-                      data-testid={`ui-inbox-worker-${worker.id}`}
-                      aria-label={t('worker.open', { name })}
-                      aria-current={open ? 'true' : undefined}
-                      disabled={worker.damaged}
-                      onClick={() => { collapseOnSelection(); openWorker(worker.id) }}
-                    >
-                      <span className={css.avatarStatus}>
-                        <AgentAvatar agents={[]} label={t('worker.short', { n: worker.index })} />
-                        <PresenceDot
-                          status={worker.running ? 'running' : 'offline'}
-                          label={t(worker.running ? 'presence.running' : 'presence.offline')}
-                        />
-                      </span>
-                      <span className={css.rowText}>
-                        <span className={css.name}>{name}</span>
-                        <span className={css.state} data-testid={`ui-inbox-worker-state-${worker.id}`}>
-                          {worker.damaged
-                            ? t('worker.damaged')
-                            : worker.label ?? t('worker.noTask')}
-                        </span>
-                      </span>
-                    </button>
-                  </div>
-                  {notice !== undefined && (
-                    <p className={css.notice} role="status" data-testid={`ui-inbox-worker-notice-${worker.id}`}>
-                      {noticeText(notice, t)}
-                    </p>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
       )}
 
       <section className={css.channels} aria-label={t('channel.section')}>

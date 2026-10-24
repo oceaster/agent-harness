@@ -1,8 +1,6 @@
 /** Strict per-session header/body content inserted into the resident conversation layout. */
 
 import { useEffect, useSyncExternalStore } from 'react'
-import clsx from 'clsx'
-import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   ConversationSessionHeaderSlotProps, ConversationSessionSlotProps,
 } from '../contract/slots.ts'
@@ -15,11 +13,6 @@ export type ConversationSessionProps = ConversationSessionSlotProps
 /** Full props composed from the strict session header contract. */
 export type ConversationSessionHeaderProps = ConversationSessionHeaderSlotProps
 
-interface Breadcrumb {
-  readonly id: SessionId
-  readonly displayTitle: string
-}
-
 const DEFAULT_VIEW_ID = 'chat'
 
 /** Resolve by id and keep stale persisted selections on the stable Chat fallback. */
@@ -29,112 +22,26 @@ function resolveActiveView(tabs: readonly ViewTab[], selectedId: string | null):
     ?? tabs.find(view => view.id === DEFAULT_VIEW_ID)
 }
 
-function deriveAncestry(list: SessionListState, id: SessionId): readonly Breadcrumb[] {
-  const chain: Breadcrumb[] = []
-  const seen = new Set<SessionId>()
-  let cursor: SessionId | undefined = id
-  while (cursor !== undefined) {
-    if (seen.has(cursor)) break
-    seen.add(cursor)
-    const summary: SessionSummary | undefined = list.byId[cursor]
-    if (summary === undefined) break
-    chain.unshift({ id: summary.id, displayTitle: summary.displayTitle })
-    if (summary.origin !== 'subagent') break
-    cursor = summary.parentId
-  }
-  return chain
-}
-
-function equalBreadcrumbs(left: readonly Breadcrumb[], right: readonly Breadcrumb[]): boolean {
-  return left.length === right.length
-    && left.every((item, index) => {
-      const other = right.at(index)
-      return other !== undefined && item.id === other.id && item.displayTitle === other.displayTitle
-    })
-}
-
-/**
- * Renders Session header chrome above the resident conversation scrollport.
- * @param props - Strict Session store, view ledger, navigation, render, and locale shares.
- * @returns the hidden blank-session header or visible title and tabs.
- */
 export function ConversationSessionHeader({
-  sessionId, useSession, useSessions, useStore, actions,
-  renderSlot, views, open, t,
+  useSession, useSessions,
 }: ConversationSessionHeaderProps) {
-  useSyncExternalStore(views.subscribe, views.version)
-  const tabs = views.list()
-  const selectedId = useStore(s => s.view)
-  const active = resolveActiveView(tabs, selectedId)
-  const ancestry = useSessions(s => deriveAncestry(s, sessionId), equalBreadcrumbs)
-  const child = useSession(s => Boolean(s.subagent))
-  const childSummary = useSessions(s => s.byId[sessionId]?.origin === 'subagent')
-  const readOnly = child || childSummary
-  const composerPhase = useSession(s => s.composerPhase)
-  const blank = useSession(s => s.blank)
-  const hideChrome = blank && composerPhase === 'blank'
-
-  // Persistent agent inboxes need no title or duplicate agent badge. Keep the
-  // hierarchy navigation only for read-only subagent transcripts.
-  if (!readOnly) return null
-
-  return (
-    <header
-      className={clsx(css.header, hideChrome && css.headerHidden)}
-      aria-hidden={hideChrome || undefined}
-    >
-      {!hideChrome && (
-        <>
-          <div className={css.titleRow}>
-            <div className={css.titleLeft}>
-              <nav className={css.crumbs} aria-label={t('session.hierarchy')}>
-                {ancestry.map((summary, index) => {
-                  const last = index === ancestry.length - 1
-                  return (
-                    <span key={summary.id} className={css.crumbSeg}>
-                      {index > 0 && <span className={css.crumbSep}>/</span>}
-                      <button
-                        type="button"
-                        className={clsx(css.crumb, last && css.crumbCurrent)}
-                        disabled={last}
-                        onClick={() => { open(summary.id) }}
-                      >
-                        {summary.displayTitle}
-                      </button>
-                    </span>
-                  )
-                })}
-                {ancestry.length === 0 && <span className={css.crumbCurrent}>{sessionId}</span>}
-              </nav>
-
-            </div>
-            <div className={css.center}>
-              {tabs.length > 1 && (
-                <div className={css.tabs} role="tablist">
-                  {tabs.map(viewTab => (
-                    <button
-                      key={viewTab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={viewTab.id === active?.id}
-                      className={clsx(css.tab, viewTab.id === active?.id && css.tabActive)}
-                      onClick={() => { actions.setView(viewTab.id) }}
-                    >
-                      {viewTab.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className={css.headerUtilities}>
-                {renderSlot('conversation.session.header.utilities', {})}
-              </div>
-            </div>
-
-          </div>
-        </>
-      )}
-    </header>
-  )
+  // NOTHING. Owen, 2026-10-23: "when I open an epsilon chat to view it, there
+  // should not be a top bar within the chat interface (currently shows the
+  // `parent session name / sub-agent session name`, we don't expose this stuff
+  // in our harness it's internal/non-user-facing only)."
+  //
+  // This header only ever painted for a read-only subagent transcript - a person's
+  // own conversation returns null one line into the old body - and the one thing
+  // it drew there was the parent/child breadcrumb, which is harness plumbing, not
+  // product. With the breadcrumb gone there is nothing left for it to say, so it
+  // says nothing and no empty bar is left occupying the top of the transcript.
+  //
+  // The reads below are kept because dropping them would change the hook order
+  // between renders of the slot host that wraps this component; they are cheap
+  // snapshots the surrounding shell already subscribes to.
+  useSession(s => s.composerPhase)
+  useSessions(s => Boolean(s.byId))
+  return null
 }
 
 /**

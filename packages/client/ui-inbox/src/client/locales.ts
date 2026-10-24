@@ -25,9 +25,15 @@ export const en = {
   'channel.clearBody': 'Clear your channel history and undelivered notifications? Messages already accepted by an agent remain in its conversation.',
   'channel.confirmClear': 'Clear channel',
 
-  // The sub-agents of the open conversation: the door to a worker, and nothing
-  // about its transcript (the harness's own conversation renders that).
-  'workers.section': 'Sub-agents',
+  // The Epsilon interface's sidebar: Delta's sub-agents, and nothing about their
+  // transcripts (the harness's own conversation renders those). This is the
+  // section title Owen asked for by name: "I see the 'Delta sub-agents' list".
+  'workers.section': 'Delta sub-agents',
+  'workers.refresh': 'Refresh Delta sub-agents',
+  'workers.rail': 'Delta sub-agents',
+  'workers.none.title': 'No Delta sub-agents yet',
+  'workers.none.body': 'Sub-agents Delta delegates work to appear here.',
+  'workers.error': 'Delta’s sub-agents could not load',
   // Owen's naming rule: named once in long form on its row, short afterwards.
   'worker.name': 'Epsilon {n}',
   'worker.short': 'E{n}',
@@ -121,7 +127,12 @@ export const zh: Record<InboxKey, string> = {
   'channel.clearBody': '清空你的频道历史和未发送的通知？助手已经接收的消息将保留在其对话中。',
   'channel.confirmClear': '清空频道',
 
-  'workers.section': '子代理',
+  'workers.section': 'Delta 的子代理',
+  'workers.refresh': '刷新 Delta 的子代理',
+  'workers.rail': 'Delta 的子代理',
+  'workers.none.title': '还没有子代理',
+  'workers.none.body': 'Delta 委派工作的子代理会出现在这里。',
+  'workers.error': '无法加载 Delta 的子代理',
   'worker.name': 'Epsilon {n}',
   'worker.short': 'E{n}',
   'worker.open': '打开子代理 {name}',
