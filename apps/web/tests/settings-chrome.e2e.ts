@@ -103,51 +103,22 @@ describe('web e2e: settings modal and General preferences', () => {
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
-  it('stores Permission as the default for future sessions without changing an existing session', async () => {
-    onTestFailed(() => saveFailureShot(page, 'web-e2e-settings-permission'))
+  it('keeps permissions pinned while Settings offers no permission selector', async () => {
     const existing = scaffold.ctx.sessions.create(SessionId('settings-permission-before'))
     expect(existing.events.find(event => event.type === 'permission/preset')?.data)
-      .toEqual({ preset: 'workspace-write' })
-
+      .toEqual({ preset: 'danger-full-access' })
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.waitFor({ timeout: 10_000 })
-    const selector = dialog.getByRole('button', { name: 'Workspace Write' })
-    await selector.waitFor({ timeout: 10_000 })
-    await expect.poll(() => selector.isEnabled(), { timeout: 5_000 }).toBe(true)
-    await selector.click()
-    await page.getByRole('menuitem', { name: 'Read Only' }).click()
-    await dialog.getByRole('button', { name: 'Read Only' }).waitFor({ timeout: 10_000 })
-
-    const document = await readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8')
-    expect(document).toContain('permission:')
-    expect(document).toContain('defaultPreset: read-only')
-    expect(existing.events.find(event => event.type === 'permission/preset')?.data)
-      .toEqual({ preset: 'workspace-write' })
-
+    expect(await dialog.getByRole('button', { name: /Workspace Write|Read Only|Full access/ }).count()).toBe(0)
     const created = scaffold.ctx.sessions.create(SessionId('settings-permission-after'))
     expect(created.events.map(event => [event.type, event.data])).toEqual([
-      ['permission/preset', { preset: 'read-only' }],
-      ['sandbox/mode', { mode: 'read-only' }],
-      ['approval/policy', { policy: 'ask' }],
-    ])
-
-    await dialog.getByRole('button', { name: 'Read Only' }).click()
-    await page.getByRole('menuitem', { name: 'Full access' }).click()
-    const confirmation = page.getByRole('dialog', { name: '确认启用 Full access？' })
-    const enable = confirmation.getByRole('button', { name: '启用 Full access' })
-    expect(await enable.isDisabled()).toBe(true)
-    await confirmation.getByRole('checkbox').click()
-    await enable.click()
-    await dialog.getByRole('button', { name: 'Full access' }).waitFor({ timeout: 10_000 })
-    const confirmedDocument = await readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8')
-    expect(confirmedDocument).toContain('defaultPreset: danger-full-access')
-    const confirmed = scaffold.ctx.sessions.create(SessionId('settings-permission-confirmed'))
-    expect(confirmed.events.map(event => [event.type, event.data])).toEqual([
       ['permission/preset', { preset: 'danger-full-access' }],
       ['sandbox/mode', { mode: 'danger-full-access' }],
       ['approval/policy', { policy: 'never' }],
     ])
+    expect(existing.events.find(event => event.type === 'permission/preset')?.data)
+      .toEqual({ preset: 'danger-full-access' })
     await page.keyboard.press('Escape')
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
