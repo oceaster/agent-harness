@@ -10,10 +10,20 @@
  * inline error) without forking the state. Addressed subagent sessions expose
  * neither entry because those Agent-bound RPCs would activate persisted
  * history outside the direct-parent continuation path.
+ *
+ * The composer seat additionally renders ONE effort policy per session
+ * (`EffortPolicy`), published by the deployment on the session-list row: an
+ * agent whose effort is off can paint `Off` and refuse to open a dialog, a
+ * read-only conversation can open a locked dialog at its own delegated level,
+ * and a coordinator's bar can sit at the highest effort in its own session
+ * tree while its text stays fixed. Absent that field the seat is the ordinary
+ * editable control this package has always shipped.
  */
 // Type-only: the carrier types, the forwarded Host-event face and the ctx.remote merge.
 import type { ModelSelection, SessionModels } from '@deepseek-ai/dsh-api-remotes/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  ClientContext, ISessions, ObservableSnapshot, SessionId, SessionListState, SessionSummary,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import type { CommandUiContract, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the input.model seat).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -22,14 +32,15 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelDirectoryState } from './directory.ts'
 import { ModelDirectoryResolver } from './service.ts'
-import type { ModelSelectInjected } from './slots.ts'
+import { ORDINARY_EFFORT_POLICY, type EffortPolicy, type ModelSelectInjected } from './slots.ts'
 import { ModelSelect } from './ModelSelect.tsx'
 import { en, zh, type ModelKey } from './locales.ts'
 
 export { ModelDirectory } from './directory.ts'
 export type { ModelDirectoryState } from './directory.ts'
 export { ModelDirectoryResolver } from './service.ts'
-export type { ModelSelectInjected } from './slots.ts'
+export { ORDINARY_EFFORT_POLICY } from './slots.ts'
+export type { EffortPolicy, ModelSelectInjected } from './slots.ts'
 export type { ModelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -96,6 +107,113 @@ function selectionOf(state: ModelDirectoryState, id: string): ModelSelection | u
 /** Dictionary namespace owned by this plugin. */
 const NS = 'model'
 
+/**
+ * The per-session effort state a deployment publishes on a session-list row,
+ * beside `agentPreset`. Measured 2026-10-24: the client store's `SessionSummary`
+ * carries NO model selection (`session.models` is refused with `agent-busy` for
+ * the addressed subagent sessions a tree walk needs), so the deployment supplies
+ * it here instead — one field, read defensively: absent means this deployment
+ * names no policy and the control stays the ordinary editable one.
+ */
+export interface SessionEffortField {
+  /** The effort id this conversation actually runs at (the level the coordinator delegated, for a worker). */
+  level?: string
+  /** The word the control paints in place of a level name: `Off`, `Max`, `Dynamic`, or a ticket's level. */
+  word?: string
+  /** Whether the trigger opens the dialog; absent = true. */
+  opens?: boolean
+  /** Whether the dialog may write; absent = true. */
+  editable?: boolean
+  /** The level track for a conversation whose own model directory can never load. */
+  track?: { names: readonly string[]; index: number }
+}
+
+/**
+ * Read one row's deployment-published effort field.
+ * @param row - the session-list row, or undefined when the session is not listed yet.
+ * @returns the field, or undefined when this deployment names no policy.
+ */
+function effortFieldOf(row: SessionSummary | undefined): SessionEffortField | undefined {
+  const field = (row as (SessionSummary & { effort?: SessionEffortField }) | undefined)?.effort
+  return typeof field === 'object' && field !== null ? field : undefined
+}
+
+/**
+ * Every effort level used BELOW one session, walked the way
+ * `indexSubagentDescendants` counts them: only an uninterrupted
+ * `origin: 'subagent'` chain connects, so an ordinary fork terminates
+ * propagation, orphans fall out, and a cycle fails soft.
+ * @param rows - the retained session summaries keyed by id.
+ * @param root - the session whose subtree is collected.
+ * @returns the descendant effort ids, empty when nothing below the session reports one.
+ */
+function descendantEffortsOf(rows: Readonly<Record<SessionId, SessionSummary>>, root: SessionId): string[] {
+  const efforts: string[] = []
+  const seen = new Set<SessionId>([root])
+  let frontier: SessionId[] = [root]
+  while (frontier.length > 0) {
+    const parents = new Set(frontier)
+    frontier = []
+    for (const row of Object.values(rows)) {
+      if (row.origin !== 'subagent' || row.parentId === undefined) continue
+      if (!parents.has(row.parentId) || seen.has(row.id)) continue
+      seen.add(row.id)
+      frontier.push(row.id)
+      const level = effortFieldOf(row)?.level
+      if (level !== undefined) efforts.push(level)
+    }
+  }
+  return efforts
+}
+
+/**
+ * One session's rendered policy: the deployment's field, plus the tree walk the
+ * tree-max bar needs. Delta's bar sits at the highest effort in its own tree
+ * while its value text still reads that field's word.
+ * @param rows - the session-list snapshot.
+ * @param sessionId - the session whose control renders.
+ * @returns the policy; `ORDINARY_EFFORT_POLICY` when nothing is named for it.
+ */
+function policyOf(rows: SessionListState, sessionId: SessionId): EffortPolicy {
+  const field = effortFieldOf(rows.byId[sessionId])
+  if (field === undefined) return ORDINARY_EFFORT_POLICY
+  const treeEfforts = descendantEffortsOf(rows.byId, sessionId)
+  return {
+    opens: field.opens ?? true,
+    editable: field.editable ?? true,
+    ...(field.word === undefined ? {} : { word: field.word }),
+    ...(treeEfforts.length === 0 ? {} : { treeEfforts }),
+    ...(field.track === undefined ? {} : { track: field.track }),
+  }
+}
+
+/** Value key for policy identity: a republish that changed nothing must not re-render the seat. */
+function policyKey(policy: EffortPolicy): string {
+  return JSON.stringify([policy.opens, policy.editable, policy.word ?? null, policy.treeEfforts ?? null,
+    policy.track === undefined ? null : [policy.track.names, policy.track.index]])
+}
+
+/**
+ * Bind one session's policy over the session list, so a worker's level moving
+ * moves Delta's bar without any second data path.
+ * @param sessions - the client sessions service holding the retained list.
+ * @param sessionId - the session whose control renders.
+ * @returns an observable policy source, identity-stable between real changes.
+ */
+function createPolicySource(sessions: ISessions, sessionId: SessionId): ObservableSnapshot<EffortPolicy> {
+  let cached = ORDINARY_EFFORT_POLICY
+  let cachedKey = policyKey(cached)
+  return {
+    getSnapshot: () => {
+      const next = policyOf(sessions.list.getSnapshot(), sessionId)
+      const key = policyKey(next)
+      if (key !== cachedKey) { cached = next; cachedKey = key }
+      return cached
+    },
+    subscribe: listener => sessions.list.subscribe(listener),
+  }
+}
+
 /** Required services: the contribution registry, the seat's slot registry, locale, and the service's own faces. */
 export const inject = ['commandUi', 'connection', 'locale', 'sessions', 'slots', 'remote']
 
@@ -154,19 +272,36 @@ export function apply(ctx: ClientContext): void {
   ctx.inject(['slots', 'modelDirectories'], (scope: ClientContext) => {
     const models = scope.modelDirectories
     const sessions = scope.sessions
+    // One policy source per session, for the plugin's lifetime: the source is
+    // a closure over the retained list, and a household has far fewer sessions
+    // than it takes to matter.
+    const policies = new Map<SessionId, ObservableSnapshot<EffortPolicy>>()
+    const policySourceFor = (sessionId: SessionId): ObservableSnapshot<EffortPolicy> => {
+      const existing = policies.get(sessionId)
+      if (existing !== undefined) return existing
+      const created = createPolicySource(sessions, sessionId)
+      policies.set(sessionId, created)
+      return created
+    }
     scope.slots.inject('conversation.input.model', () => scope.slots.register({
       name: 'conversation.input.model',
       locale: NS,
       inject: (sessionId): ModelSelectInjected => {
         const directory = models.directoryFor(sessionId)
-        const available = sessions.subagentAddress(sessionId) === undefined
+        // An addressed subagent session gets no Agent-bound RPCs — they would
+        // activate persisted history outside the direct-parent continuation
+        // path — so it renders only the read-only policy a deployment named
+        // for it, from its own level track.
+        const inspectable = sessions.subagentAddress(sessionId) === undefined
+        const available = inspectable || effortFieldOf(sessions.list.getSnapshot().byId[sessionId]) !== undefined
         return {
           available,
+          policy: policySourceFor(sessionId),
           directory: directory.store,
           load: () => {
-            if (available) directory.load().catch(() => { /* surfaced on the store */ })
+            if (inspectable) directory.load().catch(() => { /* surfaced on the store */ })
           },
-          select: (selection: ModelSelection) => available
+          select: (selection: ModelSelection) => inspectable
             ? directory.select(selection).then(() => true, () => false)
             : Promise.resolve(false),
         }
