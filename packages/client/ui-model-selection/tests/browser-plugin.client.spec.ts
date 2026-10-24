@@ -10,17 +10,23 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import { createScope } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import { createScope, createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { CommandContribution, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
-import type { ModelSelectInjected } from '../src/client/slots.ts'
+import { ORDINARY_EFFORT_POLICY, type ModelSelectInjected } from '../src/client/slots.ts'
+import type { SessionEffortField } from '../src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { zh } from '../src/client/locales.ts'
 
 const sid = (k: string): SessionId => k as SessionId
+
+/** One retained list row; `effort` is the deployment's per-session policy field. */
+function row(id: string, extra: Partial<SessionSummary> & { effort?: SessionEffortField } = {}): SessionSummary {
+  return { id: sid(id), displayTitle: id, running: false, blank: false, updatedAt: 0, ...extra } as SessionSummary
+}
 
 const GROUPS = [{
   id: 'deepseek-official',
@@ -112,7 +118,12 @@ async function bench() {
   ctx.provide('locale', localeRuntime)
   const scopes = new Map<SessionId, Context>()
   const addressed = new Set<SessionId>()
+  const rows = createSnapshotStore<SessionListState>({
+    ids: [], byId: {}, current: undefined, phase: 'pending',
+    subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+  })
   ctx.provide('sessions', {
+    list: rows,
     scope: (id: SessionId) => scopes.get(id),
     subagentAddress: (id: SessionId) => addressed.has(id)
       ? { parentSessionId: sid('parent'), childSessionId: id, mode: 'continuable' as const }
@@ -134,6 +145,13 @@ async function bench() {
     hostCurrent: () => current,
     setHostCurrent: (selection: ModelSelection) => { current = selection },
     address: (id: SessionId) => { addressed.add(id) },
+    setRows: (list: readonly SessionSummary[]) => {
+      rows.set({
+        ...rows.getSnapshot(),
+        ids: list.map(entry => entry.id),
+        byId: Object.fromEntries(list.map(entry => [entry.id, entry])),
+      })
+    },
     setRoutable: (next: boolean) => { routable = next },
     blockOf: (key: string) => blocks.get(sid(key)),
   }
@@ -345,5 +363,85 @@ describe('ui-model-selection dual entry', () => {
     b.ctx.emit('connection/reset')
     await Promise.resolve()
     expect(b.calls).toEqual({ models: 0, select: 0 })
+  })
+
+  it('renders the deployment\'s per-session effort policy through the seat, identity-stable between reads', async () => {
+    const b = await bench()
+    b.mint('delta')
+    b.setRows([row('delta', { effort: { word: 'Dynamic', opens: true, editable: false } })])
+    const face = b.seat().inject!(sid('delta'))
+    expect(face.available).toBe(true)
+    expect(face.policy.getSnapshot()).toEqual({ word: 'Dynamic', opens: true, editable: false })
+    // useSyncExternalStore reads twice per render: an unchanged row must not
+    // hand back a new object.
+    expect(face.policy.getSnapshot()).toBe(face.policy.getSnapshot())
+  })
+
+  it('keeps the ordinary editable control for a session the deployment names no policy for', async () => {
+    const b = await bench()
+    b.mint('plain')
+    b.setRows([row('plain', { agentPreset: 'delta' })])
+    const face = b.seat().inject!(sid('plain'))
+    expect(face.available).toBe(true)
+    expect(face.policy.getSnapshot()).toBe(ORDINARY_EFFORT_POLICY)
+  })
+
+  it("Delta's bar reads the highest level anywhere below it, and stops at an ordinary fork", async () => {
+    const b = await bench()
+    b.mint('delta')
+    b.setRows([
+      row('delta', { effort: { word: 'Dynamic', opens: true, editable: false, level: 'low' } }),
+      row('worker-low', { origin: 'subagent', parentId: sid('delta'), effort: { level: 'low' } }),
+      row('worker-max', { origin: 'subagent', parentId: sid('delta'), effort: { level: 'max' } }),
+      row('grandchild', { origin: 'subagent', parentId: sid('worker-max'), effort: { level: 'high' } }),
+      // An ordinary fork owns its own tree: its effort never reaches Delta's bar.
+      row('forked', { parentId: sid('delta'), effort: { level: 'max' } }),
+      row('forked-worker', { origin: 'subagent', parentId: sid('forked'), effort: { level: 'max' } }),
+    ])
+    const face = b.seat().inject!(sid('delta'))
+    // The session's own level is painted by the control itself, so the walk
+    // reports the subtree only.
+    expect([...(face.policy.getSnapshot().treeEfforts ?? [])].sort()).toEqual(['high', 'low', 'max'])
+  })
+
+  it('moves a locked bar when a worker reports a new level', async () => {
+    const b = await bench()
+    b.mint('delta')
+    b.setRows([row('delta', { effort: { word: 'Dynamic', opens: true, editable: false } })])
+    const face = b.seat().inject!(sid('delta'))
+    expect(face.policy.getSnapshot().treeEfforts).toBeUndefined()
+    let published = 0
+    const stop = face.policy.subscribe(() => { published += 1 })
+    b.setRows([
+      row('delta', { effort: { word: 'Dynamic', opens: true, editable: false } }),
+      row('worker', { origin: 'subagent', parentId: sid('delta'), effort: { level: 'max' } }),
+    ])
+    expect(published).toBeGreaterThan(0)
+    expect(face.policy.getSnapshot().treeEfforts).toEqual(['max'])
+    stop()
+  })
+
+  it('renders a named read-only policy for an addressed worker session without issuing an Agent-bound RPC', async () => {
+    const b = await bench()
+    b.mint('worker')
+    b.address(sid('worker'))
+    b.setRows([row('worker', {
+      origin: 'subagent',
+      parentId: sid('delta'),
+      effort: { word: 'High', opens: true, editable: false, track: { names: ['Off', 'Low', 'High', 'Max'], index: 2 } },
+    })])
+    const face = b.seat().inject!(sid('worker'))
+    // The deployment named it, so it renders — but the directory stays
+    // unreachable, exactly as before: no load, no select, no wire call.
+    expect(face.available).toBe(true)
+    expect(face.policy.getSnapshot()).toEqual({
+      word: 'High', opens: true, editable: false,
+      track: { names: ['Off', 'Low', 'High', 'Max'], index: 2 },
+    })
+    face.load()
+    await expect(face.select({ provider: 'deepseek', model: 'deepseek-v4-pro' })).resolves.toBe(false)
+    expect(b.calls).toEqual({ models: 0, select: 0 })
+    // And the /model popup entry stays withheld from that session.
+    expect(b.contribution().available(projection('worker'))).toBe(false)
   })
 })

@@ -75,8 +75,8 @@
   /* Let the visible pane's rows set the card width, but keep pathological ids
      and narrow screens inside a bounded card where ellipsis remains. */
   width: max-content;
-  min-width: min(240px, calc(100vw - 32px));
-  max-width: min(420px, calc(100vw - 32px));
+  min-width: min(204px, calc(100vw - 32px));
+  max-width: min(357px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 96px));
   overflow: hidden;
   padding: 4px;
@@ -269,16 +269,24 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* One compact effort menu, matching the household harness's elevated controls. */
+/* One compact effort menu, matching the household harness's elevated controls.
+ * Card size (Owen, 2026-10-24): "15% less wide and 10% less tall" — measured
+ * in headless Chromium at 1280x800 with a 3-level model, the box went from
+ * 296x119 to 252x102: the width is the declaration below (border-box, so the
+ * measured box IS this number), and the height came from deleting the
+ * dialog's heading element, which was 17px of the old card on its own.
+ * Vertical padding and row heights are deliberately untouched: the removed
+ * heading already exceeds the -10% target, so trimming the rhythm further
+ * would overshoot it. */
 .trigger { gap: 7px; padding: 0 9px; }
 .triggerEffort { color: var(--dsw-alias-label-primary); }
-.menu { width: 272px; min-width: 0; padding: 6px; border-radius: 16px; overflow-y: auto; }
-.effortHeading { padding: 8px 10px; color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 500; }
+.menu { box-sizing: border-box; width: 252px; min-width: 0; padding: 6px; border-radius: 16px; overflow-y: auto; }
 .option { border-radius: 10px; min-height: 40px; padding: 9px 10px; }
 .option[aria-checked='true'] { background: var(--dsw-alias-interactive-bg-hover); }
 
-.menu { padding: 12px; }
-.effortHeading { text-align: center; padding: 0 0 5px; font-size: 11px; }
+/* Horizontal padding 12->10px is part of the width reduction; the vertical
+   value stays 12px on purpose (see the card-size note above). */
+.menu { padding: 12px 10px; }
 .effortValue { text-align: center; color: var(--dsw-static-blue-500); font-size: 16px; font-weight: 600; line-height: 24px; }
 .effortDescription { text-align: center; margin: 4px 4px 10px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
 .sliderWrap { position: relative; margin: 14px 0 8px; }

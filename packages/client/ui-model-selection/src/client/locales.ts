@@ -6,6 +6,15 @@
  * an unset trigger are free to diverge per locale, and folding it into
  * `trigger.aria` would announce the degenerate "Select model, current Select
  * model".
+ *
+ * `effort.heading` no longer paints anything: the dialog's "Thinking effort"
+ * heading element was removed on 2026-10-24, and the key survives only as the
+ * slider's accessible name (`aria-label`) — the one place a screen-reader user
+ * hears what that control is. The dialog itself is named by `menu.effort`.
+ * The words a fixed policy shows — `Off`, `Max`, `Dynamic`, a delegated level —
+ * are deliberately NOT locale keys: they are the deployment's copy, published
+ * per session beside the policy (see `EffortPolicy.word`), so both dictionaries
+ * keep their shared key set unchanged.
  */
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
