@@ -15,7 +15,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
-import type { ApiProxy } from './api/index.ts'
+import type { ApiProxy, EffortPolicyTable } from './api/index.ts'
 import {
   createApiProxy,
   DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
@@ -101,6 +101,22 @@ export interface Config {
    * @default { idleMs: 21600000, scanIntervalMs: 3600000 }
    */
   subagentIdleReap?: SubagentIdleReapConfig
+  /**
+   * The deployment's effort policy per personality (or preset) id: what effort
+   * each session actually runs at, the word its effort control paints, and
+   * whether that control may open and may write. One table, one lookup, no
+   * second source — a personality's level and its copy are the pair that must
+   * never disagree, so they travel together from the same composition row.
+   *
+   * Each entry is checked when the plugin loads: `level` is required, `word`
+   * must be a non-empty string when present, and `opens`/`editable`/`tree` must
+   * be booleans. A malformed entry is refused outright rather than defaulted,
+   * because a silently repaired policy paints the wrong word on a live control
+   * — worse than a plugin that will not start. Absent, this deployment names no
+   * policy and every session renders the ordinary editable control.
+   * @default {}
+   */
+  effortPolicy?: EffortPolicyTable
 }
 
 /**
@@ -121,6 +137,16 @@ export class ApiProxyService extends Service implements ApiProxy {
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     destroyCancelSettleMs: z.natural().default(DEFAULT_DESTROY_CANCEL_SETTLE_MS),
     subagentIdleReap: SubagentIdleReapConfigSchema,
+    // `z.dict` of a strict object: an unknown policy key is dropped by the
+    // object shape, but every named key is type-checked, so a string where a
+    // flag belongs, an empty word, or a policy with no level refuses the load.
+    effortPolicy: z.dict(z.object({
+      level: z.string().min(1).required(),
+      word: z.string().min(1),
+      opens: z.boolean(),
+      editable: z.boolean(),
+      tree: z.boolean(),
+    })),
   })
 
   readonly sessions: ApiProxy['sessions']
@@ -159,6 +185,10 @@ export class ApiProxyService extends Service implements ApiProxy {
         idleMs: DEFAULT_SUBAGENT_IDLE_REAP_IDLE_MS,
         scanIntervalMs: DEFAULT_SUBAGENT_IDLE_REAP_SCAN_INTERVAL_MS,
       },
+      // Always passed, even as `{}`: the gateway owns the effort face, and an
+      // empty table is the honest statement that this deployment names none
+      // (an absent one would read the same, but passing it keeps one branch).
+      effortPolicy: config.effortPolicy ?? {},
     })
     this.sessions = api.sessions
     this.subagents = api.subagents

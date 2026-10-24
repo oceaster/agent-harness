@@ -3,7 +3,7 @@
 // List data never enters zustand; React connects via subscribe/getListSnapshot.
 
 import type {
-  IApiClient, HostFrame, MuxFrame, RpcError, RpcRequest, RpcResult, SessionId,
+  IApiClient, HostFrame, MuxFrame, RpcError, RpcRequest, RpcResult, SessionEffort, SessionId,
   SessionSummary, SubagentAddress, SubagentCatalog, JobView, WorkspaceId,
 } from '@deepseek-ai/dsh-api-remotes/client'
 // Value import from the inline-safe wire layer (not the connection plugin):
@@ -802,6 +802,7 @@ export class SessionManager {
           ...(frame.origin !== undefined ? { origin: frame.origin } : {}),
           ...(frame.cwd !== undefined ? { cwd: frame.cwd } : {}),
           ...(frame.agentPreset !== undefined ? { agentPreset: frame.agentPreset } : {}),
+          ...(frame.effort !== undefined ? { effort: frame.effort } : {}),
         })
         this.sessions.get(frame.sessionId)?.handleBlank(frame.blank)
         if (frame.origin === 'subagent' && frame.parentSessionId !== undefined) {
@@ -1044,6 +1045,7 @@ export class SessionManager {
       if (
         prev !== undefined && prev.updatedAt === entry.updatedAt && prev.running === entry.running
         && prev.blank === entry.blank && prev.agentPreset === entry.agentPreset
+        && sameEffort(prev.effort, entry.effort)
         && prev.parentSessionId === entry.parentSessionId && prev.cwd === entry.cwd
         && prev.origin === entry.origin && prev.title === entry.title && prev.depth === entry.depth
         && prev.pendingInteraction === entry.pendingInteraction
@@ -1076,6 +1078,24 @@ export class SessionManager {
   }
 }
 
+/**
+ * Value equality for the deployment's effort field.
+ *
+ * The host rebuilds this object on every list, so the retained row and the
+ * incoming one are never the same reference. Comparing field by field keeps
+ * the entry cache and the mutation fold from re-emitting an unchanged list on
+ * every refresh, which is what they would do with `===`.
+ * @param a - the retained field, if any.
+ * @param b - the incoming field, if any.
+ * @returns whether both describe the same policy.
+ */
+function sameEffort(a: SessionEffort | undefined, b: SessionEffort | undefined): boolean {
+  if (a === b) return true
+  if (a === undefined || b === undefined) return false
+  return a.level === b.level && a.word === b.word && a.opens === b.opens
+    && a.editable === b.editable && a.tree === b.tree
+}
+
 /** Apply one list mutation without deriving display order. */
 function applyMutation(summaries: readonly SessionSummary[], mutation: SessionListMutation): SessionSummary[] {
   switch (mutation.kind) {
@@ -1097,10 +1117,15 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
         // create echo, the select echo, a list row) reports the CURRENT one.
         ...(mutation.summary.agentPreset !== undefined
           ? { agentPreset: mutation.summary.agentPreset } : {}),
+        // Newest wins for the same reason: the deployment's policy is decided
+        // by which composition the session resolves to, and a later row
+        // reports it more authoritatively than the row retained at creation.
+        ...(mutation.summary.effort !== undefined ? { effort: mutation.summary.effort } : {}),
       }
       if (filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
         && filled.origin === existing.origin && filled.blank === existing.blank
-        && filled.agentPreset === existing.agentPreset) return [...summaries]
+        && filled.agentPreset === existing.agentPreset
+        && sameEffort(filled.effort, existing.effort)) return [...summaries]
       return summaries.map(summary => summary.sessionId === mutation.summary.sessionId ? filled : summary)
     }
     case 'remove':
