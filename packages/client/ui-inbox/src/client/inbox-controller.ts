@@ -8,6 +8,14 @@
  * React, no ctx, no module-level instances — the class is constructed inside
  * `apply`, so plugin reloads get a fresh controller.
  *
+ * THE ROSTER'S PARENT IS DELTA'S OWN SESSION, not the conversation the pane is
+ * showing. The workers this controller lists are the sub-agents of the signed-in
+ * person's Delta conversation, resolved the same way the inbox resolves every
+ * row (`api.list()` → the delta row → its `sessionId`), and the catalog is
+ * pulled for THAT parent. Reading the open conversation's catalog instead is
+ * what made the list empty until a worker was already on screen, which is not a
+ * list of Delta's sub-agents — it is a list of whatever happened to be open.
+ *
  * THE NAVIGATION SEAM (measured in the browser fixture, see README): the
  * conversation a row opens is the session id the server returned, selected
  * through the client runtime's sessions service — `sessions.open(id)`. That
@@ -53,8 +61,12 @@ export type InboxNoticeCode =
   | 'worker-unavailable'
 
 /**
- * One row of the sub-agent roster: a child of the conversation the runtime has
- * open, exactly as that conversation's own catalog describes it.
+ * One row of the sub-agent roster: a direct child of the person's Delta
+ * conversation, exactly as that conversation's own catalog describes it.
+ *
+ * The roster is not the open conversation's children. Opening one of these rows
+ * moves the pane onto that worker, and the roster stays what it was — Delta's
+ * workers — so the list cannot empty itself by being used.
  *
  * The roster is the ENTRY POINT, never a second transcript: every value here
  * comes from the harness (`subagentsByParent`), and the only thing this panel
@@ -127,6 +139,16 @@ export interface InboxState {
    */
   workers: readonly InboxWorkerRow[]
   /**
+   * Whether the roster above has been READ yet.
+   *
+   * `idle` is the state of a page that never asked (the inbox interface), and
+   * it is deliberately distinct from `ready` with no rows: "nothing was asked"
+   * and "Delta has no sub-agents" are different sentences, and the epsilon
+   * interface must not print the second while it means the first. `error` keeps
+   * whatever rows an earlier read produced.
+   */
+  workersState: 'idle' | 'loading' | 'ready' | 'error'
+  /**
    * Session id of the conversation the pane paints, for the worker row
    * highlight. Same derivation as `openAgent`, which stays null while a worker
    * is open because no agent row owns a sub-agent session.
@@ -150,6 +172,7 @@ const INITIAL: InboxState = {
   openAgent: null,
   activeSubagents: {},
   workers: [],
+  workersState: 'idle',
   openWorkerId: null,
   workerNotice: null,
 }
@@ -186,9 +209,33 @@ export interface InboxSessionPort {
    * guessing one. Throws on a refused address; the caller reports it on the row.
    */
   openSubagent: (address: SubagentAddress) => void
+  /**
+   * Refresh one direct-child catalog by its parent session (`sessions.
+   * refreshSubagents`).
+   *
+   * The runtime keeps catalogs for the sessions it was asked about and folds
+   * live membership frames into every catalog it holds, so this is how the
+   * roster of a conversation that is NOT the open one is read at all — and the
+   * poll in `index.ts` is what keeps it live. Optional so a test that only
+   * exercises rows need not carry it; a runtime without it fails the roster
+   * read loudly rather than showing an empty list.
+   */
+  refreshSubagents?: (parentSessionId: SessionId) => Promise<void>
   /** Clear the selection, returning the pane to the no-session state. */
   clear: () => void
 }
+
+/**
+ * The household agent whose sub-agents the epsilon interface lists.
+ *
+ * This package carries no roster — every row is the server's payload — but the
+ * roster's PARENT has to be named somewhere, and it is the same kind of
+ * vendor-local constant as `AGENT_VERBS` in InboxPanel.tsx: an id this
+ * deployment's composition supplies, kept in one place so a rename has one
+ * place to move. A profile that does not own Delta has no row for it, so the
+ * roster resolves to nothing instead of failing.
+ */
+export const DELTA_AGENT = 'delta'
 
 /** Controller dependencies. */
 export interface InboxControllerOptions {
@@ -290,16 +337,16 @@ function sameCounts(
 }
 
 /**
- * The sub-agent roster of one conversation, straight out of that conversation's
- * catalog — the same `subagentsByParent` snapshot the harness's own catalog
- * tree renders, so the two can never list different workers.
+ * The sub-agent roster of Delta's conversation, straight out of that
+ * conversation's catalog — the same `subagentsByParent` snapshot the harness's
+ * own catalog tree renders, so the two can never list different workers.
  *
  * Direct children only. A worker is opened by selecting it, and the roster then
  * follows the selection one level down, which is how the runtime's catalogs are
  * addressed (one direct parent per address): descending costs one click and
  * ascending is the harness's own hierarchy navigation.
  * @param catalogs - the runtime's per-parent catalogs.
- * @param parentId - the session the pane has open, if any.
+ * @param parentId - the person's Delta session (see {@link DELTA_AGENT}), if any.
  * @returns the roster, empty when there is no catalog for that parent.
  */
 function workerRoster(
@@ -357,6 +404,7 @@ export class InboxController {
   private readonly setTimer: (callback: () => void, ms: number) => unknown
   private readonly clearTimer: (handle: unknown) => void
   private loading = false
+  private workersLoading = false
 
   /**
    * @param options - wire client, sessions port, and test knobs.
@@ -381,6 +429,62 @@ export class InboxController {
   }
 
   /**
+   * The person's Delta conversation, as the inbox API resolved it.
+   * @param rows - the agent rows the server returned.
+   * @returns its session id, or undefined when this person has no Delta row.
+   */
+  private deltaSession(rows: readonly InboxAgentRow[]): SessionId | undefined {
+    const sessionId = rows.find(row => row.agent === DELTA_AGENT)?.sessionId ?? null
+    return sessionId === null ? undefined : sessionId as SessionId
+  }
+
+  /**
+   * Read Delta's sub-agent roster: the catalog of the person's Delta
+   * conversation, whether or not that conversation is on screen.
+   *
+   * Nothing is selected and nothing is created here — a roster read must not
+   * move the pane out of whatever the person was reading. The rows land in this
+   * store from the runtime's catalog snapshot (see {@link reconcile}), so this
+   * method's only job is to ask for that catalog and to say whether the ask
+   * succeeded: a failed read is `workersState: 'error'` with the last roster
+   * kept, never a silently empty list.
+   *
+   * Repeated calls while one is in flight are dropped, exactly like `load`, so
+   * the boot read and the poll cannot stack requests.
+   * @returns once the snapshot reflects the outcome.
+   */
+  async loadWorkers(): Promise<void> {
+    if (this.workersLoading) return
+    const parent = this.deltaSession(this.store.getSnapshot().rows)
+    if (parent === undefined) {
+      // No Delta conversation for this person means no roster to read. That is
+      // an answer, not a failure: the panel says Delta has no sub-agents.
+      this.store.set({ ...this.store.getSnapshot(), workers: [], workersState: 'ready' })
+      return
+    }
+    const refresh = this.sessions.refreshSubagents
+    if (refresh === undefined) {
+      this.store.set({ ...this.store.getSnapshot(), workersState: 'error' })
+      return
+    }
+    this.workersLoading = true
+    this.store.set({ ...this.store.getSnapshot(), workersState: 'loading' })
+    try {
+      await refresh(parent)
+    } catch {
+      this.workersLoading = false
+      this.store.set({ ...this.store.getSnapshot(), workersState: 'error' })
+      return
+    }
+    this.workersLoading = false
+    // The catalog is in the runtime snapshot now; folding it in is reconcile's
+    // job, so the rows and their states cannot disagree with the harness's own
+    // catalog tree.
+    this.reconcile()
+    this.store.set({ ...this.store.getSnapshot(), workersState: 'ready' })
+  }
+
+  /**
    * Fold the session list's running/blank bits into the rows that name those
    * sessions, recount the running conversations below each row, and re-derive
    * which agent is open from the runtime's own selection.
@@ -388,11 +492,14 @@ export class InboxController {
   private reconcile(): void {
     const snapshot = this.store.getSnapshot()
     const { ids, byId, current, subagentsByParent } = this.sessions.list.getSnapshot()
-    // The roster is the open conversation's own catalog. The runtime refreshes
-    // the SELECTED session's catalog on every membership frame, so this needs
-    // no request of its own: a worker that appears or finishes shows up here on
-    // the same frame the harness's own catalog tree would show it.
-    const workers = workerRoster(subagentsByParent, current)
+    // The roster is DELTA'S conversation's catalog, whichever conversation the
+    // pane happens to show; `loadWorkers` is what pulls that catalog, and the
+    // runtime folds later membership frames into it. So a worker that appears
+    // or finishes shows up here on the same frame the harness's own catalog tree
+    // would show it, and a person who has a worker conversation open still sees
+    // the rest of the household's roster beside it.
+    const workerParent = this.deltaSession(snapshot.rows)
+    const workers = workerRoster(subagentsByParent, workerParent)
     const openWorkerId = current ?? null
     // The row highlight follows `sessions.list.current` — the exact value the
     // conversation pane renders — instead of a private click record. A frame
@@ -432,10 +539,10 @@ export class InboxController {
   }
 
   /**
-   * Open one sub-agent of the conversation the pane has open.
+   * Open one of Delta's sub-agents, from the roster the epsilon interface lists.
    *
    * Nothing is fetched and nothing is created here: the address comes from the
-   * row, which came from that conversation's catalog, and the runtime's
+   * row, which came from Delta's own catalog, and the runtime's
    * `openSubagent` is what moves the pane. A worker that the catalog stopped
    * calling healthy between the render and the click is refused by the runtime,
    * and that refusal is said on the row instead of silently doing nothing.

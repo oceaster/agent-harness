@@ -27,10 +27,16 @@ export interface InboxInjected {
   /** Open one row's conversation through the inbox API. */
   open: (agent: string) => void
   /**
-   * Open one sub-agent of the conversation the pane has open, through the
-   * catalog-derived address its row carries. Makes no request of its own: the
-   * runtime's `openSubagent` moves the selection, and the conversation it then
-   * paints is the harness's own read-only one.
+   * Read (or re-read) Delta's sub-agent roster: the catalog of the signed-in
+   * person's Delta conversation, whatever the pane is showing. The epsilon
+   * interface calls this at boot and on its poll.
+   */
+  loadWorkers: () => void
+  /**
+   * Open one of Delta's sub-agents through the catalog-derived address its row
+   * carries. Makes no request of its own: the runtime's `openSubagent` moves the
+   * selection, and the conversation it then paints is the harness's own
+   * read-only one.
    */
   openWorker: (id: string) => void
   /** Destroy one row's conversation through the inbox API. */
@@ -48,3 +54,4 @@ export type InboxPanelProps =
   & PropsLocale<'inbox'>
 
 export type { InboxState, InboxWorkerRow } from './inbox-controller.ts'
+export type { HarnessSurface } from './surface.ts'
