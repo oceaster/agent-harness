@@ -14,59 +14,25 @@ Channel history, available pairs and Clear are scoped to the signed-in person by
 
 ## Two interfaces in one shell: the epsilon sidebar
 
-Owen, 2026-10-23: "2 separate interfaces BUT SAME SAME, DIFFERENT, BUT SAME". This
-package fills ONE sidebar region, and which body it fills depends on which
-interface the page load is: the Delta entry (no URL fragment) gets `InboxPanel` —
-agent rows and Agent Channels — and the Epsilon entry (`#epsilons`) gets
-`EpsilonPanel`, the list of Delta's sub-agents. `surface.ts` owns that decision and
-reads `location.hash` once at boot; `sidebar.workspaces` is a single slot, so the
-interface that is not this page load's is never mounted and its markup is absent
-from the DOM rather than hidden. Switching interfaces is a page load, which is
-also what keeps each entry a shareable link. The e-server page that wraps this app
-appends the same fragment to the iframe `src`, so `EPSILONS_FRAGMENT` is the one
-word spelled on both sides.
+Owen, 2026-10-23: "2 separate interfaces BUT SAME SAME, DIFFERENT, BUT SAME". This package fills ONE sidebar region with two bodies: the Delta entry shows `InboxPanel` — agent rows and Agent Channels — and the Epsilon entry shows `EpsilonPanel`, the list of Delta's sub-agents.
 
-**Sub-agents are not in the inbox sidebar.** A person reading their inbox or a peer
-channel sees their agents and channels and nothing else; the epsilon interface has
-no agent row or channel section in its tree at all.
+Owen, 2026-10-24: the workspace is an IDE — "always rendered and rendering ... if closed, it's actually just 'not-visible'" — so both interfaces stay mounted and one is hidden. `sidebar.workspaces` stays single-consumer: `SurfacePanels` is its ONE registrant and owns the switch internally. The registry rejects a second occupant at the same priority, and a mid-session re-registration would dispose the live entry and mount a fresh panel, which is the remount this exists to remove, so the switch is the occupant's own state rather than a second registration. A hidden interface holds NO subscription (`surface-gate.ts`): no store frame re-renders it and no timer wakes it, while its DOM and whatever the person left in it — an open row menu, a confirm dialog — stay mounted. Showing it again reads the live snapshot, so a returning interface is never stale.
 
-**The roster is Delta's, not the pane's.** The epsilon sidebar lists the direct
-children of the signed-in person's DELTA conversation — the catalog
-`/v1/browser/inbox` resolves for that person, refreshed through
-`sessions.refreshSubagents(parentSessionId)` — so the list is populated before any
-worker is open, and opening one does not empty it. Reading the open conversation's
-catalog instead is what made the list appear only once a worker was already on
-screen, which is not a list of Delta's sub-agents.
+Which interface shows is decided two ways that cannot disagree. The URL fragment, read once at boot in `surface.ts`, keeps every cold load, bookmark and pasted link landing where it always has; the parent page's `dsh:open` message (`surface-controller.ts`) is the mechanism, so moving between the entries costs no document load. The parent keeps ONE frame with ONE `src` and posts `{ type: 'dsh:open', surface, conversation, token }` with an exact target origin (never `'*'`); the app answers `dsh:ready` with that token and `dsh:route` whenever the person navigates inside it, so the parent's URL and menu can follow without reloading anything. Messages are applied only when they change something, and only the parent may send them. An interface that has never been shown is not mounted, so a cold load still contains exactly one; the parent's first message makes both resident and every later move a visibility flip.
 
-Each worker is a row built from the same row component and the same styles as an
-agent row — avatar, presence dot, name, one state line — and its second line is the
-durable creation label the harness recorded (what the worker was asked to do). A
-worker is named once, in long form (`Epsilon 3`), on its own row; the short form
-(`E3`) is the avatar monogram, and the row never prints the name twice. A child the
-harness enumerated but could not identify is listed as a damaged row with no launch
-control, because the harness's reason for it is the truth, not something this panel
-can repair. There is no row menu: a worker cannot be cleared from here.
+Polling follows the same rule. The agent-channel poll runs only while the inbox interface is showing, Delta's sub-agent roster only while the Epsilon interface is, and neither runs while the frame is off screen (`frame-shown.ts`) — each re-reads once on activation, so a paused poll is never a stale panel. The frame budget is measured, not asserted: `tests/instant-surfaces.journey.mjs` drives e-server's composed browser fixture (`tests/browser_profiles.sh`) through a ten-step journey and reports document loads, frame navigations, and intent-to-paint milliseconds per switch.
 
-Opening a worker hands `sessions.openSubagent` the exact address its row carries
-(parent, child, mode); nothing is fetched and nothing is created. The conversation
-column then paints that worker through the harness's own components —
-`ConversationRoot`, `ChatView`, `AssistantMarkdown`, `MessageItem`. Nothing in this
-package draws a transcript, a bubble or a message row: there is no second copy of
-the chat surface here to drift, and a worker's conversation carries no
-parent/child breadcrumb either (the session header renders nothing).
+**Sub-agents are not in the inbox sidebar.** A person reading their inbox or a peer channel sees their agents and channels and nothing else; the epsilon interface has no agent row or channel section in its tree at all.
 
-Read-only is the fork's rule, not this panel's, and this deployment's rule is
-stronger than a restyled composer: `ConversationRoot` paints the composer seat only
-when `readOnly` is false, and `readOnly` is `child || childSummary` — so a subagent
-conversation (addressed or listed) has NO composer seat in the tree at all, for a
-one-shot worker and a continuable one alike. No CSS here could produce that, and
-none tries. (`SubagentReadOnlyComposer` remains the composable seat for a
-deployment whose root keeps a seat; in this fork the `!readOnly` gate settles it
-first.)
+**The roster is Delta's, not the pane's.** The epsilon sidebar lists the direct children of the signed-in person's DELTA conversation — the catalog `/v1/browser/inbox` resolves for that person, refreshed through `sessions.refreshSubagents(parentSessionId)` — so the list is populated before any worker is open, and opening one does not empty it. Reading the open conversation's catalog instead is what made the list appear only once a worker was already on screen, which is not a list of Delta's sub-agents.
 
-The rows follow the harness's selection, so the open worker is the current row in
-the epsilon interface; while a worker is open no agent row claims it, exactly as no
-agent row claims a session it does not own.
+Each worker is a row built from the same row component and the same styles as an agent row — avatar, presence dot, name, one state line — and its second line is the durable creation label the harness recorded (what the worker was asked to do). A worker is named once, in long form (`Epsilon 3`), on its own row; the short form (`E3`) is the avatar monogram, and the row never prints the name twice. A child the harness enumerated but could not identify is listed as a damaged row with no launch control, because the harness's reason for it is the truth, not something this panel can repair. There is no row menu: a worker cannot be cleared from here.
+
+Opening a worker hands `sessions.openSubagent` the exact address its row carries (parent, child, mode); nothing is fetched and nothing is created. The conversation column then paints that worker through the harness's own components — `ConversationRoot`, `ChatView`, `AssistantMarkdown`, `MessageItem`. Nothing in this package draws a transcript, a bubble or a message row: there is no second copy of the chat surface here to drift, and a worker's conversation carries no parent/child breadcrumb either (the session header renders nothing).
+
+Read-only is the fork's rule, not this panel's, and this deployment's rule is stronger than a restyled composer: `ConversationRoot` paints the composer seat only when `readOnly` is false, and `readOnly` is `child || childSummary` — so a subagent conversation (addressed or listed) has NO composer seat in the tree at all, for a one-shot worker and a continuable one alike. No CSS here could produce that, and none tries. (`SubagentReadOnlyComposer` remains the composable seat for a deployment whose root keeps a seat; in this fork the `!readOnly` gate settles it first.)
+
+The rows follow the harness's selection, so the open worker is the current row in the epsilon interface; while a worker is open no agent row claims it, exactly as no agent row claims a session it does not own.
 
 ## Presence and unread turns
 

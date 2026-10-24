@@ -1,0 +1,22 @@
+/* The sidebar's browsing hole now holds BOTH interfaces of the one shell, one
+   visible at a time (see SurfacePanels.tsx). Each pane is a plain flex child of
+   the shell's region column, so the panel inside it lays out exactly as it did
+   when it was the region's only child: the pane adds no padding, no border and
+   no positioning context.
+
+   Hidden means `hidden` — not rendered, not laid out, not painted, out of the
+   accessibility tree — while the React subtree stays mounted. An author
+   `display` would beat the user agent's `[hidden]` rule, so the pane states the
+   hidden form explicitly rather than leaving it to chance. */
+
+.pane {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane[hidden] {
+  display: none;
+}

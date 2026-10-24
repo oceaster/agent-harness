@@ -322,6 +322,100 @@ describe('ui-inbox channel restore (where you were, channel half)', () => {
   })
 })
 
+describe('ui-inbox parent wire (the page drives the app, not a page load)', () => {
+  /**
+   * Stand in for the embedding page: jsdom runs every suite as a top-level
+   * document, so `window.parent` is the window itself and the plugin would
+   * (correctly) attach to nothing. The stub is what a frame sees.
+   */
+  const installParent = () => {
+    const posted: { message: unknown; targetOrigin: string }[] = []
+    const parent = {
+      postMessage: (message: unknown, targetOrigin: string): void => { posted.push({ message, targetOrigin }) },
+    }
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'parent')
+    Object.defineProperty(globalThis, 'parent', { value: parent, configurable: true })
+    const send = (data: unknown): void => {
+      globalThis.dispatchEvent(new MessageEvent('message', { data, origin: 'http://easter.test', source: parent as never }))
+    }
+    const restore = (): void => {
+      if (original === undefined) delete (globalThis as { parent?: unknown }).parent
+      else Object.defineProperty(globalThis, 'parent', original)
+    }
+    return { posted, parent, send, restore }
+  }
+
+  it('switches the interface on a message, keeping ONE registrant and spending no request', async () => {
+    const wire = installParent()
+    try {
+      const b = await bench()
+      await b.fiber.await()
+      const face = b.entry()?.inject?.() as unknown as InboxInjected
+      expect(face.surface.getSnapshot()).toEqual({ surface: 'inbox', resident: false })
+      expect(b.ctx.slots.entries('sidebar.workspaces')).toHaveLength(1)
+      const requestsBefore = b.fetches.length
+      wire.send({ type: 'dsh:open', surface: 'epsilons', conversation: null, token: 'boot-1' })
+      expect(face.surface.getSnapshot()).toEqual({ surface: 'epsilons', resident: true })
+      // Same single registration: the switch is the occupant's own state, never
+      // a second registration into a single-consumer slot.
+      expect(b.ctx.slots.entries('sidebar.workspaces')).toHaveLength(1)
+      // The app answered: ready carries the token of the intent just applied,
+      // and the reply names an exact origin (never '*').
+      expect(wire.posted.at(-1)).toEqual({ message: { type: 'dsh:ready', token: 'boot-1' }, targetOrigin: 'http://easter.test' })
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(b.fetches).toHaveLength(requestsBefore)
+    } finally {
+      wire.restore()
+    }
+  })
+
+  it('opens the conversation a message names, once the roster proves it may', async () => {
+    const wire = installParent()
+    try {
+      vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+        person: { id: 'p-1', name: 'Person One' },
+        agents: [{
+          agent: 'agent-a', name: 'Alpha', hasConversation: true, sessionId: 's-a', blank: false,
+          lastActivityAt: 100, running: false, enabled: true, disabled: false, presence: 'online', completion: 0,
+        }],
+      }), { status: 200 }))))
+      const b = await bench()
+      await b.fiber.await()
+      wire.send({ type: 'dsh:open', surface: 'inbox', conversation: 'agent-a', token: 'deep-link' })
+      await vi.waitFor(() => { expect(b.opened).toEqual(['s-a']) })
+      // Idempotent: the parent repeating the address it already shows opens
+      // nothing a second time and asks the server nothing.
+      const requests = b.fetches.length
+      wire.send({ type: 'dsh:open', surface: 'inbox', conversation: 'agent-a', token: 'deep-link' })
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(b.opened).toEqual(['s-a'])
+      expect(b.fetches).toHaveLength(requests)
+    } finally {
+      wire.restore()
+    }
+  })
+
+  it('tells the parent where the person went, so its URL and menu can follow', async () => {
+    const wire = installParent()
+    try {
+      const b = await bench()
+      await b.fiber.await()
+      const face = b.entry()?.inject?.() as unknown as InboxInjected
+      // The parent's first message is also what pins its origin: this app never
+      // answers a window it cannot name.
+      wire.send({ type: 'dsh:open', surface: 'inbox', conversation: null, token: 'boot-1' })
+      const before = wire.posted.length
+      face.open('agent-a')
+      expect(wire.posted.slice(before)).toEqual([
+        { message: { type: 'dsh:route', surface: 'inbox', conversation: 'agent-a' }, targetOrigin: 'http://easter.test' },
+      ])
+      await vi.waitFor(() => { expect(b.opened).toEqual(['s-a']) })
+    } finally {
+      wire.restore()
+    }
+  })
+})
+
 describe('ui-inbox node half and invariant companion', () => {
   it('has no host-side behavior', () => {
     // A pure UI plugin's node half exists only so the Loader has a body to

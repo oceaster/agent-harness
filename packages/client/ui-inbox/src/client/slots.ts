@@ -13,6 +13,7 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { InboxState } from './inbox-controller.ts'
 import type { ChannelState } from './channel-controller.ts'
+import type { SurfaceSnapshot } from './surface-controller.ts'
 
 /** Registrant-private injected share (arrives via the register inject factory). */
 export interface InboxInjected {
@@ -22,6 +23,26 @@ export interface InboxInjected {
     /** Permitted channels and the selected channel history. */
     channels: SnapshotStore<ChannelState>
   }
+  /**
+   * The same two sources, unbound, for the OCCUPANT of the slot.
+   *
+   * A registered component receives `hooks` already bound to one hook per
+   * source (`bindInjectHooks` runs once per entry), so a panel cannot decide
+   * whether to listen. The occupant renders both interfaces of the one shell and
+   * must hand each of them a hook that goes quiet while it is hidden, which
+   * needs the bare source — see surface-gate.ts and SurfacePanels.tsx.
+   */
+  sources: {
+    /** The inbox controller's snapshot source. */
+    inbox: SnapshotStore<InboxState>
+    /** The channel controller's snapshot source. */
+    channels: SnapshotStore<ChannelState>
+  }
+  /**
+   * Which interface the parent asked for, and whether it drives this app at all
+   * (in which case both interfaces stay mounted). See surface-controller.ts.
+   */
+  surface: SnapshotStore<SurfaceSnapshot>
   /** Read (or re-read) the caller's inbox. */
   load: () => void
   /** Open one row's conversation through the inbox API. */
@@ -55,3 +76,4 @@ export type InboxPanelProps =
 
 export type { InboxState, InboxWorkerRow } from './inbox-controller.ts'
 export type { HarnessSurface } from './surface.ts'
+export type { SurfaceSnapshot } from './surface-controller.ts'
