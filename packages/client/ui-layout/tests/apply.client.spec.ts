@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Client apply wiring under the terminal register form: ctx.layout provided,
-// ONE register() call declares the three child slots + seats the store factory
+// ONE register() call declares the five child slots + seats the store factory
 // + wires the panel actions through the inject hook; teardown cascades
 // (service unprovided + declarations gone + registration cleared). Node half
 // and the invariant companion ride along — one line exposes the aggregate
@@ -40,17 +40,21 @@ describe('ui-layout client apply', () => {
     expect(inject).toEqual(['slots', 'theme'])
   })
 
-  it('provides ctx.layout and registers AppFrame into root with the three child declarations', async () => {
+  it('provides ctx.layout and registers AppFrame into root with its child declarations', async () => {
     const { ctx, slots } = await bench()
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     expect(ctx.get('layout')).toBeInstanceOf(LayoutController)
     // The one register() call occupied 'root'…
     expect(slots.entries('root')).toHaveLength(1)
-    // …and declared the three children in the ledger.
+    // …and declared its children in the ledger. The rail is additive where
+    // sidebar/details are occupied: a registrant puts the first occupant inside
+    // an empty column instead of replacing a surface.
     expect(slots.spec('sidebar')).toEqual({ kind: 'single', scope: 'root' })
     expect(slots.spec('conversation')).toEqual({ kind: 'single', scope: 'session-maybe' })
     expect(slots.spec('details')).toEqual({ kind: 'single', scope: 'session' })
+    expect(slots.spec('rail')).toEqual({ kind: 'single', scope: 'root' })
+    expect(slots.spec('shell.overlay')).toEqual({ kind: 'list', scope: 'root' })
   })
 
   it('injects no business face and attaches the layout actions', async () => {

@@ -7,6 +7,13 @@
  * apply worlds reach for panel transitions (sidebar toggle from ui-sidebar,
  * details open/close from ui-conversation) — writes stay inside the store's
  * declared action set, delivered as the registration's bound actions.
+ *
+ * The right rail's own transitions (store actions openRail/closeRail/toggleRail)
+ * are deliberately NOT on this face yet: this sprint the rail is empty and
+ * nothing in the shell toggles it, so there is no cross-plugin caller to serve,
+ * and a contract method with no caller cannot be verified. The control that
+ * wants one adds it here in the same commit (ui-sidebar's fold toggle is the
+ * shape to copy).
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createLayoutStore } from './stores.ts'
@@ -27,12 +34,6 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
-  /** Open the right rail (no-op when already open). */
-  openRail(): void
-  /** Close the right rail. */
-  closeRail(): void
-  /** Toggle the right rail (open ⟷ contract default width). */
-  toggleRail(): void
   /** Select a registered center page; null returns to the selected conversation.
    * @param id - registered page id, or null for the conversation.
    */
@@ -78,21 +79,6 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
-  }
-
-  /** Open the right rail (no-op when already open). */
-  openRail(): void {
-    this.#require().openRail()
-  }
-
-  /** Close the right rail. */
-  closeRail(): void {
-    this.#require().closeRail()
-  }
-
-  /** Toggle the right rail (open ⟷ contract default width). */
-  toggleRail(): void {
-    this.#require().toggleRail()
   }
 
   /** Select a center page without creating or changing an agent session.
