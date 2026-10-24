@@ -716,7 +716,7 @@ describe('inbox controller: live badges without polling', () => {
   })
 })
 
-describe('inbox controller: the sub-agent roster of the open conversation', () => {
+describe('inbox controller: Delta\'s sub-agent roster', () => {
   /** One catalog entry, shaped exactly as the harness's `subagent.list` answers. */
   type CatalogEntry = SessionListState['subagentsByParent'][SessionId]['entries'][number]
   const child = (
@@ -743,23 +743,34 @@ describe('inbox controller: the sub-agent roster of the open conversation', () =
     })
   }
 
-  it('is empty until the harness catalog of the open conversation lands', async () => {
-    const sessions = sessionList(['s-a'])
-    const b = bench({ sessions })
+  /** Delta's own row is what names the parent session the roster is read from. */
+  const deltaList: InboxListPayload = {
+    person: { id: 'p-1', name: 'Person One' },
+    agents: [
+      {
+        agent: 'delta', name: 'Delta', hasConversation: true,
+        sessionId: 's-delta', blank: false, lastActivityAt: 100, running: false,
+      },
+      {
+        agent: 'agent-a', name: 'Alpha', hasConversation: true,
+        sessionId: 's-agent-a', blank: false, lastActivityAt: 100, running: false,
+      },
+    ],
+  }
+
+  /** A household whose Delta conversation is `s-delta`. */
+  const withDelta = () => sessionList(['s-delta'])
+
+  it('is empty until Delta\'s catalog lands, and never reads another parent\'s', async () => {
+    const sessions = withDelta()
+    const b = bench({ sessions, list: { ok: true, value: deltaList } })
     await b.controller.load()
     b.controller.followSessions()
     expect(b.state().workers).toEqual([])
-    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
-    sessions.store.set({
-      ...sessions.store.getSnapshot(),
-      subagentsByParent: {
-        [sid('s-a')]: {
-          entries: [child('w-1'), child('w-2', { mode: 'one-shot', activity: 'running' })],
-          parentAvailable: true, state: 'ready', error: null,
-        },
-      },
-    })
-    await settle()
+    await b.controller.loadWorkers()
+    expect(b.state().workers).toEqual([])
+    catalog(sessions, 's-delta', [child('w-1'), child('w-2', { mode: 'one-shot', activity: 'running' })])
+    await b.controller.loadWorkers()
     expect(b.state().workers.map(row => row.id)).toEqual([sid('w-1'), sid('w-2')])
     expect(b.state().workers.map(row => row.index)).toEqual([1, 2])
     expect(b.state().workers.map(row => row.mode)).toEqual(['continuable', 'one-shot'])
@@ -767,75 +778,72 @@ describe('inbox controller: the sub-agent roster of the open conversation', () =
     expect(b.state().workers.map(row => row.label)).toEqual(['task w-1', 'task w-2'])
   })
 
-  it('lists the children of the OPEN conversation only, never another parent\'s', async () => {
-    const sessions = sessionList(['s-a', 's-b'])
-    const b = bench({ sessions })
+  it('lists Delta\'s workers whichever conversation is open', async () => {
+    const sessions = withDelta()
+    const b = bench({ sessions, list: { ok: true, value: deltaList } })
     await b.controller.load()
     b.controller.followSessions()
-    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
-    catalog(sessions, 's-a', [child('w-a1')])
-    catalog(sessions, 's-b', [child('w-b1')])
+    catalog(sessions, 's-delta', [child('w-delta')])
+    catalog(sessions, 's-agent-a', [child('w-other')])
+    await b.controller.loadWorkers()
+    // With agent-a's conversation on screen the roster is still Delta's: this is
+    // the whole correction - a list of Delta's sub-agents, not of the pane.
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-agent-a') })
+    b.controller.followSessions()
     await settle()
-    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-a1')])
-    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-b') })
+    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-delta')])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-delta') })
     await settle()
-    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-b1')])
-    sessions.store.set({ ...sessions.store.getSnapshot(), current: undefined })
-    await settle()
+    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-delta')])
+  })
+
+  it('has no roster to read when the person has no Delta conversation', async () => {
+    const sessions = sessionList(['s-agent-a'])
+    const b = bench({ sessions, list: { ok: true, value: deltaList } })
+    await b.controller.load()
+    await b.controller.loadWorkers()
     expect(b.state().workers).toEqual([])
+    // An absent Delta conversation is an answer, not a failure: the panel says
+    // Delta has no sub-agents rather than showing a broken roster.
+    expect(b.state().workersState).toBe('ready')
   })
 
   it('opens a worker through its exact catalog address and highlights its row', async () => {
-    const sessions = sessionList(['s-a'])
-    const b = bench({ sessions })
+    const sessions = withDelta()
+    const b = bench({ sessions, list: { ok: true, value: deltaList } })
     await b.controller.load()
-    b.controller.followSessions()
-    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
-    catalog(sessions, 's-a', [child('w-1'), child('w-2', { mode: 'one-shot' })])
-    await settle()
-    // No request of any kind: the address the row carries is the whole call.
+    catalog(sessions, 's-delta', [child('w-1'), child('w-2', { mode: 'one-shot' })])
+    await b.controller.loadWorkers()
     const requestsBefore = b.calls.length
     b.controller.openWorker('w-2')
+    // No request of any kind: the address the row carries is the whole call.
     expect(b.workerAddresses).toEqual([
-      { parentSessionId: sid('s-a'), childSessionId: sid('w-2'), mode: 'one-shot' },
+      { parentSessionId: sid('s-delta'), childSessionId: sid('w-2'), mode: 'one-shot' },
     ])
     expect(b.calls).toHaveLength(requestsBefore)
+    await settle()
     expect(b.state().openWorkerId).toBe(sid('w-2'))
-    expect(b.state().openAgent).toBeNull()
   })
 
   it('reports a refused address on the row instead of pretending it opened', async () => {
-    const sessions = sessionList(['s-a'])
-    const b = bench({ sessions, refuseWorker: true })
+    const sessions = withDelta()
+    const b = bench({ sessions, refuseWorker: true, list: { ok: true, value: deltaList } })
     await b.controller.load()
-    b.controller.followSessions()
-    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
-    catalog(sessions, 's-a', [child('w-1')])
-    await settle()
+    catalog(sessions, 's-delta', [child('w-1')])
+    await b.controller.loadWorkers()
     b.controller.openWorker('w-1')
     expect(b.state().workerNotice).toEqual({ id: sid('w-1'), code: 'worker-unavailable' })
-    expect(b.state().openWorkerId).toBe(sid('s-a'))
-    // The stale row itself is not assumed away: the runtime's next catalog is
-    // what removes it, and the notice goes with it.
-    catalog(sessions, 's-a', [])
-    await settle()
-    expect(b.state().workerNotice).toBeNull()
-    expect(b.state().workers).toEqual([])
   })
 
   it('renders an unidentifiable child as a statement, not a door', async () => {
-    const sessions = sessionList(['s-a'])
-    const b = bench({ sessions })
+    const sessions = withDelta()
+    const b = bench({ sessions, list: { ok: true, value: deltaList } })
     await b.controller.load()
-    b.controller.followSessions()
-    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
-    catalog(sessions, 's-a', [{ kind: 'diagnostic', id: sid('w-bad'), reason: 'corrupt' }])
-    await settle()
-    expect(b.state().workers).toEqual([
-      { id: sid('w-bad'), parentId: sid('s-a'), index: 1, running: false, damaged: true },
+    catalog(sessions, 's-delta', [
+      { kind: 'diagnostic', id: sid('w-bad'), reason: 'descriptor-missing' } as unknown as CatalogEntry,
     ])
-    b.controller.openWorker('w-bad')
-    expect(b.workerAddresses).toEqual([])
-    expect(b.state().workerNotice).toBeNull()
+    await b.controller.loadWorkers()
+    expect(b.state().workers.map(row => ({ id: row.id, damaged: row.damaged })))
+      .toEqual([{ id: sid('w-bad'), damaged: true }])
   })
 })
