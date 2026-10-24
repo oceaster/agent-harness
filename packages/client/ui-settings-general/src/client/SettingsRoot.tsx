@@ -104,15 +104,16 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
     if (!parentOrigin) return
     const receive = (event: MessageEvent<unknown>) => {
       const data = event.data
-      if (event.source === window.parent && event.origin === parentOrigin
-        && data !== null && typeof data === 'object' && 'type' in data
-        && data.type === 'e-server:settings:open') actions.open()
+      if (event.source !== window.parent || event.origin !== parentOrigin
+        || data === null || typeof data !== 'object' || !('type' in data)) return
+      if (data.type === 'e-server:settings:open') actions.open()
+      if (data.type === 'e-server:settings:close') close()
     }
     window.addEventListener('message', receive)
     if (settingsOnly) actions.open()
     window.parent.postMessage({ type: 'e-server:settings:ready' }, parentOrigin)
     return () => { window.removeEventListener('message', receive) }
-  }, [actions, parentOrigin, settingsOnly])
+  }, [actions, close, parentOrigin, settingsOnly])
   const openSettings = useCallback(() => { actions.open() }, [actions])
 
   // The ledger tick keeps the rendered section fresh: registrants come and go
