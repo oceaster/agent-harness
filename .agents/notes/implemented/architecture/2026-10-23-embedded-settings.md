@@ -2,6 +2,8 @@
 
 Status: implemented
 
+English | [中文](2026-10-23-embedded-settings.zh.md)
+
 ## Problem
 
 The embedding e-server shell needs a global Settings action on every app, while the conversation frame currently owns the only trigger.
