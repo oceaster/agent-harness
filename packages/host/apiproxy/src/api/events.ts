@@ -15,6 +15,7 @@ import type { JsonValue, SessionEvent, SessionId } from '@deepseek-ai/dsh-sessio
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
 import type { RpcError, RpcId, RpcRequest } from './rpc.ts'
 import type { JobView } from './jobs.ts'
+import type { SessionEffort } from './sessions.ts'
 import type { WorkspaceView } from './workspace.ts'
 
 // Client-side consumers take the render-intent vocabulary from the contract;
@@ -133,6 +134,8 @@ export type HostFrame =
     origin?: 'subagent'
     cwd?: string
     agentPreset?: string
+    /** The deployment's effort policy for the new session (see SessionSummary.effort). */
+    effort?: SessionEffort
   }
   | { type: 'host/session-removed'; sessionId: SessionId }
   | { type: 'host/session-status'; sessionId: SessionId; running: boolean }

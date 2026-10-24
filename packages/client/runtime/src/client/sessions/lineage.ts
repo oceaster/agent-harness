@@ -2,7 +2,7 @@
 // The input order is authoritative; lineage only makes each child adjacent to its parent.
 // Orphaned lineage degrades to root level; cycles fail soft and emit as roots.
 
-import type { SessionId, SessionSummary } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SessionEffort, SessionId, SessionSummary } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
 import type { PendingInteractionStatus } from './pending.ts'
 
@@ -27,6 +27,13 @@ export interface SessionListEntry {
   cwd?: string
   /** Agent preset the session's agent was composed from (summary passthrough). */
   agentPreset?: string
+  /**
+   * The deployment's effort policy for this conversation (summary passthrough).
+   * `SessionListEntry` restates its fields instead of extending the host row, so
+   * a field missing here is dropped between the list and the store — the third
+   * place an effort chip can go silently inert.
+   */
+  effort?: SessionEffort
   /** Current host-computed projection values for list consumers. */
   projectionValues?: Readonly<Partial<SessionProjectionMap>>
   /** User interaction currently blocking this session, derived from live mux frames. */

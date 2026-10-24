@@ -34,6 +34,13 @@ export interface RpcErrorDetailsMap {
   'cancelled': {}
   'session-not-found': { sessionId: SessionId }
   'model-unavailable': { provider: string; model: string }
+  /**
+   * The deployment locked this session's model/effort selection: its effort
+   * policy says `editable: false`, so `session.selectModel` refuses to write
+   * rather than trusting the control to stay quiet. The client's disabled
+   * dialog is a courtesy; this refusal is the enforcement.
+   */
+  'effort-locked': { sessionId: SessionId; agentPreset: string; reason: string }
   'session-conflict': { sessionId: SessionId; requestedCwd: string; existingCwd?: string }
   'invalid-time-zone': { value: string }
   'workspace-attach-failed': { sessionId: SessionId; workspaceId: string }

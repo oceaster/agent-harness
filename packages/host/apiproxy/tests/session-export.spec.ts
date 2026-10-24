@@ -14,7 +14,7 @@ import UserQuestionService from '@deepseek-ai/dsh-user-questions'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionLineageNode } from '@deepseek-ai/dsh-session-query'
 import type { SessionRawArtifact } from '@deepseek-ai/dsh-session-persistence'
-import ApiProxyService, { createApiProxy, toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
+import ApiProxyService, { assertEffortPolicy, createApiProxy, toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
 
 const sid = (id: string): SessionId => id as SessionId
 
@@ -135,6 +135,9 @@ const CONFIG_DEFAULTS = {
   coldBlankProbeMaxBytes: 1024,
   destroyCancelSettleMs: 10_000,
   subagentIdleReap: { idleMs: 21_600_000, scanIntervalMs: 3_600_000 },
+  // The gateway always owns the effort face; an empty table is the honest
+  // statement that this deployment names no policy (no row carries `effort`).
+  effortPolicy: {},
 }
 
 describe('session export compression config', () => {
@@ -147,6 +150,57 @@ describe('session export compression config', () => {
     for (const value of [-1, 10, 1.5]) {
       expect(() => ApiProxyService.Config({ sessionExportCompressionLevel: value } as never)).toThrow()
     }
+  })
+})
+
+describe('effort policy config', () => {
+  const policy = { level: 'low', word: 'Dynamic', opens: true, editable: false, tree: true }
+
+  it('accepts the household shape and defaults to an empty table', () => {
+    expect(ApiProxyService.Config({ effortPolicy: { delta: policy } }).effortPolicy)
+      .toEqual({ delta: policy })
+    // No table means no row carries `effort`: the ordinary editable control.
+    expect(ApiProxyService.Config({}).effortPolicy).toEqual({})
+  })
+
+  it('refuses a malformed policy at load rather than defaulting it', () => {
+    // A policy is painted verbatim on a live control, so a silently repaired one
+    // is worse than a gateway that will not start: every arm below must throw.
+    const refused = [
+      // `level` is the tree bar's only input, so a policy without it is nothing.
+      { delta: { word: 'Dynamic' } },
+      { delta: { level: '' } },
+      // A flag that is not a boolean would default to a lock nobody configured.
+      { delta: { level: 'low', editable: 'false' } },
+      { delta: { level: 'low', opens: 1 } },
+      // An empty word would paint nothing where the product owes a sentence.
+      { delta: { level: 'low', word: '' } },
+    ]
+    for (const value of refused) {
+      expect(() => ApiProxyService.Config({ effortPolicy: value } as never)).toThrow()
+    }
+  })
+
+  it('refuses a flag that is present but null', () => {
+    // `schemastery` reads a null flag as "present, null" and passes it through,
+    // and the row's zod schema then rejects every row the gateway emits: a
+    // composition typo would become a wire-time outage. The constructor names it
+    // while the plugin is still refusing to start.
+    expect(() => assertEffortPolicy({ delta: { level: 'low', tree: null } } as never)).toThrow(/tree/)
+    expect(() => assertEffortPolicy({ delta: { level: 'low', word: null } } as never)).toThrow(/word/)
+    // The constructor runs this as its first statement, so a plugin configured
+    // with a null flag cannot reach `createApiProxy` at all.
+    expect(ApiProxyService.prototype.constructor.toString()).toContain('assertEffortPolicy(config.effortPolicy)')
+  })
+
+  it('refuses a key that is not part of the row field', () => {
+    // The row schema strips a key it does not name, so an unknown policy key
+    // would vanish in transit and the control would quietly ignore what the
+    // composition said: fail at load instead, naming it.
+    expect(() => assertEffortPolicy({ delta: { level: 'low', editible: true } } as never))
+      .toThrow(/editible is not a policy key/)
+    expect(() => assertEffortPolicy({ delta: { level: 'low', level2: 'low' } } as never))
+      .toThrow(/level2 is not a policy key/)
   })
 })
 

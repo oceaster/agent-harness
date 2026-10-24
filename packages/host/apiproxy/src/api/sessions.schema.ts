@@ -12,7 +12,8 @@ import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
 import type {
   HistoryEntry, ModelCatalogFailure, ModelCatalogModel, ModelProviderGroup, ModelReasoning,
-  ModelReasoningEffort, ModelSelection, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem, SessionSummary,
+  ModelReasoningEffort, ModelSelection, SessionEffort, SessionListMetadata, SessionProjectionsBlock,
+  SessionSearchItem, SessionSummary,
 } from './sessions.ts'
 import type { ToolEventView } from './events.ts'
 import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -48,6 +49,25 @@ export const sessionEventSchema = z.object({
   ignorable: z.literal(true).optional(),
 }) as unknown as z.ZodType<SessionEvent>
 
+/**
+ * The deployment's effort policy on one list row.
+ *
+ * This schema is load-bearing rather than decorative: it runs BOTH in the
+ * handler's request/response path and in the client's second-level parse
+ * (`UNARY_VALUE_SCHEMAS` in fetch/client.ts), and a zod object strips keys it
+ * does not name. A field omitted here is not rejected — it silently vanishes in
+ * transit, which is exactly how an effort chip goes inert with every package
+ * suite still green. `level` is required because a row without it contributes
+ * nothing to the tree-maximum bar Delta's control reads.
+ */
+export const sessionEffortSchema = z.object({
+  level: z.string().min(1),
+  word: z.string().min(1).optional(),
+  opens: z.boolean().optional(),
+  editable: z.boolean().optional(),
+  tree: z.boolean().optional(),
+}) as unknown as z.ZodType<Wire<SessionEffort>>
+
 /** SessionSummary row of session.list (`projections` reuses the history block's shape and schema). */
 export const sessionSummarySchema = z.object({
   sessionId: sessionIdSchema,
@@ -58,6 +78,7 @@ export const sessionSummarySchema = z.object({
   origin: z.literal('subagent').optional(),
   cwd: z.string().optional(),
   agentPreset: z.string().optional(),
+  effort: sessionEffortSchema.optional(),
   projections: z.lazy(() => sessionProjectionsBlockSchema).optional(),
 }) as unknown as z.ZodType<Wire<SessionSummary>>
 

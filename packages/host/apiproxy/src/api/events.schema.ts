@@ -15,6 +15,7 @@ import {
 } from './sessions.schema.ts'
 import { taskViewSchema } from './jobs.schema.ts'
 import { workspaceIdSchema, workspaceViewSchema } from './workspace.schema.ts'
+import { sessionEffortSchema } from './sessions.schema.ts'
 
 /** Question fields validated strictly against core dsh-user-questions. */
 export const askUserQuestionItemSchema = z.object({
@@ -76,6 +77,7 @@ export const hostFrameSchema = z.discriminatedUnion('type', [
     origin: z.literal('subagent').optional(),
     cwd: z.string().optional(),
     agentPreset: z.string().optional(),
+    effort: sessionEffortSchema.optional(),
   }),
   z.object({ type: z.literal('host/session-removed'), sessionId: sessionIdSchema }),
   z.object({ type: z.literal('host/session-status'), sessionId: sessionIdSchema, running: z.boolean() }),

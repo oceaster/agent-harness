@@ -368,7 +368,9 @@ describe('ui-model-selection dual entry', () => {
   it('renders the deployment\'s per-session effort policy through the seat, identity-stable between reads', async () => {
     const b = await bench()
     b.mint('delta')
-    b.setRows([row('delta', { effort: { word: 'Dynamic', opens: true, editable: false } })])
+    // `level` is required on a published row (it is the tree bar's only input),
+    // so the fixture supplies one even though this case only exercises the copy.
+    b.setRows([row('delta', { effort: { level: 'low', word: 'Dynamic', opens: true, editable: false } })])
     const face = b.seat().inject!(sid('delta'))
     expect(face.available).toBe(true)
     expect(face.policy.getSnapshot()).toEqual({ word: 'Dynamic', opens: true, editable: false })

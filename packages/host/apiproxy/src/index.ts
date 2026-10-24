@@ -15,7 +15,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
-import type { ApiProxy } from './api/index.ts'
+import type { ApiProxy, EffortPolicyTable, SessionEffort } from './api/index.ts'
 import {
   createApiProxy,
   DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
@@ -101,6 +101,61 @@ export interface Config {
    * @default { idleMs: 21600000, scanIntervalMs: 3600000 }
    */
   subagentIdleReap?: SubagentIdleReapConfig
+  /**
+   * The deployment's effort policy per personality (or preset) id: what effort
+   * each session actually runs at, the word its effort control paints, and
+   * whether that control may open and may write. One table, one lookup, no
+   * second source — a personality's level and its copy are the pair that must
+   * never disagree, so they travel together from the same composition row.
+   *
+   * Each entry is checked when the plugin loads: `level` is required, `word`
+   * must be a non-empty string when present, and `opens`/`editable`/`tree` must
+   * be booleans. A malformed entry is refused outright rather than defaulted,
+   * because a silently repaired policy paints the wrong word on a live control
+   * — worse than a plugin that will not start. Absent, this deployment names no
+   * policy and every session renders the ordinary editable control.
+   * @default {}
+   */
+  effortPolicy?: EffortPolicyTable
+}
+
+/** The keys one policy entry may carry: the row field's own vocabulary, and nothing else. */
+const EFFORT_POLICY_KEYS: readonly (keyof SessionEffort)[] = ['level', 'word', 'opens', 'editable', 'tree']
+
+/**
+ * Refuse an effort policy the row schema could not later carry.
+ *
+ * `schemastery` checks the declared TYPES but reads a `null` value as "present,
+ * null", and the row's zod schema then rejects every row the gateway emits —
+ * a load-time nuisance turned into a wire-time outage. A flag that is neither a
+ * boolean nor absent is a mistake in the composition, so it is named here while
+ * the plugin is still refusing to start.
+ * @param table - the validated config table, possibly absent.
+ * @throws Error naming the preset and key of the first malformed entry.
+ */
+export function assertEffortPolicy(table: EffortPolicyTable | undefined): void {
+  for (const [preset, policy] of Object.entries(table ?? {})) {
+    if (typeof policy.level !== 'string' || policy.level === '') {
+      throw new Error(`effortPolicy[${JSON.stringify(preset)}].level must be a non-empty string`)
+    }
+    for (const key of Object.keys(policy)) {
+      if (!(EFFORT_POLICY_KEYS as readonly string[]).includes(key)) {
+        // The row schema strips a key it does not name, so an unknown one would
+        // vanish in transit and the control would quietly ignore what the
+        // composition said. Name it while the plugin is still refusing to start.
+        throw new Error(`effortPolicy[${JSON.stringify(preset)}].${key} is not a policy key; `
+          + `expected one of ${EFFORT_POLICY_KEYS.join(', ')}`)
+      }
+    }
+    for (const key of ['word', 'opens', 'editable', 'tree'] as const) {
+      const value = policy[key]
+      if (value === undefined) continue
+      if (typeof value !== (key === 'word' ? 'string' : 'boolean') || (key === 'word' && value === '')) {
+        throw new Error(`effortPolicy[${JSON.stringify(preset)}].${key} must be a `
+          + `${key === 'word' ? 'non-empty string' : 'boolean'} when present, got ${JSON.stringify(value)}`)
+      }
+    }
+  }
 }
 
 /**
@@ -121,6 +176,16 @@ export class ApiProxyService extends Service implements ApiProxy {
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     destroyCancelSettleMs: z.natural().default(DEFAULT_DESTROY_CANCEL_SETTLE_MS),
     subagentIdleReap: SubagentIdleReapConfigSchema,
+    // `z.dict` of a strict object: an unknown policy key is dropped by the
+    // object shape, but every named key is type-checked, so a string where a
+    // flag belongs, an empty word, or a policy with no level refuses the load.
+    effortPolicy: z.dict(z.object({
+      level: z.string().min(1).required(),
+      word: z.string().min(1),
+      opens: z.boolean(),
+      editable: z.boolean(),
+      tree: z.boolean(),
+    })),
   })
 
   readonly sessions: ApiProxy['sessions']
@@ -139,6 +204,7 @@ export class ApiProxyService extends Service implements ApiProxy {
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'apiProxy')
+    assertEffortPolicy(config.effortPolicy)
     const api = createApiProxy(ctx, {
       defaultModelSelection: () => ctx.agentDefaultModel.currentSelection(),
       saveDefaultModelSelection: selection => ctx.agentDefaultModel.saveSelection(selection),
@@ -159,6 +225,10 @@ export class ApiProxyService extends Service implements ApiProxy {
         idleMs: DEFAULT_SUBAGENT_IDLE_REAP_IDLE_MS,
         scanIntervalMs: DEFAULT_SUBAGENT_IDLE_REAP_SCAN_INTERVAL_MS,
       },
+      // Always passed, even as `{}`: the gateway owns the effort face, and an
+      // empty table is the honest statement that this deployment names none
+      // (an absent one would read the same, but passing it keeps one branch).
+      effortPolicy: config.effortPolicy ?? {},
     })
     this.sessions = api.sessions
     this.subagents = api.subagents

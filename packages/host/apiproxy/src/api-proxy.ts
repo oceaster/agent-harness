@@ -36,9 +36,10 @@ import {
 import type { PresetBearingSession } from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {
-  ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
+  ApiProxy, ConfigurableProviderView, CredentialView, EffortPolicyTable, GoalRef, HistoryEntry, HostFrame,
   ModelCatalogFailure, ModelProviderGroup,
-  ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
+  ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionEffort, SessionListMetadata,
+  SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
   WorkspaceId, WorkspaceView,
 } from './api/index.ts'
@@ -504,34 +505,74 @@ function sessionListUpdatedAt(header: SessionHeader, metadata: SessionListMetada
   return Math.max(header.createdAt, metadata?.lastPromptAt ?? 0)
 }
 
-/** Shared Session-header projection for list baselines and creation frames. */
-function sessionListFields(header: SessionHeader, events: readonly SessionEvent[] = []): {
+/**
+ * The effort policy one resolved preset publishes, or undefined.
+ * @param table - the composition's `effortPolicy` table; undefined names none.
+ * @param agentPreset - the preset the session resolves to, if any.
+ * @returns that preset's policy, absent when the table or the entry is.
+ */
+function effortOf(
+  table: EffortPolicyTable | undefined,
+  agentPreset: string | undefined,
+): SessionEffort | undefined {
+  if (table === undefined || agentPreset === undefined) return undefined
+  // Own-property lookup only: a preset named `constructor` or `toString` must
+  // read as "policy absent", never as an inherited function object.
+  return Object.hasOwn(table, agentPreset) ? table[agentPreset] : undefined
+}
+
+/**
+ * Shared Session-header projection for list baselines and creation frames.
+ * @param header - the session's creation header.
+ * @param events - its log, oldest first (the preset resolution reads it).
+ * @param effortPolicy - the deployment's effort table; absent names no policy.
+ * @returns the row fields every list surface shares.
+ */
+function sessionListFields(
+  header: SessionHeader,
+  events: readonly SessionEvent[] = [],
+  effortPolicy?: EffortPolicyTable,
+): {
   parentSessionId?: SessionId
   origin?: 'subagent'
   cwd?: string
   agentPreset?: string
+  effort?: SessionEffort
 } {
   // The preset comes from the log, not the header: a session that switched
   // while blank ran its turns under the newer composition, and a picker
-  // showing the creation-time value would contradict what the model saw.
+  // showing the creation-time value would contradict what the model saw. The
+  // effort policy rides the SAME resolved preset, so the two can never name
+  // different personalities: one lookup, one row.
   const agentPreset = resolveSessionPreset({ header, events })
+  // Descendants inherit the parent's preset (`childSessionMeta`), so a
+  // subagent row carries its coordinator's policy and, more importantly, its
+  // `level` — which is what the coordinator's tree bar is computed from.
+  const effort = effortOf(effortPolicy, agentPreset)
   return {
     ...header.parentSession === undefined ? {} : { parentSessionId: header.parentSession },
     ...header.origin === undefined ? {} : { origin: header.origin },
     ...header.cwd === undefined ? {} : { cwd: header.cwd },
     ...agentPreset === undefined ? {} : { agentPreset },
+    ...effort === undefined ? {} : { effort },
   }
 }
 
-/** SessionSummary projection for attached (in-memory) sessions. */
-function summarize(session: Session, running: boolean): SessionSummary {
+/**
+ * SessionSummary projection for attached (in-memory) sessions.
+ * @param session - the attached session.
+ * @param running - whether its agent is mid-turn.
+ * @param effortPolicy - the deployment's effort table; absent names no policy.
+ * @returns the list row.
+ */
+function summarize(session: Session, running: boolean, effortPolicy?: EffortPolicyTable): SessionSummary {
   const metadata = sessionListMetadata(session.events)
   return {
     sessionId: session.id,
     updatedAt: sessionListUpdatedAt(session.header, metadata),
     running,
     blank: metadata.blank,
-    ...sessionListFields(session.header, session.events),
+    ...sessionListFields(session.header, session.events, effortPolicy),
   }
 }
 
@@ -581,6 +622,7 @@ async function summarizeCold(
   metadata: SessionListMetadata | undefined,
   blankProbeMaxBytes: number,
   signal?: AbortSignal,
+  effortPolicy?: EffortPolicyTable,
 ): Promise<SessionSummary> {
   const probed = metadata?.blank === false
     ? undefined
@@ -593,7 +635,7 @@ async function summarizeCold(
     // Header-only: reading the log for a blank-window preset switch would
     // defeat the same index read, and attaching the session replaces this row
     // with `summarize()`, which resolves the switch from the events.
-    ...sessionListFields(meta),
+    ...sessionListFields(meta, [], effortPolicy),
   }
 }
 
@@ -651,6 +693,16 @@ export interface ApiProxyDefaults {
    * falls back to platform detection ({@link canOpenNativePath}).
    */
   canOpenPath?: () => boolean
+  /**
+   * The deployment's effort policy table, keyed by the preset a session
+   * resolves to. Every `session.list` row whose preset appears here carries
+   * the matching `effort` field, and `session.selectModel` refuses a write to a
+   * session whose policy says `editable: false`. Absent, no row carries the
+   * field and every model selection stays writable — the vanilla harness
+   * behaviour a bare `createApiProxy` (a carrier test, a custom embedding)
+   * gets, since the gateway plugin is what passes its validated config.
+   */
+  effortPolicy?: EffortPolicyTable
 }
 
 /** The tool/call payload fields the presenter path reads. */
@@ -1962,7 +2014,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       const agent = ctx.agents.get(session.id)
       const projections = listProjectionsFor(ctx, session.header, session)
       return {
-        ...summarize(session, agent?.status === 'running'),
+        ...summarize(session, agent?.status === 'running', defaults.effortPolicy),
         ...projections === undefined ? {} : { projections },
       }
     }
@@ -1989,6 +2041,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               projections?.values.sessionListMetadata,
               coldBlankProbeMaxBytes,
               signal,
+              defaults.effortPolicy,
             )
             const attachedSession = ctx.sessions.get(meta.id)
             if (attachedSession !== undefined) return summarizeAttached(attachedSession)
@@ -2496,6 +2549,27 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const { sessionId, provider, model, reasoningEffort } = request.payload
         const found = await agentFor(sessionId)
         if ('error' in found) return err(request, found.error)
+        // The lock is ENFORCED here, not merely painted. A client that honours
+        // `effort.editable === false` never calls this, but the wire is
+        // reachable directly (e-server's own profile proxy posts to it), so the
+        // authority has to be the host: a locked session refuses the write and
+        // leaves its selection untouched. Read from the SAME resolved preset the
+        // list row publishes, so the lock and the chip can never disagree.
+        const lockedPreset = resolveSessionPreset(found.agent.session)
+        const lockedPolicy = effortOf(defaults.effortPolicy, lockedPreset)
+        if (lockedPolicy !== undefined && lockedPolicy.editable === false) {
+          // `lockedPreset` is necessarily a string when a policy was found:
+          // `effortOf` answers undefined for an undefined preset.
+          return err(request, {
+            code: 'effort-locked',
+            message: `this conversation's model and effort are fixed by the deployment (${lockedPolicy.word ?? lockedPolicy.level}); the selection cannot be changed here.`,
+            details: {
+              sessionId,
+              agentPreset: lockedPreset ?? '',
+              reason: 'deployment-policy',
+            },
+          })
+        }
         return serializeImageAdmission(found.agent, async () => {
           try {
             const resolved = await ctx.llm.resolveCallConfig({
@@ -3807,7 +3881,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               // has run no turn yet, so this is constantly true in practice.
               blank: sessionBlank(session),
               // Including cwd lets the client group the new session without refreshing the list.
-              ...sessionListFields(session.header, session.events),
+              ...sessionListFields(session.header, session.events, defaults.effortPolicy),
             }))
           }),
           ctx.on('session/disposed', (session: Session) => {

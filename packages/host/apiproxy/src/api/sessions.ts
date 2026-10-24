@@ -173,6 +173,52 @@ export type QueueAction =
   | { kind: 'remove' }
   | { kind: 'steer' }
 
+/**
+ * The deployment's effort policy for one session, published on its list row.
+ *
+ * The one consumer is the composer's effort seat (ui-model-selection), which
+ * cannot read a session's model selection to learn this: `session.models` is
+ * refused with `agent-busy` for exactly the addressed subagent sessions a
+ * tree walk has to visit. So the row carries the answer instead, filled by the
+ * gateway from the composition's `effortPolicy` table (keyed by the preset the
+ * session resolves — see `resolveSessionPreset`) rather than from the log.
+ *
+ * Every key is a deployment fact, not a derivation:
+ * - `level` — the effort id the session actually runs at, the whole input to
+ *   the tree-maximum bar. Present on every row whose preset the table names,
+ *   INCLUDING every descendant, because the bar of a session further up the
+ *   tree is computed from them.
+ * - `word` — the exact text to paint, travelling VERBATIM. It is deployment
+ *   copy, so it is never derived from `level`: `Dynamic` is what Delta's chip
+ *   says while its level is `low`.
+ * - `opens` — the dialog may open; absent means true.
+ * - `editable` — the dialog may write; absent means true, and `false` is also
+ *   enforced by `session.selectModel`, which refuses the write outright rather
+ *   than trusting the control to stay quiet (see `effort-locked`).
+ * - `tree` — this session's bar sits at the highest `level` in its own subtree;
+ *   absent means false, and only a row that asks for it gets the walk.
+ */
+export interface SessionEffort {
+  /** The effort id this session runs at (required — the tree bar's only input). */
+  level: string
+  /** The word the control paints in place of a level name: `Off`, `Max`, `Dynamic`. */
+  word?: string
+  /** Whether the trigger opens the dialog; absent = true. */
+  opens?: boolean
+  /** Whether the dialog may write; absent = true. */
+  editable?: boolean
+  /** Whether the bar sits at the highest `level` in this session's own subtree; absent = false. */
+  tree?: boolean
+}
+
+/**
+ * The deployment's whole effort table: personality (or preset) id → policy.
+ * Supplied to the gateway as `config.effortPolicy`; absent means this
+ * deployment names no policy and every row omits `effort`, which the client
+ * renders as the ordinary editable control it has always shipped.
+ */
+export type EffortPolicyTable = Readonly<Record<string, SessionEffort>>
+
 /** One Session list entry. */
 export interface SessionSummary {
   sessionId: SessionId
@@ -207,6 +253,12 @@ export interface SessionSummary {
    * the deployment currently defaults to.
    */
   agentPreset?: string
+  /**
+   * The deployment's effort policy for this session, keyed by the preset it
+   * resolves; absent when the deployment names none for that preset (or
+   * composes no presets at all), in which case the control stays ordinary.
+   */
+  effort?: SessionEffort
   /**
    * Projection baseline for this row, with zero log loads: attached sessions
    * read the registry's live watermark cut; cold sessions read the persisted

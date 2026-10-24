@@ -16,7 +16,7 @@
  */
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import type {
-  IApiClient, RpcError, RpcResult, SessionId, SubagentAddress, JobView, WorkspaceId,
+  IApiClient, RpcError, RpcResult, SessionEffort, SessionId, SubagentAddress, JobView, WorkspaceId,
 } from '@deepseek-ai/dsh-api-remotes/client'
 // Value import from the inline-safe wire layer (not the connection plugin):
 // plugin-to-plugin value imports are a bundle purity error.
@@ -52,6 +52,15 @@ export interface SessionSummary {
    * session actually runs rather than the deployment's current default.
    */
   agentPreset?: string
+  /**
+   * The deployment's effort policy for this conversation, published on the
+   * list row beside `agentPreset`. Its one consumer is the composer's effort
+   * seat, which paints `word` verbatim and honours `opens`/`editable`; absent
+   * means this deployment names no policy and the control stays ordinary.
+   * Passed through from the host row untouched — the store is a carrier, never
+   * an author, of these values.
+   */
+  effort?: SessionEffort
   parentId?: SessionId
   /** Coarse durable origin for navigation filtering; not a continuation capability. */
   origin?: 'subagent'
@@ -689,6 +698,7 @@ export class SessionRuntime implements ISessions {
         ...(entry.parentSessionId !== undefined ? { parentId: entry.parentSessionId } : {}),
         ...(entry.origin !== undefined ? { origin: entry.origin } : {}),
         ...(entry.agentPreset !== undefined ? { agentPreset: entry.agentPreset } : {}),
+        ...(entry.effort !== undefined ? { effort: entry.effort } : {}),
       }
     }
     if (current !== undefined && currentAddress !== undefined) {
