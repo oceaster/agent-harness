@@ -119,6 +119,8 @@ interface BenchOptions {
   refreshFails?: boolean
   /** Omit the pull entirely, as a runtime without the verb would. */
   withoutRefresh?: boolean
+  /** Make `openSubagent` refuse, as the runtime does for a stale address. */
+  refuseWorker?: boolean
   sessions?: ReturnType<typeof sessionList>
 }
 
@@ -157,8 +159,22 @@ function bench(options: BenchOptions = {}) {
     },
   }
   const hand = clock()
+  const workers: { parentSessionId: string; childSessionId: string; mode: string }[] = []
   const port: InboxSessionPort = {
     list: sessions.store,
+    // The runtime is the authority on openable children: this double records
+    // the exact address the controller composed and moves the selection the way
+    // `SessionManager.selectSubagent` does, so a highlight can be asserted.
+    openSubagent: (address) => {
+      workers.push({
+        parentSessionId: address.parentSessionId,
+        childSessionId: address.childSessionId,
+        mode: address.mode,
+      })
+      if (options.refuseWorker === true) throw new Error('not a healthy catalog child')
+      opened.push(address.childSessionId)
+      sessions.store.set({ ...sessions.store.getSnapshot(), current: address.childSessionId })
+    },
     // The real SessionRuntime projects every selection into `list.current` on
     // its own snapshot store, and the inbox derives the row highlight from that
     // value. A double that only recorded the call would let a click-only
@@ -191,6 +207,7 @@ function bench(options: BenchOptions = {}) {
     sessions,
     calls,
     opened,
+    workerAddresses: workers,
     clearedFlag: () => cleared,
     refreshCount: () => refreshes,
     hand,
@@ -696,5 +713,129 @@ describe('inbox controller: live badges without polling', () => {
     sessions.add('s-a', { running: false })
     await settle()
     expect(b.state().rows.find(candidate => candidate.agent === 'agent-a')?.running).toBe(true)
+  })
+})
+
+describe('inbox controller: the sub-agent roster of the open conversation', () => {
+  /** One catalog entry, shaped exactly as the harness's `subagent.list` answers. */
+  type CatalogEntry = SessionListState['subagentsByParent'][SessionId]['entries'][number]
+  const child = (
+    id: string,
+    overrides: Partial<Extract<CatalogEntry, { kind: 'child' }>> = {},
+  ): CatalogEntry => ({
+    kind: 'child', id: sid(id), mode: 'continuable', label: `task ${id}`,
+    activity: 'inactive', hasChildren: false, ...overrides,
+  })
+
+  /** Put one parent's catalog on the session list, as the runtime projects it. */
+  const catalog = (
+    sessions: ReturnType<typeof sessionList>,
+    parentId: string,
+    entries: readonly CatalogEntry[],
+  ): void => {
+    const snapshot = sessions.store.getSnapshot()
+    sessions.store.set({
+      ...snapshot,
+      subagentsByParent: {
+        ...snapshot.subagentsByParent,
+        [sid(parentId)]: { entries, parentAvailable: true, state: 'ready', error: null },
+      },
+    })
+  }
+
+  it('is empty until the harness catalog of the open conversation lands', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    expect(b.state().workers).toEqual([])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    sessions.store.set({
+      ...sessions.store.getSnapshot(),
+      subagentsByParent: {
+        [sid('s-a')]: {
+          entries: [child('w-1'), child('w-2', { mode: 'one-shot', activity: 'running' })],
+          parentAvailable: true, state: 'ready', error: null,
+        },
+      },
+    })
+    await settle()
+    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-1'), sid('w-2')])
+    expect(b.state().workers.map(row => row.index)).toEqual([1, 2])
+    expect(b.state().workers.map(row => row.mode)).toEqual(['continuable', 'one-shot'])
+    expect(b.state().workers.map(row => row.running)).toEqual([false, true])
+    expect(b.state().workers.map(row => row.label)).toEqual(['task w-1', 'task w-2'])
+  })
+
+  it('lists the children of the OPEN conversation only, never another parent\'s', async () => {
+    const sessions = sessionList(['s-a', 's-b'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    catalog(sessions, 's-a', [child('w-a1')])
+    catalog(sessions, 's-b', [child('w-b1')])
+    await settle()
+    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-a1')])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-b') })
+    await settle()
+    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-b1')])
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: undefined })
+    await settle()
+    expect(b.state().workers).toEqual([])
+  })
+
+  it('opens a worker through its exact catalog address and highlights its row', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    catalog(sessions, 's-a', [child('w-1'), child('w-2', { mode: 'one-shot' })])
+    await settle()
+    // No request of any kind: the address the row carries is the whole call.
+    const requestsBefore = b.calls.length
+    b.controller.openWorker('w-2')
+    expect(b.workerAddresses).toEqual([
+      { parentSessionId: sid('s-a'), childSessionId: sid('w-2'), mode: 'one-shot' },
+    ])
+    expect(b.calls).toHaveLength(requestsBefore)
+    expect(b.state().openWorkerId).toBe(sid('w-2'))
+    expect(b.state().openAgent).toBeNull()
+  })
+
+  it('reports a refused address on the row instead of pretending it opened', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions, refuseWorker: true })
+    await b.controller.load()
+    b.controller.followSessions()
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    catalog(sessions, 's-a', [child('w-1')])
+    await settle()
+    b.controller.openWorker('w-1')
+    expect(b.state().workerNotice).toEqual({ id: sid('w-1'), code: 'worker-unavailable' })
+    expect(b.state().openWorkerId).toBe(sid('s-a'))
+    // The stale row itself is not assumed away: the runtime's next catalog is
+    // what removes it, and the notice goes with it.
+    catalog(sessions, 's-a', [])
+    await settle()
+    expect(b.state().workerNotice).toBeNull()
+    expect(b.state().workers).toEqual([])
+  })
+
+  it('renders an unidentifiable child as a statement, not a door', async () => {
+    const sessions = sessionList(['s-a'])
+    const b = bench({ sessions })
+    await b.controller.load()
+    b.controller.followSessions()
+    sessions.store.set({ ...sessions.store.getSnapshot(), current: sid('s-a') })
+    catalog(sessions, 's-a', [{ kind: 'diagnostic', id: sid('w-bad'), reason: 'corrupt' }])
+    await settle()
+    expect(b.state().workers).toEqual([
+      { id: sid('w-bad'), parentId: sid('s-a'), index: 1, running: false, damaged: true },
+    ])
+    b.controller.openWorker('w-bad')
+    expect(b.workerAddresses).toEqual([])
+    expect(b.state().workerNotice).toBeNull()
   })
 })

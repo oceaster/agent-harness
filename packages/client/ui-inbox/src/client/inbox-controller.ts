@@ -20,7 +20,7 @@
  * arrives is reported as a row failure instead of a throw.
  */
 import type {
-  SessionId, SessionListState, SessionSummary, SnapshotStore,
+  SessionId, SessionListState, SessionSummary, SnapshotStore, SubagentAddress,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
@@ -43,8 +43,44 @@ const LISTED_TIMEOUT_MS = 10_000
  *   conversation still exists and the row must stay populated.
  * - `session-not-listed`: open succeeded but the returned session never
  *   reached the client's session list, so the pane cannot show it.
+ * - `worker-unavailable`: a sub-agent row was clicked after the live catalog
+ *   stopped calling it a healthy child, so the runtime refused the address.
  */
-export type InboxNoticeCode = InboxFailureCode | 'clear-refused' | 'session-not-listed'
+export type InboxNoticeCode =
+  | InboxFailureCode
+  | 'clear-refused'
+  | 'session-not-listed'
+  | 'worker-unavailable'
+
+/**
+ * One row of the sub-agent roster: a child of the conversation the runtime has
+ * open, exactly as that conversation's own catalog describes it.
+ *
+ * The roster is the ENTRY POINT, never a second transcript: every value here
+ * comes from the harness (`subagentsByParent`), and the only thing this panel
+ * adds is the household's name for a worker — `index` is rendered as
+ * "Epsilon 3" once, and nowhere else, while `label` is the durable creation
+ * label the harness recorded (what the worker was asked to do).
+ */
+export interface InboxWorkerRow {
+  /** Durable child session id; the address half `openSubagent` needs. */
+  readonly id: SessionId
+  /** The direct parent session the catalog was read for. */
+  readonly parentId: SessionId
+  /** 1-based position among this parent's direct children, in catalog order. */
+  readonly index: number
+  /** Durable creation label (the delegation's task), absent when none was recorded. */
+  readonly label?: string
+  /** The child's Agent driver is sampling right now. */
+  readonly running: boolean
+  /**
+   * Continuation mode, absent for a diagnostic row: the runtime addresses a
+   * child by its mode, so a row without one cannot be opened.
+   */
+  readonly mode?: 'one-shot' | 'continuable'
+  /** The harness could not identify this child, so its history is unreadable. */
+  readonly damaged: boolean
+}
 
 /** Whole-panel load state. `error` keeps any rows from an earlier successful read. */
 export type InboxStatus = 'loading' | 'ready' | 'error' | 'refused'
@@ -78,6 +114,29 @@ export interface InboxState {
    * agent. An absent agent has none — that is the zero case, never a stored 0.
    */
   activeSubagents: Readonly<Record<string, number>>
+  /**
+   * The sub-agents of the conversation the runtime has open, in the order the
+   * harness listed them. EMPTY when nothing is open, when the open session has
+   * no children, and while its catalog is still loading — absence is "no
+   * roster", never "no workers", because the roster is only ever the catalog
+   * the harness served.
+   *
+   * This is the door and nothing more: each row is a navigable address into
+   * the harness's own read-only conversation, which is where a person reads a
+   * worker. Nothing here draws a transcript.
+   */
+  workers: readonly InboxWorkerRow[]
+  /**
+   * Session id of the conversation the pane paints, for the worker row
+   * highlight. Same derivation as `openAgent`, which stays null while a worker
+   * is open because no agent row owns a sub-agent session.
+   */
+  openWorkerId: SessionId | null
+  /**
+   * The last refused sub-agent click, keyed by the child session id it named.
+   * Cleared by that row's next click.
+   */
+  workerNotice: { id: SessionId; code: InboxNoticeCode } | null
 }
 
 /** Initial snapshot: nothing read yet. */
@@ -90,6 +149,9 @@ const INITIAL: InboxState = {
   notices: {},
   openAgent: null,
   activeSubagents: {},
+  workers: [],
+  openWorkerId: null,
+  workerNotice: null,
 }
 
 /**
@@ -115,6 +177,15 @@ export interface InboxSessionPort {
   refresh?: () => Promise<void>
   /** Select a listed session as the open conversation (throws on an unknown id). */
   open: (id: SessionId) => void
+  /**
+   * Select one catalog-addressed child as the open conversation.
+   *
+   * The runtime is the authority on which children are openable: it refuses an
+   * address its live catalog does not call a healthy child, which is why the
+   * roster rows carry the mode straight out of that catalog rather than
+   * guessing one. Throws on a refused address; the caller reports it on the row.
+   */
+  openSubagent: (address: SubagentAddress) => void
   /** Clear the selection, returning the pane to the no-session state. */
   clear: () => void
 }
@@ -218,6 +289,63 @@ function sameCounts(
   return agents.length === Object.keys(right).length && agents.every(agent => left[agent] === right[agent])
 }
 
+/**
+ * The sub-agent roster of one conversation, straight out of that conversation's
+ * catalog — the same `subagentsByParent` snapshot the harness's own catalog
+ * tree renders, so the two can never list different workers.
+ *
+ * Direct children only. A worker is opened by selecting it, and the roster then
+ * follows the selection one level down, which is how the runtime's catalogs are
+ * addressed (one direct parent per address): descending costs one click and
+ * ascending is the harness's own hierarchy navigation.
+ * @param catalogs - the runtime's per-parent catalogs.
+ * @param parentId - the session the pane has open, if any.
+ * @returns the roster, empty when there is no catalog for that parent.
+ */
+function workerRoster(
+  catalogs: SessionListState['subagentsByParent'],
+  parentId: SessionId | undefined,
+): readonly InboxWorkerRow[] {
+  if (parentId === undefined) return []
+  const catalog = catalogs[parentId]
+  if (catalog === undefined) return []
+  return catalog.entries.map((entry, position): InboxWorkerRow => {
+    const index = position + 1
+    if (entry.kind === 'diagnostic') {
+      // The harness enumerated the child but cannot identify its record, so
+      // there is no mode to address it by: the row is a statement, not a door.
+      return { id: entry.id, parentId, index, running: false, damaged: true }
+    }
+    return {
+      id: entry.id,
+      parentId,
+      index,
+      ...entry.label === undefined ? {} : { label: entry.label },
+      running: entry.activity === 'running',
+      mode: entry.mode,
+      damaged: false,
+    }
+  })
+}
+
+/** Whether two rosters are the same rows, so an unchanged catalog re-renders nothing. */
+function sameWorkers(
+  left: readonly InboxWorkerRow[],
+  right: readonly InboxWorkerRow[],
+): boolean {
+  return left.length === right.length && left.every((row, index) => {
+    const other = right.at(index)
+    return other !== undefined
+      && row.id === other.id
+      && row.parentId === other.parentId
+      && row.index === other.index
+      && row.label === other.label
+      && row.running === other.running
+      && row.mode === other.mode
+      && row.damaged === other.damaged
+  })
+}
+
 /** Owns the inbox snapshot and every open/clear/list transition. */
 export class InboxController {
   /** The snapshot the renderer subscribes to (`useInbox`). */
@@ -259,7 +387,13 @@ export class InboxController {
    */
   private reconcile(): void {
     const snapshot = this.store.getSnapshot()
-    const { ids, byId, current } = this.sessions.list.getSnapshot()
+    const { ids, byId, current, subagentsByParent } = this.sessions.list.getSnapshot()
+    // The roster is the open conversation's own catalog. The runtime refreshes
+    // the SELECTED session's catalog on every membership frame, so this needs
+    // no request of its own: a worker that appears or finishes shows up here on
+    // the same frame the harness's own catalog tree would show it.
+    const workers = workerRoster(subagentsByParent, current)
+    const openWorkerId = current ?? null
     // The row highlight follows `sessions.list.current` — the exact value the
     // conversation pane renders — instead of a private click record. A frame
     // therefore always wins, including the boot frame that restores the
@@ -269,8 +403,9 @@ export class InboxController {
       ? null
       : snapshot.rows.find(row => row.sessionId === current)?.agent ?? null
     if (snapshot.rows.length === 0) {
-      if (openAgent === null) return
-      this.store.set({ ...snapshot, openAgent })
+      if (openAgent === null && sameWorkers(workers, snapshot.workers)
+        && openWorkerId === snapshot.openWorkerId) return
+      this.store.set({ ...snapshot, openAgent, workers, openWorkerId })
       return
     }
     let rows = snapshot.rows
@@ -286,9 +421,44 @@ export class InboxController {
       if (summary.running === row.running && summary.blank === row.blank) continue
       rows = patchRow(rows, row.agent, { running: summary.running, blank: summary.blank })
     }
+    const workerNotice = snapshot.workerNotice !== null
+      && !workers.some(row => row.id === snapshot.workerNotice?.id) ? null : snapshot.workerNotice
     if (rows === snapshot.rows && sameCounts(activeSubagents, snapshot.activeSubagents)
-      && openAgent === snapshot.openAgent) return
-    this.store.set({ ...snapshot, rows, activeSubagents, openAgent })
+      && openAgent === snapshot.openAgent && sameWorkers(workers, snapshot.workers)
+      && openWorkerId === snapshot.openWorkerId && workerNotice === snapshot.workerNotice) return
+    this.store.set({
+      ...snapshot, rows, activeSubagents, openAgent, workers, openWorkerId, workerNotice,
+    })
+  }
+
+  /**
+   * Open one sub-agent of the conversation the pane has open.
+   *
+   * Nothing is fetched and nothing is created here: the address comes from the
+   * row, which came from that conversation's catalog, and the runtime's
+   * `openSubagent` is what moves the pane. A worker that the catalog stopped
+   * calling healthy between the render and the click is refused by the runtime,
+   * and that refusal is said on the row instead of silently doing nothing.
+   * @param id - the child session id the clicked row carries.
+   */
+  openWorker(id: string): void {
+    const snapshot = this.store.getSnapshot()
+    const row = snapshot.workers.find(worker => worker.id === id)
+    if (row === undefined || row.mode === undefined) return
+    this.store.set({ ...snapshot, workerNotice: null })
+    try {
+      this.sessions.openSubagent({
+        parentSessionId: row.parentId,
+        childSessionId: row.id,
+        mode: row.mode,
+      })
+    } catch {
+      this.store.set({ ...this.store.getSnapshot(), workerNotice: { id: row.id, code: 'worker-unavailable' } })
+      return
+    }
+    // The selection moved: re-derive the highlight now rather than waiting for
+    // the list frame, exactly as the agent-row open path does.
+    this.reconcile()
   }
 
   /**

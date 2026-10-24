@@ -56,6 +56,9 @@ function store(initial: Partial<InboxState> = {}): SnapshotStore<InboxState> {
     notices: {},
     openAgent: null,
     activeSubagents: {},
+    workers: [],
+    openWorkerId: null,
+    workerNotice: null,
     ...initial,
   })
 }
@@ -67,6 +70,7 @@ function mount(overrides: {
 } = {}) {
   const inbox = store(overrides.state)
   const open = vi.fn()
+  const openWorker = vi.fn()
   const clear = vi.fn()
   const load = vi.fn()
   const expandSidebar = vi.fn()
@@ -92,12 +96,13 @@ function mount(overrides: {
     useInbox: bindSnapshotSelector(inbox),
     load,
     open,
+    openWorker,
     clear,
     t,
   }
   const view = render(<InboxPanel {...props} />)
   return {
-    ...view, inbox, channels, open, clear, load, expandSidebar, collapseSidebar, collapseOnSelection,
+    ...view, inbox, channels, open, openWorker, clear, load, expandSidebar, collapseSidebar, collapseOnSelection,
     openChannel, clearChannel,
   }
 }
@@ -706,5 +711,71 @@ describe('inbox panel: auto-collapse on selection', () => {
     fireEvent.click(screen.getByTestId('ui-inbox-refresh'))
     fireEvent.click(screen.getByTestId('ui-inbox-menu-agent-a'))
     expect(b.collapseOnSelection).not.toHaveBeenCalled()
+  })
+})
+
+describe('inbox panel: the sub-agent roster of the open conversation', () => {
+  const WORKERS = [
+    { id: 'w-1' as never, parentId: 's-agent-a' as never, index: 1, label: 'Review the frontend', running: true, mode: 'continuable' as const, damaged: false },
+    { id: 'w-2' as never, parentId: 's-agent-a' as never, index: 2, running: false, mode: 'one-shot' as const, damaged: false },
+    { id: 'w-bad' as never, parentId: 's-agent-a' as never, index: 3, running: false, damaged: true },
+  ]
+
+  it('names each worker once, long form, with the durable task on its second line', () => {
+    mount({ state: { workers: WORKERS } })
+    expect(screen.getByText('Epsilon 1')).toBeDefined()
+    expect(screen.getByText('Epsilon 2')).toBeDefined()
+    expect(screen.getByText('Epsilon 3')).toBeDefined()
+    expect(screen.getByText('Review the frontend')).toBeDefined()
+    // A worker with no recorded label says so rather than repeating its name.
+    expect(screen.getByTestId('ui-inbox-worker-state-w-2').textContent).toBe('No task recorded')
+    // The short form is the avatar's monogram and nothing else on the row.
+    expect(screen.getByTestId('ui-inbox-worker-w-1').textContent).toContain('E1')
+    expect(screen.getAllByText('Epsilon 1')).toHaveLength(1)
+  })
+
+  it('renders the rows with the agent row component and styling', () => {
+    mount({ state: { workers: WORKERS } })
+    const agentRow = screen.getByTestId('ui-inbox-row-agent-a')
+    const workerRow = screen.getByTestId('ui-inbox-worker-row-w-1')
+    expect(workerRow.tagName).toBe(agentRow.tagName)
+    expect(workerRow.className).toBe(agentRow.className)
+    const agentButton = screen.getByTestId('ui-inbox-open-agent-a')
+    const workerButton = screen.getByTestId('ui-inbox-worker-w-1')
+    expect(workerButton.tagName).toBe(agentButton.tagName)
+    expect(workerButton.className).toBe(agentButton.className)
+    expect(workerButton.querySelector('[data-presence="running"]')).not.toBeNull()
+  })
+
+  it('opens a worker by id through the injected verb and marks the open one', () => {
+    const b = mount({ state: { workers: WORKERS, openWorkerId: 'w-2' as never } })
+    expect(screen.getByTestId('ui-inbox-worker-w-2').getAttribute('aria-current')).toBe('true')
+    expect(screen.getByTestId('ui-inbox-worker-w-1').getAttribute('aria-current')).toBeNull()
+    fireEvent.click(screen.getByTestId('ui-inbox-worker-w-1'))
+    expect(b.openWorker).toHaveBeenCalledWith('w-1')
+    expect(b.open).not.toHaveBeenCalled()
+    expect(b.collapseOnSelection).toHaveBeenCalled()
+  })
+
+  it('neither offers nor opens a child the harness could not identify', () => {
+    const b = mount({ state: { workers: WORKERS } })
+    const damaged = screen.getByTestId('ui-inbox-worker-w-bad') as HTMLButtonElement
+    expect(damaged.disabled).toBe(true)
+    expect(damaged.textContent).toContain('The harness cannot read this sub-agent’s record.')
+    fireEvent.click(damaged)
+    expect(b.openWorker).not.toHaveBeenCalled()
+  })
+
+  it('says a refused address on the row instead of leaving the click silent', () => {
+    mount({ state: { workers: WORKERS, workerNotice: { id: 'w-1' as never, code: 'worker-unavailable' } } })
+    expect(screen.getByTestId('ui-inbox-worker-notice-w-1').textContent)
+      .toBe('This sub-agent is no longer available.')
+    expect(screen.queryByTestId('ui-inbox-worker-notice-w-2')).toBeNull()
+  })
+
+  it('draws no roster at all when the open conversation has no children', () => {
+    mount()
+    expect(screen.queryByTestId('ui-inbox-workers')).toBeNull()
+    expect(screen.queryAllByTestId(/^ui-inbox-worker-row-/)).toHaveLength(0)
   })
 })

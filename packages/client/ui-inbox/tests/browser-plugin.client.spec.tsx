@@ -66,6 +66,7 @@ async function bench(listBody: unknown = {
 }, options: { channels?: readonly unknown[]; realLayout?: boolean } = {}) {
   const sessions = sessionList()
   const opened: string[] = []
+  const workerAddresses: { parentSessionId: string; childSessionId: string; mode: string }[] = []
   let cleared = false
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
@@ -87,6 +88,12 @@ async function bench(listBody: unknown = {
     // host would — the created conversation appears in the mirror.
     refresh: async () => { sessions.add('s-a') },
     open: (id: SessionId) => { opened.push(id) },
+    // The runtime's own sub-agent door: addressed by the direct parent plus the
+    // child's catalog mode, and it moves the selection onto the child.
+    openSubagent: (address: { parentSessionId: string; childSessionId: string; mode: string }) => {
+      workerAddresses.push(address)
+      sessions.store.set({ ...sessions.store.getSnapshot(), current: address.childSessionId as never })
+    },
     clear: () => { cleared = true },
   })
   ctx.slots.register({
@@ -115,7 +122,7 @@ async function bench(listBody: unknown = {
   vi.stubGlobal('fetch', fetchStub)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   return {
-    ctx, fiber, sessions, opened, fetches, openPage,
+    ctx, fiber, sessions, opened, workerAddresses, fetches, openPage,
     // The root entry's first render, which is what hands the layout store's
     // bound actions to the face (ui-layout/src/client/index.ts's inject hook).
     mountFrame: () => { layout.attachPanels(panels) },
@@ -140,7 +147,7 @@ describe('ui-inbox registration', () => {
     expect(b.entry()?.inject).toBeTypeOf('function')
   })
 
-  it('publishes the snapshot through the hooks compartment and the three verbs', async () => {
+  it('publishes the snapshot through the hooks compartment and its verbs', async () => {
     const b = await bench()
     await b.fiber.await()
     const face = b.entry()?.inject?.() as unknown as InboxInjected
@@ -148,7 +155,30 @@ describe('ui-inbox registration', () => {
     expect(face.hooks.inbox.getSnapshot().status).toBe('ready')
     expect(face.load).toBeTypeOf('function')
     expect(face.open).toBeTypeOf('function')
+    expect(face.openWorker).toBeTypeOf('function')
     expect(face.clear).toBeTypeOf('function')
+  })
+
+  it('routes a sub-agent row through the sessions service, not through a request', async () => {
+    const b = await bench()
+    await b.fiber.await()
+    const face = b.entry()?.inject?.() as unknown as InboxInjected
+    const store = face.hooks.inbox
+    const requestsBefore = b.fetches.length
+    store.set({
+      ...store.getSnapshot(),
+      workers: [{
+        id: 'w-1' as never, parentId: 's-a' as never, index: 1, label: 'Review the frontend',
+        running: false, mode: 'continuable', damaged: false,
+      }],
+      openWorkerId: 's-a' as never,
+    })
+    face.openWorker('w-1')
+    expect(b.workerAddresses).toEqual([
+      { parentSessionId: 's-a', childSessionId: 'w-1', mode: 'continuable' },
+    ])
+    expect(b.fetches).toHaveLength(requestsBefore)
+    expect(store.getSnapshot().openWorkerId).toBe('w-1')
   })
 
   it('publishes the count of conversations running below each row', async () => {

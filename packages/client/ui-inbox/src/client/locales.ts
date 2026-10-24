@@ -25,12 +25,24 @@ export const en = {
   'channel.clearBody': 'Clear your channel history and undelivered notifications? Messages already accepted by an agent remain in its conversation.',
   'channel.confirmClear': 'Clear channel',
 
+  // The sub-agents of the open conversation: the door to a worker, and nothing
+  // about its transcript (the harness's own conversation renders that).
+  'workers.section': 'Sub-agents',
+  // Owen's naming rule: named once in long form on its row, short afterwards.
+  'worker.name': 'Epsilon {n}',
+  'worker.short': 'E{n}',
+  'worker.open': 'Open sub-agent {name}',
+  'worker.noTask': 'No task recorded',
+  'worker.damaged': 'The harness cannot read this sub-agent’s record.',
+  'worker.unavailable': 'This sub-agent is no longer available.',
+
   'panel.refresh': 'Refresh',
   'panel.rail.label': 'Your conversations',
 
   'row.disabled': 'Disabled',
   'presence.online': 'Online',
   'presence.offline': 'Offline',
+  'presence.running': 'Running',
   'presence.unread': 'Unread response',
   'presence.error': 'Stopped: fatal error',
   'row.fresh': 'No conversation yet',
@@ -109,12 +121,21 @@ export const zh: Record<InboxKey, string> = {
   'channel.clearBody': '清空你的频道历史和未发送的通知？助手已经接收的消息将保留在其对话中。',
   'channel.confirmClear': '清空频道',
 
+  'workers.section': '子代理',
+  'worker.name': 'Epsilon {n}',
+  'worker.short': 'E{n}',
+  'worker.open': '打开子代理 {name}',
+  'worker.noTask': '未记录任务',
+  'worker.damaged': '无法读取此子代理的会话记录。',
+  'worker.unavailable': '此子代理已不可用。',
+
   'panel.refresh': '刷新',
   'panel.rail.label': '你的对话',
 
   'row.disabled': '已禁用',
   'presence.online': '在线',
   'presence.offline': '离线',
+  'presence.running': '正在运行',
   'presence.unread': '未读回复',
   'presence.error': '已停止：致命错误',
   'row.fresh': '尚无对话',

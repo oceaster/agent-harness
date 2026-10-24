@@ -116,6 +116,10 @@ export function apply(ctx: ClientContext): void {
     sessions: {
       list: sessions.list,
       open: (id) => { sessions.open(id) },
+      // The sub-agent half of the same seam: one child of the open
+      // conversation, addressed exactly as that conversation's catalog listed
+      // it. The runtime stays the authority on which children are openable.
+      openSubagent: (address) => { sessions.openSubagent(address) },
       clear: () => { sessions.clear() },
       refresh: async (): Promise<void> => {
         await refresh.call(sessions)
@@ -164,6 +168,7 @@ export function apply(ctx: ClientContext): void {
     openChannel: (id: string) => { void channels.open(id); ctx.layout.openPage('agent-channel') },
     clearChannel: (id: string) => { void channels.clear(id) },
     open: (agent: string) => { channels.close(); ctx.layout.openPage(null); void controller.open(agent) },
+    openWorker: (id: string) => { controller.openWorker(id) },
     clear: (agent: string) => { void controller.clear(agent) },
   })
 

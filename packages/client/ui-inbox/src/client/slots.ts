@@ -5,7 +5,7 @@
  *
  * The inject face carries only plain data and callbacks: the snapshot source
  * rides the reserved `hooks` compartment (the renderer binds it to `useInbox`),
- * and the three verbs are closures over the apply-scope controller.
+ * and the verbs are closures over the apply-scope controller.
  */
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
@@ -26,6 +26,13 @@ export interface InboxInjected {
   load: () => void
   /** Open one row's conversation through the inbox API. */
   open: (agent: string) => void
+  /**
+   * Open one sub-agent of the conversation the pane has open, through the
+   * catalog-derived address its row carries. Makes no request of its own: the
+   * runtime's `openSubagent` moves the selection, and the conversation it then
+   * paints is the harness's own read-only one.
+   */
+  openWorker: (id: string) => void
   /** Destroy one row's conversation through the inbox API. */
   clear: (agent: string) => void
   /** Open the channel selected from the server's list. */
@@ -40,4 +47,4 @@ export type InboxPanelProps =
   & InjectFace<InboxInjected>
   & PropsLocale<'inbox'>
 
-export type { InboxState } from './inbox-controller.ts'
+export type { InboxState, InboxWorkerRow } from './inbox-controller.ts'

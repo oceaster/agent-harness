@@ -12,6 +12,18 @@ Agent Channels occupy the main chat tile through layout's `conversation.page` sl
 
 Channel history, available pairs and Clear are scoped to the signed-in person by the backend. Clearing a channel removes its shared history and undelivered notifications; accepted messages remain in the recipient's agent conversation.
 
+## Sub-agents: the door, never a drawing
+
+When the conversation the pane has open has sub-agents, the sidebar lists them in a `Sub-agents` section between the agent rows and the channels. Each worker is a row built from the same row component and the same styles as an agent row — avatar, presence dot, name, one state line — and its second line is the durable creation label the harness recorded (what the worker was asked to do).
+
+The roster is the OPEN conversation's own catalog (`subagentsByParent` from the client session store), direct children only, so the panel and the harness's catalog tree can never disagree about which workers exist: the runtime refreshes the selected session's catalog on every membership frame, and this section costs no request of its own. Opening a worker hands `sessions.openSubagent` the exact address the catalog listed (parent, child, mode), and the conversation column then paints that worker through the harness's own components — `ConversationRoot`, `ChatView`, `AssistantMarkdown`, `MessageItem` — with the composer seat `ui-subagent` owns for a subagent. Nothing in this package draws a transcript, a bubble or a message row: there is no second copy of the chat surface here to drift.
+
+Read-only is the fork's rule, not this panel's, and this deployment's rule is stronger than a restyled composer: `ConversationRoot` paints the composer seat only when `readOnly` is false, and `readOnly` is `child || childSummary` — so a subagent conversation (addressed or listed) has NO composer seat in the tree at all, for a one-shot worker and a continuable one alike. No CSS here could produce that, and none tries. (`SubagentReadOnlyComposer` remains the composable seat for a deployment whose root keeps a seat; in this fork the `!readOnly` gate settles it first.)
+
+A worker is named once, in long form (`Epsilon 3`), on its own row; the short form (`E3`) is the avatar monogram, and the row never prints the name twice. A child the harness enumerated but could not identify is listed as a damaged row with no launch control, because the harness's reason for it is the truth, not something this panel can repair.
+
+The rows follow the harness's selection, so the open worker is the current row; while a worker is open no agent row claims to be current, exactly as no agent row claims a session it does not own.
+
 ## Presence and unread turns
 
 The roster includes disabled agents, which display Offline and Disabled without a launch control. Green means online, red offline, white with a rotating ring while working (a static open ring under reduced motion), blue an unread completed turn, and amber a terminal turn error. Channel dots are green only when both participants are available. Model retries and recoverable tool failures do not produce amber.
@@ -24,7 +36,7 @@ Completed-turn and fatal-error markers come from trusted host events and persist
 
 Portrait changes the shape and nothing else. The region receives `portrait` from the sidebar shell: the rail then draws only the heads — one glyph per agent row and one per channel row, each keeping its row's accessible name (`Open your conversation with X`, or the channel's own name) and its `aria-current` selected state — and a rail glyph opens that conversation in place instead of unfolding the inbox over the chat. Every selection (an agent row, a rail glyph, a channel row) calls `collapseOnSelection` first, so the chosen conversation gets the screen back in one click; the callback is portrait-only and a no-op while the column is already collapsed, so a manual expand is never undone by a render. Status copy (`Working... (4)` and friends), timestamps, section headings, menus, the refresh control and the settings label are not rendered in rail mode at all, rather than merely hidden.
 
-The plugin occupies `sidebar.workspaces` and registers the `agent-channel` center page. Its slot injection publishes controller snapshots and callbacks; components render only those props. The session-list, workspace-browser and new-session plugins are excluded from this deployment's composition.
+The plugin occupies `sidebar.workspaces` and registers the `agent-channel` center page. Its slot injection publishes controller snapshots and callbacks (including `openWorker`, which forwards one catalog-derived address to `sessions.openSubagent`); components render only those props. The session-list, workspace-browser and new-session plugins are excluded from this deployment's composition.
 
 ## Model Experience
 
