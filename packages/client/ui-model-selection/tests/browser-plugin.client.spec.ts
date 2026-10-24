@@ -390,7 +390,7 @@ describe('ui-model-selection dual entry', () => {
     const b = await bench()
     b.mint('delta')
     b.setRows([
-      row('delta', { effort: { word: 'Dynamic', opens: true, editable: false, level: 'low' } }),
+      row('delta', { effort: { level: 'low', word: 'Dynamic', opens: true, editable: false, tree: true } }),
       row('worker-low', { origin: 'subagent', parentId: sid('delta'), effort: { level: 'low' } }),
       row('worker-max', { origin: 'subagent', parentId: sid('delta'), effort: { level: 'max' } }),
       row('grandchild', { origin: 'subagent', parentId: sid('worker-max'), effort: { level: 'high' } }),
@@ -404,16 +404,29 @@ describe('ui-model-selection dual entry', () => {
     expect([...(face.policy.getSnapshot().treeEfforts ?? [])].sort()).toEqual(['high', 'low', 'max'])
   })
 
+  it('walks no tree for a named session that did not ask for one', async () => {
+    const b = await bench()
+    b.mint('darwin')
+    b.setRows([
+      // Darwin's row, exactly as the household payload describes him: no tree.
+      row('darwin', { effort: { level: 'max', word: 'Max', opens: false, editable: false } }),
+      row('worker', { origin: 'subagent', parentId: sid('darwin'), effort: { level: 'max' } }),
+    ])
+    const face = b.seat().inject!(sid('darwin'))
+    expect(face.policy.getSnapshot()).toEqual({ word: 'Max', opens: false, editable: false })
+    expect(face.policy.getSnapshot().treeEfforts).toBeUndefined()
+  })
+
   it('moves a locked bar when a worker reports a new level', async () => {
     const b = await bench()
     b.mint('delta')
-    b.setRows([row('delta', { effort: { word: 'Dynamic', opens: true, editable: false } })])
+    b.setRows([row('delta', { effort: { level: 'low', word: 'Dynamic', opens: true, editable: false, tree: true } })])
     const face = b.seat().inject!(sid('delta'))
     expect(face.policy.getSnapshot().treeEfforts).toBeUndefined()
     let published = 0
     const stop = face.policy.subscribe(() => { published += 1 })
     b.setRows([
-      row('delta', { effort: { word: 'Dynamic', opens: true, editable: false } }),
+      row('delta', { effort: { level: 'low', word: 'Dynamic', opens: true, editable: false, tree: true } }),
       row('worker', { origin: 'subagent', parentId: sid('delta'), effort: { level: 'max' } }),
     ])
     expect(published).toBeGreaterThan(0)
@@ -433,7 +446,7 @@ describe('ui-model-selection dual entry', () => {
     b.setRows([row('worker', {
       origin: 'subagent',
       parentId: sid('delta'),
-      effort: { word: 'High', opens: true, editable: false, track: { names: ['Off', 'Low', 'High', 'Max'], index: 2 } },
+      effort: { level: 'high', word: 'High', opens: true, editable: false, track: { names: ['Off', 'Low', 'High', 'Max'], index: 2 } },
     })])
     const face = b.seat().inject!(sid('worker'))
     expect(face.available).toBe(false)

@@ -114,17 +114,28 @@ const NS = 'model'
  * the addressed subagent sessions a tree walk needs), so the deployment supplies
  * it here instead — one field, read defensively: absent means this deployment
  * names no policy and the control stays the ordinary editable one.
+ *
+ * The household deployment fills it from infra/dsh/personalities.json, which is
+ * already the one configured source of `reasoningEffort` per personality:
+ * Delta `low` → `{ level: 'low', word: 'Dynamic', opens: true, editable: false,
+ * tree: true }`, Darwin `max` → `{ level: 'max', word: 'Max', opens: false,
+ * editable: false }`, Diana `off` → `{ level: 'off', word: 'Off', opens: false,
+ * editable: false }`. `word` travels verbatim rather than being derived from the
+ * adapter's level name, because Owen's copy is the requirement.
  */
 export interface SessionEffortField {
-  /** The effort id this conversation actually runs at (the level the coordinator delegated, for a worker). */
+  /** The effort id this conversation actually runs at — the tree bar's only input, so every row
+   *  that can be someone's descendant carries it. */
   level?: string
-  /** The word the control paints in place of a level name: `Off`, `Max`, `Dynamic`, or a ticket's level. */
+  /** The word the control paints in place of a level name: `Off`, `Max`, `Dynamic`. */
   word?: string
   /** Whether the trigger opens the dialog; absent = true. */
   opens?: boolean
   /** Whether the dialog may write; absent = true. */
   editable?: boolean
-  /** The level track for a conversation whose own model directory can never load. */
+  /** Whether the bar sits at the highest `level` anywhere in this session's own subtree; absent = false. */
+  tree?: boolean
+  /** PARKED with the read-only worker case: a level track for a conversation whose own directory can never load. */
   track?: { names: readonly string[]; index: number }
 }
 
@@ -169,7 +180,9 @@ function descendantEffortsOf(rows: Readonly<Record<SessionId, SessionSummary>>, 
 /**
  * One session's rendered policy: the deployment's field, plus the tree walk the
  * tree-max bar needs. Delta's bar sits at the highest effort in its own tree
- * while its value text still reads that field's word.
+ * while its value text still reads that field's word. The walk runs only for a
+ * row that asked for it (`tree: true`): a named session with a fixed word and no
+ * tree bar must never grow one.
  * @param rows - the session-list snapshot.
  * @param sessionId - the session whose control renders.
  * @returns the policy; `ORDINARY_EFFORT_POLICY` when nothing is named for it.
@@ -177,7 +190,7 @@ function descendantEffortsOf(rows: Readonly<Record<SessionId, SessionSummary>>, 
 function policyOf(rows: SessionListState, sessionId: SessionId): EffortPolicy {
   const field = effortFieldOf(rows.byId[sessionId])
   if (field === undefined) return ORDINARY_EFFORT_POLICY
-  const treeEfforts = descendantEffortsOf(rows.byId, sessionId)
+  const treeEfforts = field.tree === true ? descendantEffortsOf(rows.byId, sessionId) : []
   return {
     opens: field.opens ?? true,
     editable: field.editable ?? true,
