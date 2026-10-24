@@ -122,7 +122,7 @@ function DragHandle(props: {
   )
 }
 
-/** The three-column frame (see module doc). */
+/** The four-column frame (see module doc). */
 export function AppFrame({
   useStore,
   useSessions,
@@ -287,11 +287,12 @@ export function AppFrame({
         })}
       </div>
       <>
-        {/* Both column occupants stay at fixed tree positions from first
+        {/* The column occupants stay at fixed tree positions from first
             paint — no loading gate: a bare status line reads worse than
             the shell's own pending rendering. The conversation
             is session-maybe; the strict details entry naturally renders
-            empty while no session is current. */}
+            empty while no session is current, and the rail's own (empty)
+            column mounts only where a writable conversation asks for it. */}
         <CenterColumn>{panels.page === null
           ? renderSlot('conversation', {})
           : renderSlot('conversation.page', {}, { only: panels.page })}</CenterColumn>
@@ -303,8 +304,9 @@ export function AppFrame({
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
-      {/* The collapsed rail is fixed-width: no resize handle while closed, and a
-          portrait column has no track to drag (it floats over the chat). */}
+      {/* The collapsed sidebar keeps its fixed-width rail, so it has no resize
+          handle while closed, and a portrait column has no track to drag (it
+          floats over the chat). */}
       {!portrait && !sidebarCollapsed && (
         <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />
       )}
