@@ -9,7 +9,7 @@ import css from './ModelSelect.module.css'
 interface EffortLevel {
   id: string | undefined
   name: string
-  description: string | undefined
+  description?: string
 }
 
 /** Render the effort menu the session's policy describes.
@@ -35,10 +35,11 @@ export function ModelSelect({ locked, available, policy: policySource, directory
   // dialog still has to show where the delegated level sits.
   const track = policy.track
   const levels: EffortLevel[] = track !== undefined
-    ? track.names.map(name => ({ id: name, name, description: undefined }))
+    ? track.names.map(name => ({ id: name, name }))
     : reasoning === undefined ? [] : [
-      ...(reasoning.defaultEffort === undefined ? [{ id: undefined, name: t('effort.providerDefault'), description: undefined }] : []),
-      ...reasoning.efforts,
+      ...(reasoning.defaultEffort === undefined ? [{ id: undefined, name: t('effort.providerDefault') }] : []),
+      ...reasoning.efforts.map(level => ({ id: level.id, name: level.name,
+        ...(level.description === undefined ? {} : { description: level.description }) })),
     ]
   const ownIndex = track !== undefined
     ? Math.min(Math.max(track.index, 0), Math.max(0, levels.length - 1))
