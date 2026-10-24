@@ -421,7 +421,12 @@ describe('ui-model-selection dual entry', () => {
     stop()
   })
 
-  it('renders a named read-only policy for an addressed worker session without issuing an Agent-bound RPC', async () => {
+  // PARKED, not deleted: Owen deferred the read-only worker case on 2026-10-24
+  // ("Neither - skip it for now"). A read-only worker conversation mounts no
+  // composer, so the seat is never painted for one; the control can still
+  // render a supplied level track (its unit test proves that), but the wiring
+  // deliberately keeps the pre-existing "renders nothing" behaviour.
+  it('still withholds the seat from an addressed worker session, even with a named policy', async () => {
     const b = await bench()
     b.mint('worker')
     b.address(sid('worker'))
@@ -431,17 +436,12 @@ describe('ui-model-selection dual entry', () => {
       effort: { word: 'High', opens: true, editable: false, track: { names: ['Off', 'Low', 'High', 'Max'], index: 2 } },
     })])
     const face = b.seat().inject!(sid('worker'))
-    // The deployment named it, so it renders — but the directory stays
-    // unreachable, exactly as before: no load, no select, no wire call.
-    expect(face.available).toBe(true)
-    expect(face.policy.getSnapshot()).toEqual({
-      word: 'High', opens: true, editable: false,
-      track: { names: ['Off', 'Low', 'High', 'Max'], index: 2 },
-    })
+    expect(face.available).toBe(false)
+    // The policy is derivable — parked behind `available`, ready to un-park.
+    expect(face.policy.getSnapshot().word).toBe('High')
     face.load()
     await expect(face.select({ provider: 'deepseek', model: 'deepseek-v4-pro' })).resolves.toBe(false)
     expect(b.calls).toEqual({ models: 0, select: 0 })
-    // And the /model popup entry stays withheld from that session.
     expect(b.contribution().available(projection('worker'))).toBe(false)
   })
 })

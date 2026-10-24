@@ -30,9 +30,9 @@ export function ModelSelect({ locked, available, policy: policySource, directory
   const model = state.groups.find(group => group.id === current?.provider)?.models.find(item => item.id === current?.model)
   const reasoning = model?.reasoning
   const effective = current?.reasoningEffort ?? reasoning?.defaultEffort
-  // A policy that carries its own track replaces the directory's offer: an
-  // addressed worker conversation has no `session.models` to load, yet its
-  // dialog still has to show where the delegated level sits.
+  // A policy that carries its own track replaces the directory's offer, for a
+  // conversation that can never load one. PARKED with the worker case (see
+  // slots.ts): correct and tested, but no deployment publishes a track yet.
   const track = policy.track
   const levels: EffortLevel[] = track !== undefined
     ? track.names.map(name => ({ id: name, name }))

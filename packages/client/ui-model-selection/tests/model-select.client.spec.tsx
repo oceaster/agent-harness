@@ -243,10 +243,12 @@ describe('the four effort policies, in Owen’s words', () => {
     expect(screen.getByRole<HTMLInputElement>('slider').value).toBe('2')
     expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('Dynamic')
   })
-  it('A read-only worker conversation: locked at the level the ticket was delegated', async () => {
-    // A worker's own directory cannot load (`session.models` answers
-    // agent-busy for addressed subagent sessions), so its policy carries the
-    // track and the delegated level instead.
+  // PARKED (Owen deferred the worker case on 2026-10-24): the control still
+  // renders this shape correctly and this test keeps it honest, but no
+  // deployment publishes a `track` yet and the seat is never mounted for a
+  // read-only worker conversation. Kept, not deleted, so un-parking is a
+  // wiring change rather than a resurrection.
+  it('a parked read-only shape: locked at the level a policy track supplies', async () => {
     const b = bench({ current: null, groups: [] }, {
       policy: { word: 'High', opens: true, editable: false, track: { names: ['Off', 'Low', 'High', 'Max'], index: 2 } },
     })
