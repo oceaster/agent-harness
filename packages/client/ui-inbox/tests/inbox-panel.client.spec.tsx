@@ -716,68 +716,50 @@ describe('inbox panel: auto-collapse on selection', () => {
   })
 })
 
-describe('inbox panel: the sub-agent roster of the open conversation', () => {
+describe('inbox panel: sub-agents are NOT in this sidebar', () => {
+  /**
+   * Owen, 2026-10-23: "issue: sub-agents is appears in my inbox/agent-channel
+   * sidebar." The roster moved to the OTHER interface of the same shell
+   * (EpsilonPanel), so the inbox must render none of it even when the
+   * controller's snapshot carries a populated roster — a person reading their
+   * inbox or a peer channel sees their agents and channels and nothing else.
+   */
   const WORKERS = [
     { id: 'w-1' as never, parentId: 's-agent-a' as never, index: 1, label: 'Review the frontend', running: true, mode: 'continuable' as const, damaged: false },
     { id: 'w-2' as never, parentId: 's-agent-a' as never, index: 2, running: false, mode: 'one-shot' as const, damaged: false },
     { id: 'w-bad' as never, parentId: 's-agent-a' as never, index: 3, running: false, damaged: true },
   ]
 
-  it('names each worker once, long form, with the durable task on its second line', () => {
-    mount({ state: { workers: WORKERS } })
-    expect(screen.getByText('Epsilon 1')).toBeDefined()
-    expect(screen.getByText('Epsilon 2')).toBeDefined()
-    expect(screen.getByText('Epsilon 3')).toBeDefined()
-    expect(screen.getByText('Review the frontend')).toBeDefined()
-    // A worker with no recorded label says so rather than repeating its name.
-    expect(screen.getByTestId('ui-inbox-worker-state-w-2').textContent).toBe('No task recorded')
-    // The short form is the avatar's monogram and nothing else on the row.
-    expect(screen.getByTestId('ui-inbox-worker-w-1').textContent).toContain('E1')
-    expect(screen.getAllByText('Epsilon 1')).toHaveLength(1)
+  it('draws no sub-agent row, heading or notice, whatever the roster holds', () => {
+    mount({
+      state: {
+        workers: WORKERS,
+        workersState: 'ready',
+        openWorkerId: 'w-2' as never,
+        workerNotice: { id: 'w-1' as never, code: 'worker-unavailable' },
+      },
+    })
+    // Nothing from the epsilon interface's tree: absent markup, not hidden.
+    expect(screen.queryByTestId('ui-epsilon-panel')).toBeNull()
+    expect(screen.queryByTestId('ui-epsilon-rail')).toBeNull()
+    expect(screen.queryAllByTestId(/^ui-epsilon-/)).toHaveLength(0)
+    // And no legacy worker-testid either, so a resurrected section is caught.
+    expect(screen.queryAllByTestId(/^ui-inbox-worker/)).toHaveLength(0)
+    expect(screen.queryByText('Delta sub-agents')).toBeNull()
+    expect(screen.queryByText('Epsilon 1')).toBeNull()
+    expect(screen.queryByText('Review the frontend')).toBeNull()
+    // The rows it DOES own are still there, so this is an absence of sub-agents
+    // rather than an empty panel.
+    expect(screen.getByTestId('ui-inbox-row-agent-a')).toBeDefined()
+    expect(screen.getByTestId('agent-channel-row-delta-darwin')).toBeDefined()
   })
 
-  it('renders the rows with the agent row component and styling', () => {
-    mount({ state: { workers: WORKERS } })
-    const agentRow = screen.getByTestId('ui-inbox-row-agent-a')
-    const workerRow = screen.getByTestId('ui-inbox-worker-row-w-1')
-    expect(workerRow.tagName).toBe(agentRow.tagName)
-    expect(workerRow.className).toBe(agentRow.className)
-    const agentButton = screen.getByTestId('ui-inbox-open-agent-a')
-    const workerButton = screen.getByTestId('ui-inbox-worker-w-1')
-    expect(workerButton.tagName).toBe(agentButton.tagName)
-    expect(workerButton.className).toBe(agentButton.className)
-    expect(workerButton.querySelector('[data-presence="running"]')).not.toBeNull()
-  })
-
-  it('opens a worker by id through the injected verb and marks the open one', () => {
-    const b = mount({ state: { workers: WORKERS, openWorkerId: 'w-2' as never } })
-    expect(screen.getByTestId('ui-inbox-worker-w-2').getAttribute('aria-current')).toBe('true')
-    expect(screen.getByTestId('ui-inbox-worker-w-1').getAttribute('aria-current')).toBeNull()
-    fireEvent.click(screen.getByTestId('ui-inbox-worker-w-1'))
-    expect(b.openWorker).toHaveBeenCalledWith('w-1')
-    expect(b.open).not.toHaveBeenCalled()
-    expect(b.collapseOnSelection).toHaveBeenCalled()
-  })
-
-  it('neither offers nor opens a child the harness could not identify', () => {
-    const b = mount({ state: { workers: WORKERS } })
-    const damaged = screen.getByTestId('ui-inbox-worker-w-bad') as HTMLButtonElement
-    expect(damaged.disabled).toBe(true)
-    expect(damaged.textContent).toContain('The harness cannot read this sub-agent’s record.')
-    fireEvent.click(damaged)
-    expect(b.openWorker).not.toHaveBeenCalled()
-  })
-
-  it('says a refused address on the row instead of leaving the click silent', () => {
-    mount({ state: { workers: WORKERS, workerNotice: { id: 'w-1' as never, code: 'worker-unavailable' } } })
-    expect(screen.getByTestId('ui-inbox-worker-notice-w-1').textContent)
-      .toBe('This sub-agent is no longer available.')
-    expect(screen.queryByTestId('ui-inbox-worker-notice-w-2')).toBeNull()
-  })
-
-  it('draws no roster at all when the open conversation has no children', () => {
-    mount()
-    expect(screen.queryByTestId('ui-inbox-workers')).toBeNull()
-    expect(screen.queryAllByTestId(/^ui-inbox-worker-row-/)).toHaveLength(0)
+  it('keeps the inbox rows and the channel section when the roster read failed', () => {
+    mount({ state: { workers: WORKERS, workersState: 'error' } })
+    // A failed catalog belongs to the epsilon interface; it must not push a
+    // banner or a retry control into the inbox's own failure surfaces.
+    expect(screen.queryAllByTestId(/^ui-epsilon-/)).toHaveLength(0)
+    expect(screen.queryByText('Delta’s sub-agents could not load')).toBeNull()
+    expect(screen.getByTestId('ui-inbox-row-agent-a')).toBeDefined()
   })
 })

@@ -121,6 +121,10 @@ interface BenchOptions {
   withoutRefresh?: boolean
   /** Make `openSubagent` refuse, as the runtime does for a stale address. */
   refuseWorker?: boolean
+  /** Make the catalog read itself fail (a harness that answers the list but not the catalog). */
+  workerCatalogFails?: boolean
+  /** Omit the catalog verb entirely, as a runtime without it would. */
+  withoutWorkerCatalog?: boolean
   sessions?: ReturnType<typeof sessionList>
 }
 
@@ -160,6 +164,7 @@ function bench(options: BenchOptions = {}) {
   }
   const hand = clock()
   const workers: { parentSessionId: string; childSessionId: string; mode: string }[] = []
+  const workerReads: string[] = []
   const port: InboxSessionPort = {
     list: sessions.store,
     // The runtime is the authority on openable children: this double records
@@ -195,6 +200,21 @@ function bench(options: BenchOptions = {}) {
         return Promise.resolve()
       },
     },
+    // The catalog verb (`sessions.refreshSubagents`). The real SessionRuntime
+    // asks the host for ONE parent's direct children and projects the answer
+    // into the same `subagentsByParent` snapshot the roster is folded from, so
+    // this double's whole job is the ASK: it records which parent the
+    // controller named, and the roster data arrives through the suite's own
+    // `catalog()` helper. Leaving it out is what kept the roster cases red —
+    // loadWorkers took its 'error' path and the rows stayed empty regardless of
+    // the catalog the test had already put on the store.
+    ...options.withoutWorkerCatalog === true ? {} : {
+      refreshSubagents: (parentSessionId) => {
+        workerReads.push(parentSessionId)
+        if (options.workerCatalogFails === true) return Promise.reject(new Error('catalog unavailable'))
+        return Promise.resolve()
+      },
+    },
   }
   const controller = new InboxController({
     api,
@@ -208,6 +228,8 @@ function bench(options: BenchOptions = {}) {
     calls,
     opened,
     workerAddresses: workers,
+    /** The parent sessions whose catalog the controller asked the runtime for. */
+    workerReads,
     clearedFlag: () => cleared,
     refreshCount: () => refreshes,
     hand,
@@ -769,6 +791,12 @@ describe('inbox controller: Delta\'s sub-agent roster', () => {
     expect(b.state().workers).toEqual([])
     await b.controller.loadWorkers()
     expect(b.state().workers).toEqual([])
+    // A read that answered nothing is `ready` with no rows, not a failure: the
+    // panel must be able to tell "Delta has no sub-agents" from "the read broke".
+    expect(b.state().workersState).toBe('ready')
+    // The parent asked for is Delta's own conversation, named by the inbox API's
+    // delta row - never the conversation the pane is showing.
+    expect(b.workerReads).toEqual([sid('s-delta')])
     catalog(sessions, 's-delta', [child('w-1'), child('w-2', { mode: 'one-shot', activity: 'running' })])
     await b.controller.loadWorkers()
     expect(b.state().workers.map(row => row.id)).toEqual([sid('w-1'), sid('w-2')])
@@ -798,14 +826,54 @@ describe('inbox controller: Delta\'s sub-agent roster', () => {
   })
 
   it('has no roster to read when the person has no Delta conversation', async () => {
-    const sessions = sessionList(['s-agent-a'])
-    const b = bench({ sessions, list: { ok: true, value: deltaList } })
+    // The server's roster answer for a person who owns no Delta row at all, or
+    // whose Delta conversation does not exist yet: no sessionId to read a
+    // catalog for. (The payload differs from `deltaList` in exactly that field.)
+    const noDeltaList: InboxListPayload = {
+      person: { id: 'p-1', name: 'Person One' },
+      agents: [
+        {
+          agent: 'delta', name: 'Delta', hasConversation: false,
+          sessionId: null, blank: true, lastActivityAt: null, running: false,
+        },
+      ],
+    }
+    const sessions = sessionList()
+    const b = bench({ sessions, list: { ok: true, value: noDeltaList } })
     await b.controller.load()
     await b.controller.loadWorkers()
     expect(b.state().workers).toEqual([])
     // An absent Delta conversation is an answer, not a failure: the panel says
-    // Delta has no sub-agents rather than showing a broken roster.
+    // Delta has no sub-agents rather than showing a broken roster. Nothing was
+    // asked of the runtime either — there is no parent to name.
     expect(b.state().workersState).toBe('ready')
+    expect(b.workerReads).toEqual([])
+  })
+
+  it('says the roster could not be read when the runtime has no catalog verb', async () => {
+    // The typed `ISessions` face does not declare `refreshSubagents`; a runtime
+    // without it must fail the read LOUDLY rather than paint an empty list that
+    // reads as "Delta has no sub-agents".
+    const sessions = withDelta()
+    const b = bench({ sessions, list: { ok: true, value: deltaList }, withoutWorkerCatalog: true })
+    await b.controller.load()
+    catalog(sessions, 's-delta', [child('w-1')])
+    await b.controller.loadWorkers()
+    expect(b.state().workersState).toBe('error')
+    expect(b.state().workers).toEqual([])
+  })
+
+  it('keeps the roster usable when the catalog read fails, and keeps the last rows', async () => {
+    const sessions = withDelta()
+    const b = bench({ sessions, list: { ok: true, value: deltaList } })
+    await b.controller.load()
+    catalog(sessions, 's-delta', [child('w-1')])
+    await b.controller.loadWorkers()
+    expect(b.state().workers.map(row => row.id)).toEqual([sid('w-1')])
+    const failing = bench({ sessions, list: { ok: true, value: deltaList }, workerCatalogFails: true })
+    await failing.controller.load()
+    await failing.controller.loadWorkers()
+    expect(failing.state().workersState).toBe('error')
   })
 
   it('opens a worker through its exact catalog address and highlights its row', async () => {
@@ -823,16 +891,28 @@ describe('inbox controller: Delta\'s sub-agent roster', () => {
     expect(b.calls).toHaveLength(requestsBefore)
     await settle()
     expect(b.state().openWorkerId).toBe(sid('w-2'))
+    // A worker conversation is nobody's agent row: the pane is on a session no
+    // inbox row names, so no row may claim to be open.
+    expect(b.state().openAgent).toBeNull()
   })
 
   it('reports a refused address on the row instead of pretending it opened', async () => {
     const sessions = withDelta()
     const b = bench({ sessions, refuseWorker: true, list: { ok: true, value: deltaList } })
     await b.controller.load()
+    // The frames subscription is what folds a new catalog into the roster, so a
+    // catalog the harness withdraws is the frame that retires the notice.
+    b.controller.followSessions()
     catalog(sessions, 's-delta', [child('w-1')])
     await b.controller.loadWorkers()
     b.controller.openWorker('w-1')
     expect(b.state().workerNotice).toEqual({ id: sid('w-1'), code: 'worker-unavailable' })
+    // The stale row itself is not assumed away: the runtime's next catalog is
+    // what removes it, and the notice goes with it.
+    catalog(sessions, 's-delta', [])
+    await settle()
+    expect(b.state().workerNotice).toBeNull()
+    expect(b.state().workers).toEqual([])
   })
 
   it('renders an unidentifiable child as a statement, not a door', async () => {
@@ -845,5 +925,10 @@ describe('inbox controller: Delta\'s sub-agent roster', () => {
     await b.controller.loadWorkers()
     expect(b.state().workers.map(row => ({ id: row.id, damaged: row.damaged })))
       .toEqual([{ id: sid('w-bad'), damaged: true }])
+    // A diagnostic row carries no mode, so it has no address to open; clicking
+    // it is a no-op rather than a refused call.
+    b.controller.openWorker('w-bad')
+    expect(b.workerAddresses).toEqual([])
+    expect(b.state().workerNotice).toBeNull()
   })
 })
