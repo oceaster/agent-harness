@@ -105,7 +105,12 @@ function measureInChromium(markup: string): Measured {
   ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   const found = /<pre id="out">([\s\S]*?)<\/pre>/.exec(dom)
   if (found === null) throw new Error('Chromium dumped no measurement node')
-  return JSON.parse(found[1]
+  // The capture group is possibly-undefined under noUncheckedIndexedAccess, and
+  // the build's own `tsc -b tsconfig.client.json` compiles the tests — so the
+  // guard is load-bearing, not decorative.
+  const payload = found[1]
+  if (payload === undefined) throw new Error('Chromium dumped an empty measurement node')
+  return JSON.parse(payload
     .replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')) as Measured
 }
 
