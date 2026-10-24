@@ -27,6 +27,12 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Open the right rail (no-op when already open). */
+  openRail(): void
+  /** Close the right rail. */
+  closeRail(): void
+  /** Toggle the right rail (open ⟷ contract default width). */
+  toggleRail(): void
   /** Select a registered center page; null returns to the selected conversation.
    * @param id - registered page id, or null for the conversation.
    */
@@ -72,6 +78,21 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Open the right rail (no-op when already open). */
+  openRail(): void {
+    this.#require().openRail()
+  }
+
+  /** Close the right rail. */
+  closeRail(): void {
+    this.#require().closeRail()
+  }
+
+  /** Toggle the right rail (open ⟷ contract default width). */
+  toggleRail(): void {
+    this.#require().toggleRail()
   }
 
   /** Select a center page without creating or changing an agent session.

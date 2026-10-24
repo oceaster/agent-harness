@@ -24,6 +24,11 @@ import type {
 // Session selection controls for the SessionProvider and useSessions stubs.
 const selectedSession = { current: 's-test' as SessionId | undefined }
 const selectedSessionBlank = { current: false }
+// The read-only facts (writable.ts): a subagent summary row, or an addressed
+// subagent route. Either one makes the conversation read-only, exactly as
+// ConversationRoot's `readOnly = child || childSummary` does.
+const selectedSessionOrigin = { current: undefined as 'subagent' | undefined }
+const selectedSessionAddress = { current: { parentSessionId: 's-parent', childSessionId: 's-test', mode: 'single' } as object | undefined }
 const baselinesReady = { current: true }
 
 // Render-prop contract stub fed through the standard seat prop (the renderer
@@ -68,6 +73,7 @@ function mountFrame() {
     if (key === 'conversation') return <div data-testid="center-content" />
     if (key === 'conversation.page') return <div data-testid="channel-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'rail') return null
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
   }) as AppFrameProps['renderSlot']
@@ -77,9 +83,19 @@ function mountFrame() {
       ids: current === undefined ? [] : [current],
       byId: current === undefined
         ? {}
-        : { [current]: { id: current, displayTitle: 'Test', running: false, blank: selectedSessionBlank.current, updatedAt: 1 } },
+        : {
+          [current]: {
+            id: current,
+            displayTitle: 'Test',
+            running: false,
+            blank: selectedSessionBlank.current,
+            updatedAt: 1,
+            ...(selectedSessionOrigin.current === undefined ? {} : { origin: selectedSessionOrigin.current }),
+          },
+        },
       current,
       phase: 'ready',
+      currentAddress: selectedSessionAddress.current,
     } as SessionListState
     return sel(sessionState)
   }) as never
@@ -102,10 +118,41 @@ function mountFrame() {
   return { instance, frame, slotCalls, rerenderFrame: () => { utils.rerender(element()) }, ...utils }
 }
 
+// The template is three tracks, plus the rail track when the rail exists.
+const TEMPLATE = /^(\d+)px minmax\(0, 1fr\) (\d+)px(?: (\d+)px)?$/
+
+/**
+ * The sidebar and details tracks. The center track is `minmax(0, 1fr)`, which
+ * jsdom cannot resolve, so the measured center comes from centerTrack below.
+ * @param frame - the frame element.
+ * @returns sidebar px and details px.
+ */
 function tracks(frame: HTMLElement): number[] {
-  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px$/.exec(frame.style.gridTemplateColumns)
+  const m = TEMPLATE.exec(frame.style.gridTemplateColumns)
   if (m === null) throw new Error(`unexpected template: ${frame.style.gridTemplateColumns}`)
   return [Number(m[1]), Number(m[2])]
+}
+
+/**
+ * The right rail track: absent (0) whenever the rail is not painted.
+ * @param frame - the frame element.
+ * @returns rail px, or 0 for a frame with no rail track.
+ */
+function railTrack(frame: HTMLElement): number {
+  const m = TEMPLATE.exec(frame.style.gridTemplateColumns)
+  if (m === null) throw new Error(`unexpected template: ${frame.style.gridTemplateColumns}`)
+  return m[3] === undefined ? 0 : Number(m[3])
+}
+
+/**
+ * The center track as the browser must resolve it: the frame width the stubbed
+ * getBoundingClientRect reports, minus every fixed track. A negative or missing
+ * number means the tracks do not fit, i.e. horizontal overflow.
+ * @param frame - the frame element.
+ * @returns the center column width in px.
+ */
+function centerTrack(frame: HTMLElement): number {
+  return frameWidth - tracks(frame)[0]! - tracks(frame)[1]! - railTrack(frame)
 }
 
 function drag(handle: Element, fromX: number, toX: number): void {
@@ -125,6 +172,8 @@ beforeEach(() => {
   frameHeight = 1080
   selectedSession.current = 's-test' as SessionId
   selectedSessionBlank.current = false
+  selectedSessionOrigin.current = undefined
+  selectedSessionAddress.current = undefined
   baselinesReady.current = true
   vi.useFakeTimers()
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
@@ -301,11 +350,15 @@ describe('AppFrame', () => {
   })
 
   it('drag handles disappear for collapsed columns', () => {
+    // Every open, resizable column owns one handle: sidebar, details, rail. The
+    // rail is open by default in a writable conversation, so the baseline is 2.
     const { frame, instance } = mountFrame()
-    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
-    act(() => { instance.actions.openDetails() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
+    act(() => { instance.actions.openDetails() })
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(3)
     act(() => { instance.actions.closeDetails() })
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
+    act(() => { instance.actions.closeRail() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
     act(() => { instance.actions.toggleSidebar() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
@@ -321,7 +374,10 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
     expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props)
       .toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, portrait: false })
-    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+    // 980 still fits a 56px rail sidebar, CENTER_MIN and a 280px right rail, so
+    // the only handle left is the right rail's own.
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
+    expect((frame.querySelectorAll('[class*="handle"]')[0] as HTMLElement).getAttribute('data-side')).toBe('rail')
   })
 
   it('narrow toggle re-expands over the squeezed center and back', () => {
@@ -428,6 +484,154 @@ describe('AppFrame — unmount with an in-flight resize frame', () => {
     frameWidth = 1250
     act(() => { fireResize?.(); fireResize?.(); vi.advanceTimersByTime(20) })
     expect(tracks(frame)).toEqual([280, 330])
+  })
+})
+
+describe('AppFrame — right rail', () => {
+  const rail = (frame: HTMLElement): HTMLElement | null => frame.querySelector('[data-testid="ui-layout-rail"]')
+
+  it('mounts an empty rail in a writable conversation', () => {
+    const { frame, slotCalls } = mountFrame()
+    const column = rail(frame)
+    expect(column).not.toBeNull()
+    // A real track, at the rail's own width, beside the details track.
+    expect(railTrack(frame)).toBe(280)
+    expect(frame.style.gridTemplateColumns).toBe('280px minmax(0, 1fr) 0px 280px')
+    // The occupant seat is rendered with the live width and paints nothing.
+    expect(slotCalls.filter(c => c.key === 'rail').at(-1)!.props).toEqual({ width: 280 })
+    // EMPTY MEANS EMPTY: no children, no text, no placeholder.
+    expect(column!.childElementCount).toBe(0)
+    expect(column!.textContent).toBe('')
+    // An accessible name, and the twin's own shape (the element is a landmark).
+    expect(column!.tagName).toBe('ASIDE')
+    expect(column!.getAttribute('aria-label')).toBe('Right sidebar')
+  })
+
+  it('does not mount for a read-only (Epsilon) transcript', () => {
+    // ConversationRoot's `readOnly = child || childSummary`, read the way a
+    // root-scope frame can read it: a subagent summary row...
+    selectedSessionOrigin.current = 'subagent'
+    const byRow = mountFrame()
+    expect(rail(byRow.frame)).toBeNull()
+    expect(railTrack(byRow.frame)).toBe(0)
+    expect(byRow.slotCalls.map(c => c.key)).not.toContain('rail')
+    expect(byRow.frame.style.gridTemplateColumns).toBe('280px minmax(0, 1fr) 0px')
+    cleanup()
+
+    // ...or an addressed subagent route (the session's own `subagent` record).
+    selectedSessionOrigin.current = undefined
+    selectedSessionAddress.current = { parentSessionId: 's-parent', childSessionId: 's-test', mode: 'single' }
+    const byRoute = mountFrame()
+    expect(rail(byRoute.frame)).toBeNull()
+    expect(byRoute.slotCalls.map(c => c.key)).not.toContain('rail')
+  })
+
+  it('does not mount with no conversation at all', () => {
+    selectedSession.current = undefined
+    const { frame, slotCalls } = mountFrame()
+    expect(rail(frame)).toBeNull()
+    expect(slotCalls.map(c => c.key)).not.toContain('rail')
+  })
+
+  it('measures the center column at 1440 with the rail open and closed', () => {
+    frameWidth = 1440
+    frameHeight = 900
+    const open = mountFrame()
+    // REPORTED: 880 with the rail open (280 sidebar + 280 rail + 1fr center).
+    expect(tracks(open.frame)).toEqual([280, 0])
+    expect(railTrack(open.frame)).toBe(280)
+    expect(centerTrack(open.frame)).toBe(880)
+    cleanup()
+
+    act(() => { /* the rail is closed through the service face, not a preference write */ })
+    const closed = mountFrame()
+    act(() => { closed.instance.actions.closeRail() })
+    expect(rail(closed.frame)).toBeNull()
+    // REPORTED: 1160 with the rail closed — the rail costs exactly 280.
+    expect(centerTrack(closed.frame)).toBe(1160)
+    expect(centerTrack(closed.frame) - 880).toBe(280)
+  })
+
+  it('never paints the rail in portrait, so a 390px chat cannot overflow', () => {
+    frameWidth = 390
+    frameHeight = 844
+    const { frame, instance, slotCalls } = mountFrame()
+    expect(frame.hasAttribute('data-portrait')).toBe(true)
+    expect(rail(frame)).toBeNull()
+    expect(slotCalls.map(c => c.key)).not.toContain('rail')
+    expect(frame.style.gridTemplateColumns).toBe('0px minmax(0, 1fr) 0px')
+    // No track sum above the viewport: nothing to scroll horizontally.
+    expect(tracks(frame)[0]! + tracks(frame)[1]! + railTrack(frame)).toBe(0)
+    expect(centerTrack(frame)).toBe(390)
+    // Rotating back to a landscape frame brings the rail back with its width.
+    frameWidth = 1440
+    frameHeight = 900
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    expect(railTrack(frame)).toBe(280)
+    expect(instance.getSnapshot().rail).toBe(280)
+  })
+
+  it('leaves no border state behind when the rail is closed', () => {
+    // The details column stays mounted at zero width and needs
+    // `.frame[data-details-collapsed] .detailsCol { border-left: none }`. The
+    // rail has no such seam because a closed rail is absent from the tree.
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.closeRail() })
+    expect(rail(frame)).toBeNull()
+    expect(frame.querySelector('[class*="railCol"]')).toBeNull()
+    expect(railTrack(frame)).toBe(0)
+    // Closing the rail is not closing details: the details state is untouched.
+    expect(instance.getSnapshot().rail).toBe(0)
+    expect(instance.getSnapshot().details).toBe(0)
+    act(() => { instance.actions.openDetails() })
+    expect(tracks(frame)).toEqual([280, 360])
+    expect(rail(frame)).toBeNull()
+  })
+
+  it('auto-closes the rail on a narrow viewport through the concession chain', () => {
+    frameWidth = 1440
+    frameHeight = 900
+    const { frame } = mountFrame()
+    expect(railTrack(frame)).toBe(280)
+    // 1100 landscape: 280 sidebar + 280 rail + CENTER_MIN is 1200, and the rail's
+    // own floor cannot rescue it, so the rail is the column the chain drops —
+    // no breakpoint in the frame decided that.
+    frameWidth = 1100
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    expect(rail(frame)).toBeNull()
+    expect(railTrack(frame)).toBe(0)
+    expect(centerTrack(frame)).toBe(820)
+  })
+
+  it('re-widening restores the rail without a preference rewrite', () => {
+    frameWidth = 1100
+    frameHeight = 900
+    const { frame, instance } = mountFrame()
+    expect(rail(frame)).toBeNull()
+    expect(instance.getSnapshot().rail).toBe(280)
+    frameWidth = 1440
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+    expect(railTrack(frame)).toBe(280)
+    expect(rail(frame)).not.toBeNull()
+  })
+
+  it('resizes by its own handle, and the details handle moves with it', () => {
+    const { frame, instance } = mountFrame()
+    // Handles: sidebar, then rail (details is closed).
+    const handles = frame.querySelectorAll('[class*="handle"]')
+    expect(handles).toHaveLength(2)
+    expect((handles[1] as HTMLElement).getAttribute('data-side')).toBe('rail')
+    // The rail's handle sits on the rail's outer-turned inner edge.
+    expect((handles[1] as HTMLElement).style.left).toBe(`${frameWidth - 280}px`)
+    drag(handles[1]!, 1640, 1580) // drag left: the rail grows
+    expect(railTrack(frame)).toBe(340)
+    expect(instance.getSnapshot().rail).toBe(340)
+    // With details open too, the details handle sits left of the rail track.
+    act(() => { instance.actions.openDetails() })
+    const both = frame.querySelectorAll('[class*="handle"]')
+    expect(both).toHaveLength(3)
+    expect((both[1] as HTMLElement).getAttribute('data-side')).toBe('details')
+    expect((both[1] as HTMLElement).style.left).toBe(`${frameWidth - 360 - 340}px`)
   })
 })
 

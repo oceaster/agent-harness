@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import {
   DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
+  RAIL_DEFAULT, RAIL_MAX, RAIL_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 
@@ -17,10 +18,11 @@ const PERSIST_KEY = 'dsh.layout.panels'
 beforeEach(() => { localStorage.clear() })
 
 describe('createLayoutStore', () => {
-  it('initializes the sidebar at its default width, details closed, wide viewport assumed', () => {
+  it('initializes the sidebar and the rail at their default widths, details closed, wide viewport assumed', () => {
     const { store } = createLayoutStore().create()
     expect(store.getSnapshot()).toEqual({
-      sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, portrait: false, page: null,
+      sidebar: SIDEBAR_DEFAULT, details: 0, rail: RAIL_DEFAULT,
+      narrow: false, narrowExpanded: false, portrait: false, page: null,
     })
   })
 
@@ -58,7 +60,8 @@ describe('createLayoutStore', () => {
     actions.setNarrow(true)
     actions.toggleSidebar()
     expect(store.getSnapshot()).toEqual({
-      sidebar: 400, details: 0, narrow: true, narrowExpanded: true, portrait: false, page: null,
+      sidebar: 400, details: 0, rail: RAIL_DEFAULT,
+      narrow: true, narrowExpanded: true, portrait: false, page: null,
     })
     actions.toggleSidebar()
     expect(store.getSnapshot().narrowExpanded).toBe(false)
@@ -130,12 +133,35 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().details).toBe(0)
   })
 
-  it('persists exactly the two panel widths, under the dsh prefix', () => {
+  it('setRail clamps into the sidebar width family; open/close/toggle cross the line', () => {
+    const { store, actions } = createLayoutStore().create()
+    expect(store.getSnapshot().rail).toBe(RAIL_DEFAULT)
+    actions.setRail(9999)
+    expect(store.getSnapshot().rail).toBe(RAIL_MAX)
+    actions.setRail(1)
+    expect(store.getSnapshot().rail).toBe(RAIL_MIN)
+    actions.closeRail()
+    expect(store.getSnapshot().rail).toBe(0)
+    actions.openRail()
+    expect(store.getSnapshot().rail).toBe(RAIL_DEFAULT)
+    actions.setRail(500)
+    actions.openRail()
+    // Already open: openRail never rewrites a width the reader dragged.
+    expect(store.getSnapshot().rail).toBe(RAIL_MAX)
+    actions.toggleRail()
+    expect(store.getSnapshot().rail).toBe(0)
+    actions.toggleRail()
+    expect(store.getSnapshot().rail).toBe(RAIL_DEFAULT)
+  })
+
+  it('persists exactly the three panel widths, under the dsh prefix', () => {
     const first = createLayoutStore().create()
     first.actions.setSidebar(400)
     first.actions.openDetails()
     first.actions.setDetails(500)
-    expect(JSON.parse(localStorage.getItem(PERSIST_KEY)!)).toEqual({ sidebar: 400, details: 500 })
+    first.actions.setRail(300)
+    expect(JSON.parse(localStorage.getItem(PERSIST_KEY)!))
+      .toEqual({ sidebar: 400, details: 500, rail: 300 })
   })
 
   it('restores sidebar width, details width and whether details is open', () => {
@@ -167,11 +193,12 @@ describe('createLayoutStore', () => {
     // reading would fight AppFrame's own measurement, and the page has a single
     // writer (ui-inbox), so layout must not persist it.
     const stored = JSON.parse(localStorage.getItem(PERSIST_KEY)!) as Record<string, number>
-    expect(Object.keys(stored).sort()).toEqual(['details', 'sidebar'])
+    expect(Object.keys(stored).sort()).toEqual(['details', 'rail', 'sidebar'])
     const second = createLayoutStore().create()
     expect(second.store.getSnapshot()).toEqual({
       sidebar: 400,
       details: 0,
+      rail: RAIL_DEFAULT,
       narrow: false,
       narrowExpanded: false,
       portrait: false,

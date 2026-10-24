@@ -1,8 +1,8 @@
 /**
- * Three-column shell frame, registered into the built-in 'root' slot (the web
+ * Four-column shell frame, registered into the built-in 'root' slot (the web
  * shell renders only 'root'). Owns the grid tracks (sidebar | center |
- * details), the drag handles (pointer capture + rAF throttle), the concession
- * chain (columns.ts), and the child-slot render decisions: the sidebar slot
+ * details | right rail), the drag handles (pointer capture + rAF throttle), the
+ * concession chain (columns.ts), and the child-slot render decisions: the sidebar slot
  * renders HERE with live parameters from the concession solve, and the
  * session-aware occupants render in fixed column positions; strict entries
  * gate themselves on current-session availability while session-maybe
@@ -17,6 +17,14 @@
  * expanded and a transparent rail when collapsed. `data-portrait`,
  * `data-portrait-overlay` and `data-portrait-mobile` are the CSS handles for
  * those states; nothing in the landscape path reads them.
+ *
+ * The right rail is the fourth track and the inbox column's twin on the far
+ * edge. It is not a peer of `details`: `details` is ui-conversation's tool panel
+ * (session scope, open on demand), while the rail is persistent shell chrome for
+ * a writable conversation, so it gets its own track, its own preference, its own
+ * slot and its own position in the concession chain. It renders no compact
+ * state — closed means the column is not in the tree, which is also why it needs
+ * no `data-rail-collapsed` seam rule.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -25,12 +33,13 @@ import {
   computeFrameLayout, isPortrait, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT,
 } from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
+import { isWritableConversation } from './writable.ts'
 import css from './AppFrame.module.css'
 
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'conversation.page' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'conversation.page' | 'details' | 'rail' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
 
 /** Center column grid item (session-body building block). */
@@ -44,10 +53,30 @@ function DetailsColumn(props: { children?: ReactNode }) {
 }
 
 /**
+ * Right rail grid item: the inbox column's twin, EMPTY by design this sprint —
+ * fill, hairline, accessible name and a stable testid, nothing else. Next
+ * sprint's occupant mounts through the 'rail' slot; nothing here invites
+ * content, and no placeholder row stands in for it.
+ */
+function RailColumn(props: { children?: ReactNode }) {
+  return (
+    <aside className={css.railCol} data-testid="ui-layout-rail" aria-label="Right sidebar">
+      {props.children}
+    </aside>
+  )
+}
+
+/**
  * One drag handle: pointer capture, rAF-throttled dx reports against the drag-start origin.
  * `side` keys the hover-reveal CSS to the owning column.
  */
-function DragHandle(props: { side: 'sidebar' | 'details'; left: number; onStart: () => void; onDrag: (dx: number) => void; onEnd: () => void }) {
+function DragHandle(props: {
+  side: 'sidebar' | 'details' | 'rail'
+  left: number
+  onStart: () => void
+  onDrag: (dx: number) => void
+  onEnd: () => void
+}) {
   const [dragging, setDragging] = useState(false)
   const origin = useRef(0)
   const latest = useRef(0)
@@ -105,6 +134,9 @@ export function AppFrame({
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
+  // The rail's own fact, read from the session list (writable.ts): a read-only
+  // transcript — an Epsilon's, or a summary-only one — paints no rail at all.
+  const writable = useSessions(isWritableConversation)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [frame, setFrame] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
 
@@ -153,11 +185,18 @@ export function AppFrame({
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
+  // The rail's preference reaches the solve only where the column can legally
+  // exist: a writable conversation in a landscape frame. Passing 0 everywhere
+  // else means the solver answers 0 without a second breakpoint, and the
+  // preference itself is never rewritten (widening, or opening a writable chat,
+  // restores it).
+  const railPreference = writable && !portrait ? panels.rail : 0
   const layout = computeFrameLayout(
     frame.width,
     frame.height,
     sidebarPreference,
     detailsSession === undefined ? 0 : panels.details,
+    railPreference,
   )
   const cols = layout.columns
   // Portrait: the column floats over the chat, so its rendered width is the
@@ -168,6 +207,11 @@ export function AppFrame({
     : sidebarCollapsed ? SIDEBAR_COLLAPSED : layout.portrait.width
   // The dimming scrim belongs to the expanded portrait overlay only; the
   // collapsed rail stays transparent over the chat.
+  // A closed rail is absent from the tree rather than mounted at zero width: an
+  // empty column is pure chrome, so there is no subtree state worth keeping
+  // mounted (the details panel keeps DOM; a rail has none).
+  const railWidth = cols.rail
+  const railOpen = railWidth > 0
   const scrim = portrait && !sidebarCollapsed
   const colsRef = useRef(cols)
   colsRef.current = cols
@@ -177,17 +221,24 @@ export function AppFrame({
   // it stays frozen for the whole gesture so dx deltas do not compound.
   const sidebarBase = useRef(0)
   const detailsBase = useRef(0)
+  const railBase = useRef(0)
   // Track-level transitions pause for the whole gesture: eased tracks would
   // detach the column edge from the pointer (AppFrame.module.css).
   const [dragging, setDragging] = useState(false)
   const onDragEnd = useCallback(() => { setDragging(false) }, [])
   const onSidebarStart = useCallback(() => { sidebarBase.current = colsRef.current.sidebar; setDragging(true) }, [])
   const onDetailsStart = useCallback(() => { detailsBase.current = colsRef.current.details; setDragging(true) }, [])
+  const onRailStart = useCallback(() => { railBase.current = colsRef.current.rail; setDragging(true) }, [])
   const onSidebarDrag = useCallback((dx: number) => {
     actions.setSidebar(sidebarBase.current + dx)
   }, [actions])
   const onDetailsDrag = useCallback((dx: number) => {
     actions.setDetails(detailsBase.current - dx)
+  }, [actions])
+  // The rail grows leftward, like details: a right-edge column takes the
+  // handle's dx with the same sign.
+  const onRailDrag = useCallback((dx: number) => {
+    actions.setRail(railBase.current - dx)
   }, [actions])
 
   return (
@@ -195,7 +246,11 @@ export function AppFrame({
       ref={frameRef}
       className={css.frame}
       style={{
-        gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px`,
+        // The rail track exists only while the rail does, so every frame without
+        // one keeps the three-track template byte for byte.
+        gridTemplateColumns: railOpen
+          ? `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px ${railWidth}px`
+          : `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px`,
         // The rail inset the portrait chat leaves for the floating column, in
         // both portrait states: one number, so switching states never reflows
         // the conversation's text column.
@@ -241,14 +296,30 @@ export function AppFrame({
           ? renderSlot('conversation', {})
           : renderSlot('conversation.page', {}, { only: panels.page })}</CenterColumn>
         <DetailsColumn>{renderSlot('details', {})}</DetailsColumn>
+        {/* Right rail: last track, so shell chrome holds the frame's outer edge
+            while the details panel stays adjacent to the chat it describes. */}
+        {railOpen && <RailColumn>{renderSlot('rail', { width: railWidth })}</RailColumn>}
       </>
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed, and a
           portrait column has no track to drag (it floats over the chat). */}
-      {!portrait && !sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && <DragHandle side="details" left={frame.width - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+      {!portrait && !sidebarCollapsed && (
+        <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />
+      )}
+      {cols.details > 0 && (
+        <DragHandle
+          side="details"
+          left={frame.width - cols.details - railWidth}
+          onStart={onDetailsStart}
+          onDrag={onDetailsDrag}
+          onEnd={onDragEnd}
+        />
+      )}
+      {railOpen && (
+        <DragHandle side="rail" left={frame.width - railWidth} onStart={onRailStart} onDrag={onRailDrag} onEnd={onDragEnd} />
+      )}
     </div>
   )
 }

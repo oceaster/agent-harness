@@ -128,6 +128,20 @@
   border-left: none;
 }
 
+/* Right rail: the inbox column's twin on the far edge — the sidebar's own fill
+   and hairline, mirrored. It is a grid track like the sidebar and never a
+   floating overlay; portrait resolves its width to 0 (columns.ts), so it needs
+   no portrait rule and cannot paint over a 390px chat. The border has no
+   collapsed counterpart to strip: a closed rail is absent from the tree
+   (AppFrame), not mounted at zero width, so the seam above cannot occur here.
+   Empty by design this sprint — fill and hairline only, no content rules. */
+.railCol {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--dsw-specific-sidebar-fill);
+  border-left: 1px solid var(--dsw-alias-border-l1);
+}
+
 /* Drag handles are frame children (columns clip overflow): an 8px hit strip
    centered on the column border via inline left, above column content. Details
    adds a visible 12x32 pill at vertical center; sidebar keeps only the hit strip. */
@@ -155,7 +169,8 @@
   }
 }
 
-.handle[data-side='details']::after {
+.handle[data-side='details']::after,
+.handle[data-side='rail']::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -177,12 +192,17 @@
 
 .detailsCol:hover ~ .handle[data-side='details']::after,
 .handle[data-side='details']:hover::after,
-.handle[data-side='details'][data-dragging='true']::after {
+.handle[data-side='details'][data-dragging='true']::after,
+.railCol:hover ~ .handle[data-side='rail']::after,
+.handle[data-side='rail']:hover::after,
+.handle[data-side='rail'][data-dragging='true']::after {
   opacity: 1;
 }
 
 .handle[data-side='details']:hover::after,
-.handle[data-side='details'][data-dragging='true']::after {
+.handle[data-side='details'][data-dragging='true']::after,
+.handle[data-side='rail']:hover::after,
+.handle[data-side='rail'][data-dragging='true']::after {
   background: var(--dsw-alias-button-floating-hover);
   border-color: var(--dsw-alias-border-l3);
 }

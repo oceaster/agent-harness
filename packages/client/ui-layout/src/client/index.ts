@@ -1,7 +1,7 @@
 /**
  * Layout plugin, browser half: one register() call contributes AppFrame into
  * the runtime's built-in 'root' slot and, in the same breath, declares the
- * four child slots (declaration = exclusive render authority), seats the
+ * five child slots (declaration = exclusive render authority), seats the
  * layout store (panel geometry), and wires the panel-action service face.
  * ctx.layout is the cross-plugin panel-action contract; navigation state lives
  * with the runtime sessions service. A second effect seats the theme
@@ -73,6 +73,24 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
     /**
+     * The right rail: the inbox column's twin on the right-hand edge, EMPTY
+     * this sprint — the frame paints the container (fill, hairline, accessible
+     * name, `data-testid="ui-layout-rail"`) and nothing inside it. Owen,
+     * 2026-10-24: "we'll add the bar leave it empty for now. Populate next
+     * sprint."
+     *
+     * Additive, unlike its neighbours: registering here does not replace a
+     * surface that already exists, it puts the first occupant inside an empty
+     * column. Root scope, because what a rail mirrors — rows and addresses,
+     * not the open transcript — is not per-session.
+     *
+     * The column exists only where a conversation is writable
+     * (ConversationRoot's own read-only rule, see writable.ts) and only in a
+     * landscape frame; a read-only (Epsilon) transcript or a portrait frame
+     * paints no rail and no seam.
+     */
+    'rail': { kind: 'single'; scope: 'root'; owner: RailOwnerProps }
+    /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
      * toast stack or a status pill all belong here, and entries order among
@@ -112,6 +130,12 @@ export interface ConvOwnerProps {}
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
 
+/** Right rail owner share: the live column geometry (mirrors SidebarOwnerProps). */
+export interface RailOwnerProps {
+  /** Rendered rail width in px; always > 0, since a closed rail renders nothing. */
+  width: number
+}
+
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
 
@@ -132,6 +156,7 @@ export function apply(ctx: ClientContext): void {
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'conversation.page': { kind: 'list', scope: 'root' },
         'details': { kind: 'single', scope: 'session' },
+        'rail': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per
