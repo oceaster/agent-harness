@@ -14,7 +14,13 @@
 
 ## 一个外壳中的两个界面：子代理侧栏
 
-Owen，2026-10-23：「2 separate interfaces BUT SAME SAME, DIFFERENT, BUT SAME」。本包只填充一个侧栏区域，填充哪种正文取决于本次页面加载属于哪个界面：Delta 入口（没有 URL 片段）得到 `InboxPanel`——助手行与助手频道——Epsilon 入口（`#epsilons`）得到 `EpsilonPanel`，即 Delta 的子代理列表。`surface.ts` 掌管这个判断，只在启动时读一次 `location.hash`；`sidebar.workspaces` 是单槽位，因此不属于本次页面加载的那个界面根本不会被挂载，其标记在 DOM 中是不存在，而不是被隐藏。切换界面就是一次页面加载，这也正是两个入口各自都是可分享链接的原因。包裹本应用的 e-server 页面把同一个片段附加到 iframe 的 `src` 上，因此 `EPSILONS_FRAGMENT` 是两端共用的那一个词。
+Owen，2026-10-23：「2 separate interfaces BUT SAME SAME, DIFFERENT, BUT SAME」。本包用一个侧栏区域承载两种正文：Delta 入口显示 `InboxPanel`——助手行与助手频道——Epsilon 入口显示 `EpsilonPanel`，即 Delta 的子代理列表。
+
+Owen，2026-10-24：这个工作区就是 IDE——「always rendered and rendering ... if closed, it's actually just 'not-visible'」——所以两个界面都保持挂载，只是其中一个不可见。`sidebar.workspaces` 仍然是单占用者：`SurfacePanels` 是它唯一的注册者，切换由它自己在内部掌管。注册表会拒绝同一优先级上的第二个占用者，而会话中途重新注册会销毁现存的条目并挂载一个全新的面板，那正是本设计要消除的重挂载，所以切换是占用者自身的状态，而不是第二次注册。被隐藏的界面不持有任何订阅（`surface-gate.ts`）：没有 store 帧会让它重渲染，也没有定时器唤醒它，而它的 DOM 以及人在其中留下的状态——展开的行菜单、确认对话框——仍然挂载着。再次显示时它读取实时快照，因此返回的界面从不是陈旧数据。
+
+显示哪个界面由两种不会互相矛盾的方式决定。`surface.ts` 在启动时读一次的 URL 片段，让每次冷启动、书签和粘贴的链接都落在它们一直所在的位置；父页面的 `dsh:open` 消息（`surface-controller.ts`）才是机制，因此在两个入口之间移动不产生任何文档加载。父页面只保留一个 frame 和一个 `src`，以精确的 target origin（绝不用 `'*'`）发送 `{ type: 'dsh:open', surface, conversation, token }`；应用以同一个 token 回 `dsh:ready`，并在人在应用内部导航时回 `dsh:route`，父页面的 URL 和菜单因此无需重载即可跟随。消息只有在真正改变状态时才会被应用，并且只有父页面可以发送它们。从未显示过的界面不会被挂载，所以冷启动仍然只包含一个界面；父页面的第一条消息让两者都常驻，之后每次移动都只是可见性翻转。
+
+轮询遵循同一条规则。助手频道轮询只在收件箱界面显示时运行，Delta 的子代理名单只在 Epsilon 界面显示时运行，而且两者在 frame 不在屏幕上时都不运行（`frame-shown.ts`）——它们各自在被激活时立即重读一次，因此暂停过的轮询绝不会变成陈旧面板。帧预算是量出来的，不是断言的：`tests/instant-surfaces.journey.mjs` 驱动 e-server 的组合浏览器 fixture（`tests/browser_profiles.sh`）走完十步旅程，并报告文档加载数、frame 导航数，以及每次切换的意图到绘制毫秒数。
 
 **子代理不在收件箱侧栏里。** 正在阅读收件箱或同伴频道的人只会看到自己的助手和频道，其他什么都没有；Epsilon 界面的树里根本没有助手行或频道区域。
 
