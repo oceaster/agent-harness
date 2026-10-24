@@ -38,7 +38,12 @@
    never matches these rules. */
 .frame[data-portrait] .sidebarCol {
   position: relative;
-  z-index: 5;
+  /* Above the chat's own stacked layers - the sticky composer seat (7) and the
+     scroll control over it (8) - because an expanded floating panel OWNS the
+     screen while it is open. At 5 the composer painted over the panel and its
+     scrim on tablet and phone widths. Stays under .overlayLayer (20), so a menu
+     or tooltip invoked from the panel still opens above it. */
+  z-index: 15;
   background: transparent;
   border-right: none;
   /* Mobile portrait slides the panel in and retracts its right edge on the way
@@ -82,7 +87,10 @@
 .scrim {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  /* Just under the panel (15) and still over the chat's composer (7): the mask
+     has to cover the input bar too, or the bar reads as usable while the
+     panel is open. */
+  z-index: 14;
   background: #000;
   opacity: 0.55;
   animation: portrait-scrim-in var(--ds-transition-duration-slow) var(--ds-ease-in-out);
