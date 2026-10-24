@@ -55,10 +55,17 @@ export interface EffortPolicy {
    */
   treeEfforts?: readonly string[]
   /**
+   * PARKED — DO NOT WIRE YET. Owen deferred the read-only worker case on
+   * 2026-10-24 ("Neither - skip it for now"): a read-only worker conversation
+   * mounts no composer at all, so there is no seat to paint. The control still
+   * renders this shape correctly (a locked dialog on a supplied level track),
+   * and its unit test stays green, so the work is kept rather than deleted; it
+   * becomes reachable only if a worker surface ever mounts the seat. Until
+   * then nothing in the deployment sets it, and `index.ts` deliberately does
+   * not widen `available` for addressed subagent sessions.
+   *
    * A level track the policy supplies itself, for a conversation whose own
-   * model directory can never load: an addressed subagent session, where
-   * `session.models` is refused with `agent-busy` because those Agent-bound
-   * RPCs would activate persisted history. Absent = the directory's own offer.
+   * model directory can never load. Absent = the directory's own offer.
    */
   track?: {
     /** Level labels, lowest first. */

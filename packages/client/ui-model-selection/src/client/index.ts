@@ -288,14 +288,15 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       inject: (sessionId): ModelSelectInjected => {
         const directory = models.directoryFor(sessionId)
-        // An addressed subagent session gets no Agent-bound RPCs — they would
-        // activate persisted history outside the direct-parent continuation
-        // path — so it renders only the read-only policy a deployment named
-        // for it, from its own level track.
+        // An addressed subagent session renders nothing: those Agent-bound RPCs
+        // would activate persisted history outside the direct-parent
+        // continuation path. PARKED (Owen deferred the worker case on
+        // 2026-10-24): `EffortPolicy.track` already knows how to paint such a
+        // session read-only, but it stays unreachable until a worker surface
+        // mounts this seat at all — see the note on `track` in slots.ts.
         const inspectable = sessions.subagentAddress(sessionId) === undefined
-        const available = inspectable || effortFieldOf(sessions.list.getSnapshot().byId[sessionId]) !== undefined
         return {
-          available,
+          available: inspectable,
           policy: policySourceFor(sessionId),
           directory: directory.store,
           load: () => {
